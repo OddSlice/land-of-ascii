@@ -27,11 +27,12 @@ As v1: click to capture the mouse (Esc releases it; where pointer lock is refuse
 | T | clock ×10 |
 | − / + | cell size: 5×10, 6×12, 7×14, 8×16 px |
 | [ / ] | view distance |
+| L | look: painted (default) or mosaic |
 
 ## Docs
 
 - **[docs/phase2-world.md](docs/phase2-world.md)**: the phase 2 brief (in progress). Varied land, villages and towns, people and animals, and the tests that change with the world.
-- **[docs/phase2.md](docs/phase2.md)**: phase 2 as it is built. Step 1: eight regions, terrain shaped per region, new ground materials, rock strata ([pictures](shots/phase2/sheet-regions.png)).
+- **[docs/phase2.md](docs/phase2.md)**: phase 2 as it is built. Step 1: eight regions, terrain shaped per region, new ground materials, rock strata ([pictures](shots/phase2/sheet-regions.png)). Then the painted look, shadows and water mirrors ([mosaic and painted side by side](shots/phase2/sheet-looks-1.png)).
 - **[docs/phase1.md](docs/phase1.md)** covers the build:
   - how a frame is drawn, and the 3D merchants and trees;
   - the render workers;

@@ -2,7 +2,7 @@
 //   node tools/shoot.mjs                      every scene in tools/scenes.json -> shots/<name>.png
 //   node tools/shoot.mjs vista road           just those
 //   node tools/shoot.mjs --cam x,y,z,yawDeg,pitch --hour 21 [--ground] [--seed 42] --out shots/x.png
-// Options: --browser chromium|firefox|webkit, --dpr 2, --cells 0..3 (cell preset), --dir shots
+// Options: --browser chromium|firefox|webkit, --dpr 2, --cells 0..3 (cell preset), --dir shots, --look painted|mosaic
 import fs from 'node:fs';
 import path from 'node:path';
 import { startServer, launch, ROOT } from './lib/harness.mjs';
@@ -13,7 +13,7 @@ const opt = (k, d) => { const i = args.indexOf('--' + k); if (i < 0) return d; c
 const flag = k => { const i = args.indexOf('--' + k); if (i < 0) return false; args.splice(i, 1); return true; };
 const browserName = opt('browser', 'chromium'), dpr = +opt('dpr', 1), cells = opt('cells', null), dir = opt('dir', 'shots');
 const threads = opt('threads', null), camArg = opt('cam', null), hour = +opt('hour', 12), seed = +opt('seed', 42), outArg = opt('out', null), tArg = +opt('t', 1000);
-const ground = flag('ground'), keepHud = flag('hud');
+const ground = flag('ground'), keepHud = flag('hud'), lookArg = opt('look', null);
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/scenes.json'), 'utf8'));
 let scenes;
 if (camArg) {
@@ -23,7 +23,7 @@ if (camArg) {
 
 const { server, port } = await startServer();
 const { browser, page } = await launch({ browser: browserName, dpr });
-await page.goto(`http://127.0.0.1:${port}/index.html?seed=${scenes[0]?.seed ?? cfg.seed}${threads != null ? '&threads=' + threads : ''}`);
+await page.goto(`http://127.0.0.1:${port}/index.html?seed=${scenes[0]?.seed ?? cfg.seed}${threads != null ? '&threads=' + threads : ''}${lookArg ? '&look=' + lookArg : ''}`);
 await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
 if (!keepHud) await page.addStyleTag({ content: HIDE_OVERLAYS });
 if (cells != null) await page.evaluate(p => window.TV.setCells(p), +cells);

@@ -8,6 +8,11 @@ export const FIXES = [
     to: '  for (let i = 0; i < N; i++) H[i] = Math.pow(Math.max(0, (H[i] - min) / range), 1.5) * HEIGHT_SCALE;',
   },
 ];
+FIXES.push({
+  why: 'the help line names the L key, which switches between the painted and the mosaic look',
+  from: "  helpEl.textContent = `${move} · ${look}\\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance`;",
+  to: "  helpEl.textContent = `${move} · ${look}\\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look`;",
+});
 export function applyFixes(text) {
   for (const f of FIXES) {
     if (!text.includes(f.from)) throw new Error('fix no longer applies: ' + f.why);

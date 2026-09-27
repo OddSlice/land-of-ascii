@@ -24,6 +24,7 @@ In file order:
    - cell stage (`shadeCells`);
    - overlays;
    - `compose`;
+   - the painted look (`paintCells`, `composePainted`): two square pixels per cell in continuous colour, one letter each, water mirrors;
    - the worker message interface.
 6. **Canvas and grid**, then input, movement and trade/HUD/lifecycle (ported).
 7. **Presentation:** the worker pool (`workerSource`, `startWorkers`, `syncWorkers`), merchant poses (`merchantPose`, main thread), `frameDesc`, the main loop, boot, and `window.TV`.
@@ -34,10 +35,11 @@ In file order:
   - World generation and tree placement are v2's own (phase 2). After a deliberate change to them, re-record the world checksums (`node tools/test-sim.mjs --record`), say what changed in `docs/phase2.md`, and re-aim the scenes (`tools/find-views.mjs`).
   - The rest of the simulation (movement, input, trade, rivers, structures, roads, merchants, lighting) is still v1's code. For any change to it, add the exact edit to `tools/lib/v2-fixes.mjs`, so `check-verbatim.mjs` and `test-sim.mjs` keep proving nothing else moved. If a change is too big for a from/to edit, retire the relevant comparison and say so in the docs.
 - **`renderCore()` must stand alone.** Each worker is built from its source (`workerSource()`). Inside it, use only its own code, the constants and helpers `workerSource()` passes in, and the objects `world`, `cam`, `clock`, `view`, `cur`, `light` and `COL`. A new constant or helper used inside the core must be added to `workerSource()`. Main-thread-only things (`ui`, `player`, the DOM) stay outside.
-- **Workers and the main thread must agree.** Rendering with `?threads=0` must give the same pixels as the default workers. Check it after renderer changes (diff two `tools/shoot.mjs` runs, one with `--threads 0`).
+- **Workers and the main thread must agree.** Rendering with `?threads=0` must give the same pixels as the default workers, in both looks. Check it after renderer changes (diff two `tools/shoot.mjs` runs, one with `--threads 0`, with `--look painted` and `--look mosaic`). Anything that reads neighbouring columns must work within the columns a stripe computes (`grid.xr0`..`grid.xr1`, one cell wider than it draws).
+- **Two looks.** Painted (the default since the step 1 review) and mosaic (step 1's; L switches, `?look=mosaic`). A renderer change must keep both working.
 - **Drawing rules:**
   - Glyphs are bitmasks built in code, never a font.
-  - Every colour comes from the palette ramps.
+  - Every colour comes from the palette ramps: stepped in the mosaic look, blended between steps in the painted look.
   - Nothing is drawn pure black.
   - Every channel is clamped (`pack`).
 - **Speed matters.** Target 60 fps at 1440×900 in Chromium, Firefox and WebKit. Measure with `tools/bench-v2.mjs` before and after renderer changes.
@@ -51,7 +53,7 @@ node tools/test-sim.mjs          # worlds (deterministic, as recorded, sane, eve
 node tools/check-verbatim.mjs    # the v1 code v2 still runs is unchanged except for v2-fixes.mjs
 node tools/shoot.mjs [scene...]  # screenshots of tools/scenes.json scenes -> shots/  (--dir shots/phase2, --threads 0, --dpr 2, --cells 0..3)
 node tools/shoot.mjs --cam x,y,z,yawDeg,pitch --hour 21 [--ground] [--seed 7] --out shots/x.png
-node tools/bench-v2.mjs          # frame timings (--threads 0, --browser firefox|webkit)
+node tools/bench-v2.mjs          # frame timings (--threads 0, --browser firefox|webkit, --look painted|mosaic)
 node tools/profile-v2.mjs road   # CPU profile of a scene
 node tools/probe.mjs road 'expr' # evaluate an expression in the page after showing a scene
 node tools/find-views.mjs --write              # re-aim the region views and the aerial (--seed N, --aerial-only, --classic for phase 1's six)
@@ -75,8 +77,9 @@ Test harness notes:
   - docs and screenshots.
 - **Phase 2 is under way**, following `docs/phase2-world.md`.
   - **Step 1 (design pass) is built**: regions, terrain shaping, five new ground materials, rock strata, trees by region, castles in clearings. See `docs/phase2.md`. It waits on Martin's confirmation of the regions and the palette.
+  - Martin's review of step 1 (Glyphmoor as the reference) led to the painted look, shadows and hollows, steadier ground and water mirrors; see "After step 1" in `docs/phase2.md`. The review's confirmation is still open.
   - Next is step 2 (land): materials' own marks, plants per region, bridges, weather.
-- **Speed on Martin's Mac** (M1 Max, 22 scenes): Chromium 3.0–6.6 ms a frame, Firefox 3.9–7.7 ms, WebKit 5.3–7.1 ms, all at 60 fps or more. A world generates in about 0.45 s.
+- **Speed on Martin's Mac** (M1 Max, painted look, ten scenes): Chromium 5.4–7.4 ms a frame, Firefox 6.3–9.6 ms, WebKit 6.4–12.8 ms, all at 60 fps or more. A world generates in about 0.47 s.
 - **Rough edges:**
   - distant ridges shimmer slightly in motion (heights aren't filtered at distance);
   - canopies look faceted up close;

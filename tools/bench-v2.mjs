@@ -2,19 +2,19 @@
 // Each scene's camera is held still (clock frozen at the scene's hour) while frames run at full
 // speed; reports the median over several windows of the mean ms per stage (with workers, the
 // slowest stripe's), the wall time from dispatch to picture (frameMs), and the frame rate.
-// --threads N sets the number of render workers (0: draw on the main thread).
+// --threads N sets the number of render workers (0: draw on the main thread); --look painted|mosaic.
 import fs from 'node:fs';
 import path from 'node:path';
 import { startServer, launch, ROOT } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf('--' + k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
-const browserName = opt('browser', 'chromium'), frames = +opt('frames', 60), runs = +opt('runs', 5), width = +opt('width', 1440), height = +opt('height', 900), pageFile = opt('page', 'index.html'), threads = opt('threads', null);
+const browserName = opt('browser', 'chromium'), frames = +opt('frames', 60), runs = +opt('runs', 5), width = +opt('width', 1440), height = +opt('height', 900), pageFile = opt('page', 'index.html'), threads = opt('threads', null), look = opt('look', null);
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/scenes.json'), 'utf8'));
 const scenes = cfg.scenes.filter(s => !args.length || args.includes(s.name));
 const { server, port } = await startServer();
 const { browser, page } = await launch({ browser: browserName, timeControl: false, width, height });
-await page.goto(`http://127.0.0.1:${port}/${pageFile}?seed=${cfg.seed}${threads != null ? '&threads=' + threads : ''}`);
+await page.goto(`http://127.0.0.1:${port}/${pageFile}?seed=${cfg.seed}${threads != null ? '&threads=' + threads : ''}${look ? '&look=' + look : ''}`);
 await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
 const rows = [];
 for (const sc of scenes) {

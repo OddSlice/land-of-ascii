@@ -158,3 +158,120 @@ Before and after, on Martin's Mac (M1 Max, six render workers, 1440×900, `tools
 - **Sunlit grey rock is beige.** That is phase 1's rock ramp, now seen more often on the new cliffs and peaks. It could be pulled greyer.
 - **Grey rock strata** are applied gently to all rock faces (red rock strongly). They could be kept to red rock only.
 - **Castles in clearings** change the look around every castle. It is a small change to how trees are placed.
+
+## After step 1: the painted look
+
+Martin's review of step 1 (28 Sep):
+
+- the textures glitch and flicker here and there;
+- depth is hard to read;
+- it lacks the painted look of the current trend;
+- it lacks reflections;
+- it could have more of a living world's soul, and more diversity.
+
+His reference was **Glyphmoor**, a one-file, no-engine text world trending on TikTok ([the video](https://www.tiktok.com/@glyphmoor/video/7689321367455534367), 60 s).
+
+### What Glyphmoor does
+
+Studied frame by frame, at up to 4× zoom:
+
+- **Every pixel is a letter.** The picture is a grid of small square cells, about 170 × 300 in a 720 × 1280 video. Each cell is one colour carrying one letter chosen by what it shows: `%` stone, `^` roof tiles, `@` and `&` leaves, `.` sand, `#` planks, `~` water, `"` grass. The letter is a shade off its cell's own colour. From a distance it reads as a painting, and up close as text.
+- **Painted light:**
+  - continuous shading, with no stepped tones;
+  - hard cast shadows from palms and trees on the sand;
+  - darkening in corners;
+  - hazy, bluish distance.
+- **Water:** it reflects sky, clouds, castles and the sun's glitter path.
+- **Life and variety:**
+  - villages with houses you walk into (beds, floors), chimney smoke;
+  - castles with red roofs, flags and great halls lit by torches;
+  - palms, birches, giant mushrooms, flower meadows;
+  - fireflies, auroras, lit windows, rain and cloud decks;
+  - five switchable looks (ASCII, Runic, Blocks, Amber terminal and one more).
+- **From the comments:**
+  - Its own interiors shimmer along walls, which a commenter traced to building structures unit by unit.
+  - Its world takes about 7 s to generate for a 2 km map.
+  - Another developer builds only what is near the player and streams the rest from the seed.
+
+### Flicker, measured
+
+`tools/flicker` (a scratch tool; the method is simple enough to re-create):
+
+- Walk the camera forward in small steps, with time frozen so only the camera moves.
+- Count the cells that **blink**: change and change back a frame later, by more than 24 in some colour channel or in their glyph.
+
+| Scene | Mosaic look (cells) | Painted look (half-cells) |
+|---|---|---|
+| Grassland | 0.55% per frame | 0.18% |
+| Badlands | 0.45% | 0.19% |
+| Castle vista | 0.33% | 0.17% |
+| Road at dusk | 6.1% | 0.08% |
+| Walking through the spawn gate at night | 5.2% | 0.05% |
+
+The mosaic look flickers by design. Its three sources:
+
+- the scattered ground marks pop from cell to cell;
+- the ░▒ seams between tone steps switch on and off;
+- the edge glyphs, fitted to 8 rays, re-pick their shape as silhouettes slide.
+
+The painted look has no marks, no steps and no fitted shapes. What remains is mostly hill crests and thin shapes: pine tips, trunks, tower corners.
+
+### What changed
+
+- **The painted look** (`paintCells`, `composePainted`; now the default; **L** switches looks, `?look=mosaic` starts in the mosaic):
+  - Each cell is drawn as two square pixels, its top and bottom halves.
+  - A pixel is the average of its 2×2 rays. Each ray's colour is continuous: its ramp blended between steps at its light, toward the firelight ramp by the fire on it, and toward the haze by its distance.
+  - Every pixel carries one letter for what it shows, a shade lighter or darker than its colour, fading into the distance:
+    - `"` grass, `'` rough grass, `,` dry grass;
+    - `|` reeds and trunks, `_` mud, `.` sand, `~` water;
+    - `%` rock, `=` red rock, `*` snow, `:` road;
+    - `#` stone walls, `+` wood;
+    - `@` leaves, `&` bushes, `^` pines.
+  - Texture fixed to the world, fading with distance:
+    - leaves in light and dark clumps;
+    - castle walls in courses of blocks, each its own shade, with darker joints;
+    - a gentle mottle on the ground.
+  - Firelight glows in the air around flames, stars come out at night, and birds are `v`.
+- **Water reflections** (painted look). Water is dark in itself and takes its colour from what it mirrors.
+  - A thing at distance D, seen in water met at distance t, shows at slope q·(2t/D − 1): at the water's edge for a cliff standing in it, and mirrored about the horizon for distant land and sky.
+  - Three rounds of looking up that row and taking its distance settle it.
+  - The mirror is swayed by a slow wave, averaged over three columns, and strongest toward the horizon.
+- **Shadows and hollows** (both looks):
+  - Every cell's light is its ambient share, dimmed in hollows and under trees (`world.ao`), plus its direct share.
+  - The direct share is dimmed where terrain, walls or trees stand between the cell and the sun or moon.
+  - That comes from `world.occ`, the top of whatever stands on each cell, walked toward the light on a grid of 2×2 cells with soft edges.
+  - It is recomputed only when the light moves, about 6 ms. The tree shadow discs are gone from the painted look.
+- **Steadier ground** (both looks):
+  - Every row of the ground finds where its own ray meets the ground between two march steps, taken as a sloped segment.
+  - Light is blended between the steps, and taken from blended cells at middle distance, not the nearest.
+  - Heights far off are filtered to the march's step (height mips).
+  - In the painted look, the ground's colour is blended from the four cells around each point, narrowed so edges stay crisp.
+- **Thin shapes** (pine tips, trunks) are never thinner than about a ray at their distance.
+
+### Speed
+
+M1 Max, six workers, 1440×900; ten scenes including the heaviest (seed 42 from the air).
+
+| | Painted | Mosaic |
+|---|---|---|
+| Chromium | 5.4–7.4 ms | 4.3–6.7 ms |
+| Firefox | 6.3–9.6 ms (120 Hz, at least 60 fps) | 4.5–8.4 ms |
+| WebKit | 6.4–12.8 ms | 5.4–7.3 ms |
+
+Every scene holds 60 fps in all three browsers. Workers and the main thread give byte-identical frames in both looks.
+
+### Tests
+
+- All pass: the worlds are unchanged and as recorded.
+- The lighting update (v1 1100–1126) is retired from the verbatim check, since it now carries shadows and hollows.
+- The help line naming the L key is a listed fix.
+
+### Next, and open
+
+- **Still flickering a little:** hill crests and thin shapes, and tower corners, where x and z faces alternate. The tower corners are the commenter's "shimmer along the wall". Possible next steps are smooth shading for round towers and a light temporal filter.
+- **Living world, into the phase 2 steps:**
+  - flowers in the meadows;
+  - castle roofs and flags;
+  - chimney smoke, lit windows, fireflies, auroras;
+  - weather (step 2), villages you can enter (step 3), people and animals (step 4).
+- **A much larger world** would need generation streamed around the player, per the comment thread. That is a phase of its own.

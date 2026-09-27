@@ -59,6 +59,7 @@
   <div class="row"><span class="lbl">TIME </span><span id="clock">00:00</span> <span id="pal"></span></div>
   <div class="row"><span class="lbl">VIEW </span><span id="view">500</span></div>
   <div class="row"><span class="lbl">MODE </span><span id="mode">WALK</span></div>
+  <div class="row"><span class="lbl">LOOK </span><span id="look">PAINTED</span></div>
   <div class="row"><span class="lbl">GOLD </span><span id="gold">100</span></div>
   <div class="row"><span class="lbl">SEED </span><input id="seed" type="number" min="0" max="999999" step="1" title="Type a seed and press Enter (mouse must be released)"></div>
 </div>
@@ -74,7 +75,7 @@
 </div>
 
 <div id="help">WASD walk · SPACE jump · SHIFT sprint · E talk · mouse look · ESC release
-F fly mode · R new seed · T time ×10 · − / + resolution · [ / ] view distance</div>
+F fly mode · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look</div>
 
 <div id="hint">
   <h1>LAND OF ASCII</h1>
@@ -429,8 +430,9 @@ function generateWorld(seed) {
   spawnMerchants(rng);
   placeLights(rng);
 
-  // 7. Materials and lighting normals.
+  // 7. Materials and lighting normals, then what shades the ground (hollows, and whatever stands on it).
   paintGround();
+  computeOcclusion();
 }
 
 // =====================================================================
@@ -1492,8 +1494,71 @@ function skyState(h) {
 
 // Per-cell shade (0..1) from the sun or moon, recomputed a few times a second, plus the shade of
 // the six faces a structure voxel can show. Shade picks the point on a material's colour ramp.
+// A cell's shade is its ambient light, dimmed in hollows and under trees (world.ao), plus its
+// direct light, dimmed where terrain, walls or trees stand between it and the sun or moon.
 const light = { lx: 0, ly: 1, lz: 0, faceShade: new Float32Array(6), darkness: 0 };
 const FACE_NORMALS = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1], [0, 1, 0], [0, -1, 0]];
+
+// What stands on the ground (world.occ: the top of the ground, a wall or a canopy, per cell) and
+// how open each cell is to the sky (world.ao), both fixed for a world.
+function computeOcclusion() {
+  const { H } = world;
+  const occ = world.occ || (world.occ = new Float32Array(N)), ao = world.ao || (world.ao = new Float32Array(N));
+  occ.set(H);
+  for (const s of world.structs) for (let lz = 0; lz < s.tpl.sz; lz++) for (let lx = 0; lx < s.tpl.sx; lx++) {
+    const top = s.tpl.topSolid[lx * s.tpl.sz + lz];
+    if (!top) continue;
+    const i = ((s.z0 + lz) & MASK) * W + ((s.x0 + lx) & MASK);
+    if (s.baseY + top > occ[i]) occ[i] = s.baseY + top;
+  }
+  const T = world.trees, under = new Uint8Array(N);
+  for (let k = 0; k < T.n; k++) {
+    if (T.kind[k] === SPRITE.BOULDER) continue;
+    const s = T.size[k], top = T.y[k] + (T.kind[k] === SPRITE.BUSH ? 0.9 : T.kind[k] === SPRITE.CONIFER ? 3.2 : 3.1) * s;
+    const r = T.kind[k] === SPRITE.CONIFER ? 0.8 * s : 1.1 * s, x0 = Math.floor(T.x[k] - r), z0 = Math.floor(T.z[k] - r);
+    for (let z = z0; z <= Math.floor(T.z[k] + r); z++) for (let x = x0; x <= Math.floor(T.x[k] + r); x++) {
+      const i = (z & MASK) * W + (x & MASK);
+      if (top > occ[i]) occ[i] = top;
+      under[i] = 1;
+    }
+  }
+  // hollows: how far a cell lies below the ground around it (a blur of radius 3, twice)
+  boxBlur(H, ao, 3); boxBlur(ao, ao, 3);
+  for (let i = 0; i < N; i++) ao[i] = clamp(1 - Math.max(0, ao[i] - H[i]) * 0.09, 0.62, 1) * (under[i] ? 0.8 : 1);
+}
+
+// Which cells the sun (or moon) reaches, on a grid of 2×2 cells: from each, walk toward the light
+// over world.occ; anything rising above the line to the light shades it, softly near the line.
+// Recomputed only when the light has moved.
+const SHADOW_W = W >> 1, SHADOW_REACH = 64;
+const sunVis = new Float32Array(SHADOW_W * SHADOW_W).fill(1);
+const sunVisKey = [NaN, NaN, NaN, NaN];
+function updateSunVis(lx, ly, lz) {
+  if (!world.occ) return;
+  if (Math.abs(sunVisKey[0] - lx) + Math.abs(sunVisKey[1] - ly) + Math.abs(sunVisKey[2] - lz) < 0.004 && sunVisKey[3] === world.seed) return;
+  sunVisKey[0] = lx; sunVisKey[1] = ly; sunVisKey[2] = lz; sunVisKey[3] = world.seed;
+  const occ = world.occ, hl = Math.hypot(lx, lz);
+  if (hl < 1e-6) { sunVis.fill(1); return; }
+  const dx = lx / hl, dz = lz / hl, rise = ly / hl;   // per cell walked toward the light, the line to it rises by `rise`
+  let top = -Infinity;
+  for (let i = 0; i < N; i++) if (occ[i] > top) top = occ[i];
+  for (let gz = 0; gz < SHADOW_W; gz++) for (let gx = 0; gx < SHADOW_W; gx++) {
+    const x = gx * 2 + 1, z = gz * 2 + 1, h0 = world.H[z * W + x] + 0.3;
+    let vis = 1;
+    const reach = Math.min(SHADOW_REACH, (top - h0) / Math.max(rise, 1e-3));
+    for (let t = 1.5; t < reach; t += t < 12 ? 1 : 2) {
+      const over = occ[((Math.floor(z + dz * t) & MASK) * W) + (Math.floor(x + dx * t) & MASK)] - (h0 + t * rise);
+      if (over > 0) { const v = 1 - Math.min(1, over / 1.5); if (v < vis) vis = v; if (vis <= 0) break; }
+    }
+    sunVis[gz * SHADOW_W + gx] = vis;
+  }
+}
+function sunVisAt(x, z) {   // bilinear, so shadow edges are soft
+  const fx = x / 2 - 0.5, fz = z / 2 - 0.5, x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0, M = SHADOW_W - 1;
+  const r0 = (z0 & M) * SHADOW_W, r1 = ((z0 + 1) & M) * SHADOW_W, c0 = x0 & M, c1 = (x0 + 1) & M;
+  const a = sunVis[r0 + c0] + (sunVis[r0 + c1] - sunVis[r0 + c0]) * tx, b = sunVis[r1 + c0] + (sunVis[r1 + c1] - sunVis[r1 + c0]) * tx;
+  return a + (b - a) * tz;
+}
 
 function updateLighting() {
   const s = skyState(clock.hours);
@@ -1503,10 +1568,11 @@ function updateLighting() {
   const lx = Math.cos(el) * Math.cos(az), ly = Math.sin(el), lz = Math.cos(el) * Math.sin(az);
   light.lx = lx; light.ly = ly; light.lz = lz;
   const amb = cur.ambient, diff = cur.diffuse * (0.4 + 0.6 * strength);
-  const { nx, ny, nz, shade } = world;
-  for (let i = 0; i < N; i++) {
-    const d = nx[i] * lx + ny[i] * ly + nz[i] * lz;
-    shade[i] = amb + diff * (d > 0 ? d : 0);
+  updateSunVis(lx, ly, lz);
+  const { nx, ny, nz, shade, ao } = world;
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+    const i = z * W + x, d = nx[i] * lx + ny[i] * ly + nz[i] * lz;
+    shade[i] = amb * (ao ? ao[i] : 1) + (d > 0 ? diff * d * sunVisAt(x + 0.5, z + 0.5) : 0);
   }
   const hl = Math.hypot(lx, lz) || 1;
   for (let i = 0; i < 6; i++) {
@@ -1720,6 +1786,9 @@ function buildAtlas(w, h) {
     return { dx0, dx1, dy0, dy1, anchorX: (x0 + x1 + 1) / 2, anchorY: y1 + 1, nx, at };
   });
   atlas.mortarBase = atlas.masks.length;
+  // the painted look's letters, 5×5, in a square half-cell (at its top left: the gap between letters)
+  const sh = h >> 1, lo = w >= 7 ? 1 : 0;
+  atlas.paint = [null, ...LETTER_LIST.map(ch => Int32Array.from(makeMask(w, sh, (x, y) => { const lx = x - lo, ly = y - lo; return lx >= 0 && lx < 5 && ly >= 0 && ly < 5 && LETTERS[ch][ly][lx] === '#'; }), b => -b))];
   atlas.buildMs = performance.now() - t0;
 }
 // A mark with its anchor (the base of a tuft, the centre of a flake) nearest pixel (px, py) of the cell.
@@ -1780,6 +1849,8 @@ function setView(w, h, preset, c0, c1, buf) {
   rayP = new Float32Array(grid.RW); rayQ = new Float32Array(grid.RH); rayInvS = new Float32Array(grid.RH);
   cellMark.type = new Int8Array(n); cellMark.hash = new Float32Array(n); cellMark.px = new Float32Array(n); cellMark.py = new Float32Array(n); cellMark.up = new Uint8Array(n);
   grid.buf = buf || new Uint32Array(grid.cols * cw * grid.rows * ch);
+  paint.glyph = new Uint8Array(n * 2); paint.fg = new Uint32Array(n * 2); paint.bg = new Uint32Array(n * 2);
+  rayCol = new Float32Array(nr * 3);
   if (atlas.w !== cw || atlas.h !== ch) buildAtlas(cw, ch);
 }
 
@@ -1956,8 +2027,35 @@ function updateBlockMax() {
     }
     blockMax[bz * NB + bx] = m;
   }
+  for (let l = 1; l < 4; l++) {   // and the height mips below
+    const src = l === 1 ? H : hMip[l - 1], sw = W >> (l - 1), dw = W >> l, dst = hMip[l];
+    for (let z = 0; z < dw; z++) for (let x = 0; x < dw; x++) {
+      const a = 2 * z * sw + 2 * x;
+      dst[z * dw + x] = (src[a] + src[a + 1] + src[a + sw] + src[a + sw + 1]) * 0.25;
+    }
+  }
 }
 let blockMaxH = null;
+
+// Heights along the march, filtered to its step: blended between cells near the eye, then averaged
+// over 2×2, 4×4 and 8×8 cells as the steps grow (and blended between those), so ridges and slopes
+// hold still as the camera moves instead of flickering from cell to cell.
+const hMip = [null, new Float32Array((W >> 1) * (W >> 1)), new Float32Array((W >> 2) * (W >> 2)), new Float32Array((W >> 3) * (W >> 3))];
+function mipHeight(x, z, l) {   // bilinear, from level l (0: the heightmap itself)
+  if (l === 0) return terrainHeight(x, z);
+  const s = 1 << l, dw = W >> l, M = dw - 1, S = hMip[l];
+  const fx = x / s - 0.5, fz = z / s - 0.5;
+  const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
+  const r0 = (z0 & M) * dw, r1 = ((z0 + 1) & M) * dw, c0 = x0 & M, c1 = (x0 + 1) & M;
+  const a = S[r0 + c0] + (S[r0 + c1] - S[r0 + c0]) * tx, b = S[r1 + c0] + (S[r1 + c1] - S[r1 + c0]) * tx;
+  return a + (b - a) * tz;
+}
+function marchHeight(x, z, dist) {
+  const lf = Math.log2(0.5 + dist * 0.008);   // the march's step at this distance, as a mip level
+  if (!(lf > 0)) return terrainHeight(x, z);
+  const l = lf < 3 ? lf | 0 : 2, a = Math.min(1, lf - l), h0 = mipHeight(x, z, l);
+  return a > 0 ? h0 + (mipHeight(x, z, l + 1) - h0) * a : h0;
+}
 
 // =====================================================================
 //  RENDER 1a: THE MARCH  (terrain and structures, per ray column)
@@ -1977,7 +2075,7 @@ function marchRays(t) {
   updateBlockMax();
 
   // Per-column state shared by the helpers below.
-  let col = 0, ybuf = 0, left = 0, dx = 0, dz = 0, zPrev = 0, gaps = false, lastShZ = -1, lastSh = 0;
+  let col = 0, ybuf = 0, left = 0, dx = 0, dz = 0, zPrev = 0, gaps = false, lastShZ = -1, lastSh = 0, lastH = 0;
   // Attributes of whatever paint() is about to claim.
   let aKind = 0, aSeg = 0, aRamp = 0, aPos = 0, aLit = 0, aFlags = 0, aU = 0, aV = 0;
 
@@ -1994,9 +2092,9 @@ function marchRays(t) {
   }
   const posOf = sh => { const p = (sh - posLo) * posInv; return !(p > 0) ? 0 : p > 1 ? 1 : p; };
 
-  function terrainAt(idx, z, px, pz) {
+  function terrainAt(idx, z, px, pz, hIn) {
     const near = z < NEAR_SMOOTH;
-    const h = near ? terrainHeight(px, pz) : H[idx];
+    const h = hIn !== undefined ? hIn : near ? terrainHeight(px, pz) : marchHeight(px, pz, z);
     let row = Math.ceil((horizonPix + (camY - h) * f / z) * invRayH - 0.5);
     if (!(row < ybuf)) return;   // (also skips a NaN height: seed 42 has one, at 416, 390)
     if (row < 0) row = 0;
@@ -2006,6 +2104,9 @@ function marchRays(t) {
       // at this step's height, between the previous step and this one) and read material,
       // lighting and firelight there, so the ground at your feet is as sharp as the ground ahead.
       const lo = zPrev, hgt = camY - h;
+      // the ground between the previous step and this one, as a sloped segment (flat when the step
+      // before is not known): each row finds where its ray meets it
+      const h0 = lastShZ === lo ? lastH : h, sl = z > lo ? (h - h0) / (z - lo) : 0, sOff = camY - h0 + sl * lo;
       // lighting varies smoothly along the ray: read it at both ends of the step and blend (the
       // near end is usually the far end of the step before)
       const sh1 = smoothShade(px, pz), sh0 = lastShZ === lo ? lastSh : smoothShade(camX + dx * lo, camZ + dz * lo), kSh = z > lo ? (sh1 - sh0) / (z - lo) : 0;
@@ -2013,7 +2114,8 @@ function marchRays(t) {
       let lastCi = -1, m = 0, kR = 0, kS = 0, kSt = 0;
       for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
         if (kind[i] !== NONE) continue;
-        let tt = hgt * rayInvS[r], face = false;   // (a row that never meets the plane is on the step's face)
+        const den = sl - rayQ[r];
+        let tt = den > 1e-6 ? sOff / den : Infinity, face = false;   // (a row that never meets the ground is on the step's face)
         if (!(tt <= z)) { tt = z; face = true; } else if (tt < lo) tt = lo;
         const wx = camX + dx * tt, wz = camZ + dz * tt;
         const ci = (Math.floor(wz) & MASK) * W + (Math.floor(wx) & MASK);
@@ -2025,17 +2127,17 @@ function marchRays(t) {
         kind[i] = K.TERRAIN; seg[i] = sg; ramp[i] = kR; pos[i] = !(pp > 0) ? 0 : pp > 1 ? 1 : pp; depth[i] = tt;
         lit[i] = w0 + (tt - lo) * kW; flags[i] = fl; left--;
       }
-      lastShZ = z; lastSh = sh1;
+      lastShZ = z; lastSh = sh1; lastH = h;
       ybuf = row;
       return;
     }
     const m = mat[idx];
-    let sh = near ? smoothShade(px, pz) : z < 60 ? shade[idx] : mipShade(px, pz, z < 120 ? 1 : z < 240 ? 2 : 3), fl = 0;
+    let sh = z < 60 ? smoothShade(px, pz) : mipShade(px, pz, z < 120 ? 1 : z < 240 ? 2 : 3), fl = 0;
     if (m === MAT.WATER) {
       sh += 0.12; fl = F_WATER;                       // water reflects the sky: a touch brighter than land
       if (z < vd * 0.6 && Math.sin(px * 0.31 + t * 1.7) + Math.sin(pz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE;
     }
-    const kS = TERRAIN_SEG | m, kR = MAT_RAMP[m], kP = posOf(sh), kL = warm ? warmAt(px, h, pz) : 0, end = col * RH + ybuf, kSt = STRATA_K[m];
+    const kS = TERRAIN_SEG | m, kR = MAT_RAMP[m], kL = warm ? warmAt(px, h, pz) : 0, kSt = STRATA_K[m];
     if (kSt && ybuf - row > 2) {   // a face of rock: banded by height, lit from the light averaged over 4×4 cells so its columns agree
       const kF = posOf(mipShade(px, pz, 2));
       for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
@@ -2043,12 +2145,23 @@ function marchRays(t) {
         const band = Math.floor((camY + rayQ[r] * z) * STRATA_INV) & 3, p = kF + STRATA_POS[band] * kSt;
         kind[i] = K.TERRAIN; seg[i] = kS | (band << 8); ramp[i] = kR; pos[i] = p < 0 ? 0 : p > 1 ? 1 : p; depth[i] = z; lit[i] = kL; flags[i] = fl | F_FACE; left--;
       }
-    } else if (!gaps) {
-      for (let i = col * RH + row; i < end; i++) { kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = kP; depth[i] = z; lit[i] = kL; flags[i] = fl; }
-      left -= ybuf - row;
     } else {
-      for (let i = col * RH + row; i < end; i++) if (kind[i] === NONE) { kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = kP; depth[i] = z; lit[i] = kL; flags[i] = fl; left--; }
+      // Each row sees the ground where its own ray meets it (the ground between the previous step and
+      // this one, as a sloped segment), lit by the light blended between the two steps. A row keeps
+      // the same ground as the steps slide over bumps, so the colour holds still as the camera moves.
+      const lo = zPrev, known = lastShZ === lo, sh0 = known ? lastSh : sh, kSh = z > lo ? (sh - sh0) / (z - lo) : 0;
+      const h0 = known ? lastH : h, sl = z > lo ? (h - h0) / (z - lo) : 0, sOff = camY - h0 + sl * lo;
+      for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
+        if (gaps && kind[i] !== NONE) continue;
+        const den = sl - rayQ[r];
+        let tt = den > 1e-6 ? sOff / den : z;
+        if (!(tt <= z)) tt = z; else if (tt < lo) tt = lo;
+        kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = posOf(sh0 + (tt - lo) * kSh); depth[i] = tt; lit[i] = kL; flags[i] = fl;
+        if (gaps) left--;
+      }
+      if (!gaps) left -= ybuf - row;
     }
+    lastShZ = z; lastSh = sh; lastH = h;
     ybuf = row;
   }
 
@@ -2192,7 +2305,8 @@ function marchRays(t) {
           if (blockMax[(bz & BM) * NB + (bx & BM)] < (need0 < need1 ? need0 : need1)) { zPrev = z; z = zEnd; continue; }
         }
         const idx = (Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK);
-        if ((horizonPix + (camY - H[idx]) * f / z) * invRayH - 0.5 <= ybuf - 1) terrainAt(idx, z, px, pz);
+        const hf = marchHeight(px, pz, z);
+        if ((horizonPix + (camY - hf) * f / z) * invRayH - 0.5 <= ybuf - 1) terrainAt(idx, z, px, pz, hf);
       } else terrainAt((Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK), z, px, pz);
       zPrev = z;
       let nz = z + 0.5 + z * 0.008;
@@ -2670,6 +2784,9 @@ function drawSprites(t, poses) {
 // gives the edge glyphs something to trace); conifers are three stacked cones.
 function buildPlant(i, kind, x, y, z, s, zc) {
   const far = zc > 140, lumps = zc < 70 ? 4 : zc < 140 ? 2 : 0;
+  // Nothing thinner than about a ray at its distance: thinner tips and trunks fall between rays and
+  // wink in and out as the camera moves.
+  const fp = Math.max(0, zc) * grid.rayW / vF;
   const lit = lightsOn ? warmAt(world.trees.x[i], world.trees.y[i] + 1.5, world.trees.z[i]) : 0;
   const jit = (hash2(i, 3, 11) - 0.5) * 0.12;
   if (kind === SPRITE.BOULDER) {
@@ -2689,16 +2806,16 @@ function buildPlant(i, kind, x, y, z, s, zc) {
     return;
   }
   if (kind === SPRITE.CONIFER) {
-    if (!far) { const tr = pVCone(x, y - 0.3, z, y + 1.0 * s, 0.09 * s, 0.09 * s, K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
+    if (!far) { const tw = Math.max(0.09 * s, fp * 0.45); const tr = pVCone(x, y - 0.3, z, y + 1.0 * s, tw, tw, K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
     const tiers = far ? 2 : 3;
     for (let k = 0; k < tiers; k++) {
       const b = far ? [0.7, 1.9][k] : [0.7, 1.66, 2.56][k], top = far ? [2.6, 3.9][k] : [2.3, 3.1, 3.9][k], r = far ? [0.95, 0.62][k] : [0.95, 0.72, 0.5][k];
-      const p = pVCone(x, y + b * s, z, y + top * s, r * s, 0.03 * s, K.CONIFER, leafSeg, R.conifer, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit + 0.1 * k;
+      const p = pVCone(x, y + b * s, z, y + top * s, r * s, Math.max(0.03 * s, fp * 0.5), K.CONIFER, leafSeg, R.conifer, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit + 0.1 * k;
     }
     if (zc < 90) shadowDiscs.push([x, z, y, 0.9 * s, zc]);
     return;
   }
-  if (!far) { const tr = pVCone(x, y - 0.3, z, y + 1.9 * s, 0.13 * s, 0.07 * s, K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
+  if (!far) { const tr = pVCone(x, y - 0.3, z, y + 1.9 * s, Math.max(0.13 * s, fp * 0.45), Math.max(0.07 * s, fp * 0.45), K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
   const p = pEllipsoid(x, y + 2.45 * s, z, 1.02 * s, 0.95 * s, 1.02 * s, 0, K.TREE, leafSeg, R.leaf, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit;
   for (let k = 0; k < lumps; k++) {
     const a = (k + hash2(i, k, 23) * 0.8) * Math.PI * 2 / lumps, rr = (0.62 + 0.16 * hash2(i, k, 29)) * s, off = 0.72 * s;
@@ -3173,9 +3290,248 @@ function drawOverlays(t) {
   }
 }
 
+// =====================================================================
+//  RENDER 2b: THE PAINTED LOOK  (rays → square pixels of one colour and one letter)
+// =====================================================================
+// The other look. Each cell is drawn as two square pixels, its top and bottom halves. A pixel's
+// colour is the average of its 2×2 rays, each in continuous colour: its ramp blended between steps
+// at its light, blended toward the firelight ramp by the firelight on it, and toward the haze by
+// its distance. Water mixes in what it mirrors. Each pixel carries one letter for what it shows,
+// a shade lighter or darker than its colour, fading with distance so far land is smooth paint.
+const LETTERS = {
+  '"': ['.#.#.', '.#.#.', '.....', '.....', '.....'],
+  "'": ['..#..', '..#..', '.....', '.....', '.....'],
+  ',': ['.....', '.....', '.....', '..#..', '.#...'],
+  '|': ['..#..', '..#..', '..#..', '..#..', '..#..'],
+  '_': ['.....', '.....', '.....', '.....', '#####'],
+  '.': ['.....', '.....', '.....', '.....', '..#..'],
+  '~': ['.....', '.#...', '#.#.#', '...#.', '.....'],
+  '%': ['##..#', '##.#.', '..#..', '.#.##', '#..##'],
+  ':': ['.....', '..#..', '.....', '..#..', '.....'],
+  '=': ['.....', '#####', '.....', '#####', '.....'],
+  '*': ['.....', '#.#.#', '.###.', '#.#.#', '.....'],
+  '#': ['.#.#.', '#####', '.#.#.', '#####', '.#.#.'],
+  '+': ['.....', '..#..', '.###.', '..#..', '.....'],
+  '@': ['.###.', '#...#', '#.###', '#.##.', '.##..'],
+  '&': ['.##..', '#..#.', '.##..', '#..##', '.##.#'],
+  '^': ['..#..', '.#.#.', '#...#', '.....', '.....'],
+  'v': ['.....', '#...#', '.#.#.', '..#..', '.....'],
+};
+const LETTER_LIST = Object.keys(LETTERS), LT = {};
+LETTER_LIST.forEach((ch, k) => { LT[ch] = k + 1; });   // letter ids: 0 is none
+const RAMP_LETTER = new Uint8Array(RAMP_NAMES.length);   // ground and walls, by ramp
+RAMP_LETTER[R.grass] = LT['"']; RAMP_LETTER[R.grass2] = LT["'"]; RAMP_LETTER[R.drygrass] = LT[','];
+RAMP_LETTER[R.reeds] = LT['|']; RAMP_LETTER[R.mud] = LT['_']; RAMP_LETTER[R.sand] = LT['.'];
+RAMP_LETTER[R.water] = LT['~']; RAMP_LETTER[R.rock] = LT['%']; RAMP_LETTER[R.redrock] = LT['='];
+RAMP_LETTER[R.snow] = LT['*']; RAMP_LETTER[R.road] = LT[':']; RAMP_LETTER[R.stone] = LT['#']; RAMP_LETTER[R.wood] = LT['+'];
+const KIND_LETTER = new Uint8Array(32);                   // solids, by kind
+KIND_LETTER[K.TREE] = LT['@']; KIND_LETTER[K.BUSH] = LT['&']; KIND_LETTER[K.CONIFER] = LT['^'];
+KIND_LETTER[K.TRUNK] = LT['|']; KIND_LETTER[K.BOULDER] = LT['%']; KIND_LETTER[K.LOGS] = LT['='];
+const paint = { glyph: new Uint8Array(0), fg: new Uint32Array(0), bg: new Uint32Array(0) };   // per half cell: top, then bottom
+let rayCol = new Float32Array(0);   // r, g, b per ray
+const listF = [];                   // every colour list as floats, refreshed each frame
+function listColour(l, X, o) {      // the colour at position X along list l, blended between steps, into tmpC[o..o+2]
+  const F = listF[l], n = F.length / 3;
+  if (!(X > 0)) X = 0; else if (X > n - 1) X = n - 1;
+  const k = X | 0, a = X - k, j = k * 3, j2 = k + 1 < n ? j + 3 : j;
+  tmpC[o] = F[j] + (F[j2] - F[j]) * a; tmpC[o + 1] = F[j + 1] + (F[j2 + 1] - F[j + 1]) * a; tmpC[o + 2] = F[j + 2] + (F[j2 + 2] - F[j + 2]) * a;
+}
+const tmpC = new Float32Array(6);
+const packF = (r, g, b) => pack(r + 0.5, g + 0.5, b + 0.5);
+// Smooth value noise over the ground (0..1), for a painter's mottle that stays put in the world.
+function mottle(x, z, s) {
+  const x0 = Math.floor(x), z0 = Math.floor(z), tx = x - x0, tz = z - z0, u = tx * tx * (3 - 2 * tx), v = tz * tz * (3 - 2 * tz);
+  const a = hash2(x0, z0, s), b = hash2(x0 + 1, z0, s), c = hash2(x0, z0 + 1, s), d = hash2(x0 + 1, z0 + 1, s);
+  return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+
+function paintCells(t) {
+  const { cols, rows, RH, cellW, cellH, c0, c1, rayW, rayH } = grid;
+  const { kind, ramp, pos, depth, lit, flags, refl, reflAmt, u: rU, v: rV, w: rW } = rays, wMat = world.mat, seed = world.seed;
+  for (let l = 0; l < LISTS.length; l++) {
+    const L = LISTS[l];
+    if (!listF[l] || listF[l].length !== L.length * 3) listF[l] = new Float32Array(L.length * 3);
+    const F = listF[l];
+    for (let k = 0; k < L.length; k++) { const c = L[k]; F[k * 3] = c & 255; F[k * 3 + 1] = (c >> 8) & 255; F[k * 3 + 2] = (c >> 16) & 255; }
+  }
+  const nHaze = COL.near[R.haze].length, nWarm = COL.near[R.lit].length;
+  const glowR = COL.glow & 255, glowG = (COL.glow >> 8) & 255, glowB = (COL.glow >> 16) & 255;
+  let sunX = 0, sunY = 0, sunR = 1;
+  if (sunScreen) { sunX = sunScreen.x; sunY = sunScreen.y; sunR = sunScreen.r; }
+  // the stripe's own ray columns, and with the column of cells either side that every stripe also
+  // computes, so a mirror softened across columns reads the same on both sides of a stripe's edge
+  const xr0 = c0 * RAYS_X, xr1 = c1 * RAYS_X, xm0 = grid.xr0, xm1 = grid.xr1;
+
+  // 1. every ray's own colour
+  for (let x = xm0; x < xm1; x++) for (let y = 0, i = x * RH; y < RH; y++, i++) {
+    const k = kind[i], rp = ramp[i], o = i * 3;
+    if (k === K.SKY) {
+      listColour(rp, pos[i] * (COL.near[rp].length - 1), 0);
+      let r = tmpC[0], g = tmpC[1], b = tmpC[2];
+      if (sunScreen) {   // the air close around the sun glows
+        const ex = ((x + 0.5) * rayW - sunX) / sunR, ey = ((y + 0.5) * rayH - sunY) / sunR, d = Math.sqrt(ex * ex + ey * ey);
+        if (d > 1 && d < 5) { const gl = Math.exp(-(d - 1) * 0.9) * 0.85; r += (glowR - r) * gl; g += (glowG - g) * gl; b += (glowB - b) * gl; }
+      }
+      rayCol[o] = r; rayCol[o + 1] = g; rayCol[o + 2] = b; continue;
+    }
+    let P = pos[i];
+    if (NO_FOG[rp] || k === K.SUN || k === K.MOON || k === K.FLAME) {
+      listColour(rp, P * (COL.near[rp].length - 1), 0);
+      rayCol[o] = tmpC[0]; rayCol[o + 1] = tmpC[1]; rayCol[o + 2] = tmpC[2]; continue;
+    }
+    let r, g, b;
+    const near = 1 - Math.min(1, depth[i] / 90);   // texture fades out with distance
+    if ((k === K.TREE || k === K.BUSH || k === K.CONIFER) && near > 0) {   // leaves in clumps, light and dark
+      const q = 1.7;
+      P += (hash2(Math.floor(rU[i] * q) + Math.floor(rW[i] * q) * 613, Math.floor(rV[i] * q), k + seed) - 0.5) * 0.3 * near;
+    } else if (k === K.WALL && rp === R.stone && near > 0) {   // masonry: courses of blocks, each its own shade, joints darker
+      const course = Math.floor(rV[i] * 2), along = rU[i] + (course & 1) * 0.5, blk = Math.floor(along);
+      P += (hash2(blk, course, seed + 5) - 0.5) * 0.12 * near;
+      const fv = rV[i] * 2 - course, fu = along - blk;
+      if ((fv < 0.09 || fu < 0.05) && depth[i] < 40) P -= 0.07 * near;
+    }
+    if (k === K.TERRAIN) {
+      if (flags[i] & F_SHADOW) P = P > 0.18 ? P - 0.18 : 0;
+      // the ground: the colours of the four cells around the point the ray met, blended by how near
+      // it lies to each, so colour flows across the ground instead of jumping from cell to cell
+      const pr = rayP[x], d = depth[i], fx = vCamX + (vFx + vRx * pr) * d - 0.5, fz = vCamZ + (vFz + vRz * pr) * d - 0.5;
+      if (near > 0 && !(flags[i] & F_WATER)) P += (mottle(fx * 0.45, fz * 0.45, seed + 9) - 0.5) * 0.14 * near;   // a painter's mottle
+      const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
+      const a0 = (z0 & MASK) * W, a1 = ((z0 + 1) & MASK) * W, b0 = x0 & MASK, b1 = (x0 + 1) & MASK;
+      const m00 = wMat[a0 + b0], m10 = wMat[a0 + b1], m01 = wMat[a1 + b0], m11 = wMat[a1 + b1];
+      if (m00 === m10 && m00 === m01 && m00 === m11) { const rr = MAT_RAMP[m00]; listColour(rr, P * (COL.near[rr].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; }
+      else {
+        r = g = b = 0;
+        // (the blend is narrowed to the middle 40% between cell centres: edges stay crisp but never step)
+        const sx = tx < 0.3 ? 0 : tx > 0.7 ? 1 : (tx - 0.3) * 2.5, sz = tz < 0.3 ? 0 : tz > 0.7 ? 1 : (tz - 0.3) * 2.5;
+        const ms = [m00, m10, m01, m11], ws = [(1 - sx) * (1 - sz), sx * (1 - sz), (1 - sx) * sz, sx * sz];
+        for (let q = 0; q < 4; q++) { const rr = MAT_RAMP[ms[q]]; listColour(rr, P * (COL.near[rr].length - 1), 0); r += tmpC[0] * ws[q]; g += tmpC[1] * ws[q]; b += tmpC[2] * ws[q]; }
+      }
+    } else { listColour(rp, P * (COL.near[rp].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; }
+    const w = warmth(lit[i], k, P);   // firelight
+    if (w > 0.12) {
+      listColour(LIST_WARM, Math.min(1, (w - 0.12) / 0.88) * (nWarm - 1), 3);
+      const a = w < 0.5 ? (w - 0.12) / 0.38 : 1;
+      r += (tmpC[3] - r) * a; g += (tmpC[4] - g) * a; b += (tmpC[5] - b) * a;
+    }
+    const fg = fogAt(depth[i]);        // the air between: toward the haze, lighter with distance
+    if (fg > 0) {
+      listColour(LIST_HAZE, Math.min(nHaze - 1, P * 1.4 + fg * 2.2), 3);
+      r += (tmpC[3] - r) * fg; g += (tmpC[4] - g) * fg; b += (tmpC[5] - b) * fg;
+    }
+    rayCol[o] = r; rayCol[o + 1] = g; rayCol[o + 2] = b;
+  }
+  // 2. water mirrors the scene above it, as a flat lake does. A thing at distance D, seen in water
+  //    met at distance t along a ray of slope q, shows at slope q·(2t/D − 1): at the water's edge for
+  //    a cliff standing in it, mirrored about the horizon for distant land and sky. Starting from the
+  //    horizon, three rounds of looking up that row and taking its distance settle it. The mirror is
+  //    swayed by a slow wave, averaged over three columns, and water takes more of it toward the
+  //    horizon, where it mirrors most. What stands in front of the water is not mirrored; the sky at
+  //    that height is, instead.
+  const hr = vHor / rayH - 0.5, nSky = COL.near[R.sky].length, fz = grid.f;
+  for (let x = xr0; x < xr1; x++) for (let y = Math.max(0, Math.ceil(hr)), i = x * RH + y; y < RH; y++, i++) {
+    if (kind[i] !== K.TERRAIN || !(flags[i] & F_WATER)) continue;
+    const below = y - hr, q = rayQ[y], tw = depth[i];
+    let ym = hr - below;
+    for (let it = 0; it < 3; it++) {
+      const yy = Math.max(0, Math.round(ym));
+      if (yy >= y) break;
+      const D = kind[x * RH + yy] === K.SKY ? Infinity : depth[x * RH + yy];
+      if (!(D > tw)) break;
+      ym = (vHor - q * (2 * tw / D - 1) * fz) / rayH - 0.5;
+    }
+    const wave = Math.sin(x * 0.9 + y * 0.35 + t * 2.1) * (0.6 + below * 0.03);
+    const yr = Math.round(ym + wave);
+    if (yr < 0 || yr >= RH) continue;
+    let rr = 0, rg = 0, rb = 0, n = 0;
+    for (let dxc = -1; dxc <= 1; dxc++) {
+      const xx = x + dxc;
+      if (xx < xm0 || xx >= xm1) continue;
+      const j = xx * RH + yr;
+      if (kind[j] !== K.SKY && (depth[j] < depth[i] || (flags[j] & F_WATER))) continue;
+      rr += rayCol[j * 3]; rg += rayCol[j * 3 + 1]; rb += rayCol[j * 3 + 2]; n++;
+    }
+    if (!n) { listColour(R.sky, skyPosRow[Math.max(0, Math.min(RH - 1, yr))] * (nSky - 1), 0); rr = tmpC[0]; rg = tmpC[1]; rb = tmpC[2]; n = 1; }
+    // water is dark in itself and takes its colour from what it mirrors (a blend of the two would
+    // only grey out: blue water and an orange cliff make grey)
+    const a = 0.82 - 0.3 * Math.min(1, below / Math.max(1, RH - hr)), o = i * 3;
+    const wr = rayCol[o] * 0.62, wg = rayCol[o + 1] * 0.62, wb = rayCol[o + 2] * 0.66;
+    rayCol[o] = wr + (rr / n * 0.9 - wr) * a; rayCol[o + 1] = wg + (rg / n * 0.9 - wg) * a; rayCol[o + 2] = wb + (rb / n * 0.93 - wb) * a;
+  }
+  // 3. two square pixels per cell: the average of 2×2 rays, and a letter for the most of what they show
+  const G = paint.glyph, FG = paint.fg, BG = paint.bg;
+  const starAmt = cur.stars > 0.3 ? (cur.stars - 0.3) / 0.7 : 0, yawCols = Math.round(cam.yaw / (FOV / cols)), pitchRows = Math.round(cam.pitch / (cellH >> 1));
+  const starC = COL.near[R.star][0], starB = COL.near[R.star][1];
+  for (let pr = 0; pr < rows * 2; pr++) for (let c = c0; c < c1; c++) {
+    const pi = pr * cols + c, i0 = c * RAYS_X * RH + pr * 2, i1 = i0 + 1, i2 = i0 + RH, i3 = i2 + 1;
+    const o0 = i0 * 3, o1 = i1 * 3, o2 = i2 * 3, o3 = i3 * 3;
+    const r = (rayCol[o0] + rayCol[o1] + rayCol[o2] + rayCol[o3]) * 0.25, g = (rayCol[o0 + 1] + rayCol[o1 + 1] + rayCol[o2 + 1] + rayCol[o3 + 1]) * 0.25, b = (rayCol[o0 + 2] + rayCol[o1 + 2] + rayCol[o2 + 2] + rayCol[o3 + 2]) * 0.25;
+    const bg = packF(r, g, b);
+    BG[pi] = bg;
+    // the letter of the ray nearest the eye among those that agree most (two of four decide)
+    const k0 = kind[i0], kk = kind[i1] === k0 || kind[i2] === k0 || kind[i3] === k0 ? i0 : kind[i2] === kind[i3] ? i2 : i1;
+    const kd = kind[kk];
+    let letter = kd === K.TERRAIN || kd === K.WALL || kd === K.TOP ? RAMP_LETTER[ramp[kk]] : KIND_LETTER[kd];
+    if (kd === K.SKY) {
+      letter = 0;
+      if (starAmt > 0.05 && pos[kk] < 0.85) {
+        const h = hash2(c + yawCols, pr - pitchRows * 2, 77);
+        if (h < 0.035 * starAmt) { G[pi] = h < 0.006 ? LT['+'] : LT['.']; FG[pi] = h < 0.012 ? starB : starC; continue; }
+      }
+    }
+    if (!letter) { G[pi] = 0; FG[pi] = bg; continue; }
+    // a shade lighter on dark ground, darker on light, fading into the distance
+    const fade = 1 - Math.min(1, fogAt(depth[kk]) * 1.25), L = r * 0.3 + g * 0.59 + b * 0.11;
+    const s = 1 + (L > 150 ? -0.16 : 0.24) * fade;
+    G[pi] = letter; FG[pi] = packF(r * s + (s > 1 ? 6 * fade : 0), g * s + (s > 1 ? 6 * fade : 0), b * s + (s > 1 ? 6 * fade : 0));
+  }
+  // 4. firelight in the air, and birds
+  const SH = cellH >> 1;
+  if (light.darkness > 0.3) for (const gw of glows) {
+    if (gw.zc > 150) continue;
+    const fc = gw.x / cellW, fr = gw.y / SH, R0 = clamp(gw.hPx / SH * 1.6, 2, 16) * (gw.fire ? 1.4 : gw.li < 0 ? 0.6 : 0.9);
+    for (let pr = Math.max(0, Math.floor(fr - R0)); pr <= Math.min(rows * 2 - 1, Math.ceil(fr + R0 * 0.7)); pr++)
+      for (let c = Math.max(c0, Math.floor(fc - R0)); c <= Math.min(c1 - 1, Math.ceil(fc + R0)); c++) {
+        const dx = c + 0.5 - fc, dy = pr + 0.5 - fr, q = Math.sqrt(dx * dx + dy * dy) / R0;
+        if (q >= 1) continue;
+        const i = c * RAYS_X * RH + pr * 2;
+        if (depth[i] < gw.zc - 2) continue;   // nothing in front of the fire is lit by its glow in the air
+        const pi = pr * cols + c, a = (1 - q) * (1 - q) * 0.55, bg = BG[pi];
+        listColour(LIST_WARM, (1 - q) * (nWarm - 1), 0);
+        const br = bg & 255, bgG = (bg >> 8) & 255, bb = (bg >> 16) & 255;
+        BG[pi] = packF(br + (tmpC[0] - br) * a, bgG + (tmpC[1] - bgG) * a, bb + (tmpC[2] - bb) * a);
+        if (!G[pi]) FG[pi] = BG[pi];
+      }
+  }
+  for (const bd of birdsOnScreen) {
+    const c = Math.floor(bd.x / cellW), pr = Math.floor(bd.y / SH);
+    if (c < c0 || c >= c1 || pr < 0 || pr >= rows * 2) continue;
+    const ri = Math.min(grid.RW - 1, (bd.x / rayW) | 0) * RH + Math.min(RH - 1, (bd.y / rayH) | 0);
+    if (depth[ri] < bd.zc) continue;
+    G[pr * cols + c] = LT.v; FG[pr * cols + c] = COL.bird;
+  }
+}
+
+// Paint every half cell of the stripe as its letter in its two colours.
+function composePainted() {
+  const { cols, rows, cellW, cellH, buf, c0, c1 } = grid, SH = cellH >> 1;
+  const masks = atlas.paint, G = paint.glyph, FG = paint.fg, BG = paint.bg, stride = cols * cellW;
+  for (let pr = 0; pr < rows * 2; pr++) {
+    const rowBase = pr * SH * stride;
+    for (let c = c0; c < c1; c++) {
+      const i = pr * cols + c, g = G[i], b = BG[i], base = rowBase + c * cellW;
+      if (!g) { for (let py = 0, o = base; py < SH; py++, o += stride) for (let px = 0; px < cellW; px++) buf[o + px] = b; continue; }
+      const m = masks[g], d = FG[i] ^ b;
+      let k = 0;
+      for (let py = 0, o = base; py < SH; py++, o += stride) for (let px = 0; px < cellW; px++) buf[o + px] = b ^ (d & m[k++]);
+    }
+  }
+}
+
 // The whole frame, for this stripe: rays, cells, pixels. Returns how long each stage took.
 const stats = { marchMs: 0, spriteMs: 0, marksMs: 0, cellMs: 0, drawMs: 0, edgeCells: 0 };
-function renderFrame(t, poses) {
+const LOOK = { PAINTED: 0, MOSAIC: 1 };
+function renderFrame(t, poses, look) {
   const f = grid.f;
   vF = f; vVd = view.dist; vHor = grid.h * 0.5 + cam.pitch;
   vFx = Math.cos(cam.yaw); vFz = Math.sin(cam.yaw); vRx = -vFz; vRz = vFx;
@@ -3197,15 +3553,15 @@ function renderFrame(t, poses) {
   marchRays(t);
   const t1 = performance.now();
   drawSprites(t, poses);
-  castShadows();
+  if (look !== LOOK.PAINTED) castShadows();
   const t2 = performance.now();
-  splatGroundMarks(t);
-  reflectWater();
+  if (look !== LOOK.PAINTED) { splatGroundMarks(t); reflectWater(); }
   const t3 = performance.now();
-  shadeCells(t);
-  drawOverlays(t);
+  if (look === LOOK.PAINTED) paintCells(t);
+  else { shadeCells(t); drawOverlays(t); }
   const t4 = performance.now();
-  compose();
+  if (look === LOOK.PAINTED) { composePainted(); stats.edgeCells = 0; }
+  else compose();
   const t5 = performance.now();
   stats.marchMs = t1 - t0; stats.spriteMs = t2 - t1; stats.marksMs = t3 - t2; stats.cellMs = t4 - t3; stats.drawMs = t5 - t4;
   return stats;
@@ -3242,7 +3598,7 @@ function message(msg, reply) {
       const need = grid.cols * grid.cellW * grid.rows * grid.cellH;
       if (msg.buf && msg.buf.byteLength === need * 4) grid.buf = new Uint32Array(msg.buf);
       else if (!grid.buf || grid.buf.length !== need) grid.buf = new Uint32Array(need);
-      const st = renderFrame(msg.t, msg.poses);
+      const st = renderFrame(msg.t, msg.poses, msg.look);
       const buf = grid.buf.buffer;
       grid.buf = null;
       reply({ type: 'done', gen: msg.gen, stats: { ...st }, buf, c0: grid.c0, c1: grid.c1 }, [buf]);
@@ -3250,7 +3606,7 @@ function message(msg, reply) {
     }
   }
 }
-return { setView, renderFrame, message, rays, atlas, cellMark, grid, stats };
+return { setView, renderFrame, message, rays, atlas, cellMark, grid, stats, paint };
 }
 
 // =====================================================================
@@ -3309,7 +3665,7 @@ function enableFallback() {
 function updateHelp() {
   const look = fallbackDrag ? 'drag to look' : 'mouse look · ESC release';
   const move = player.mode === 'walk' ? 'WASD walk · SPACE jump · SHIFT sprint · E talk' : 'WASD fly · SPACE/SHIFT up/down · E talk';
-  helpEl.textContent = `${move} · ${look}\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance`;
+  helpEl.textContent = `${move} · ${look}\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look`;
 }
 
 canvas.addEventListener('mousedown', () => { if (!locked) dragging = true; });
@@ -3719,7 +4075,7 @@ function workerSource() {
     ...Object.entries(consts).map(([k, v]) => `const ${k} = ${JSON.stringify(v)};`),
     `const NO_FOG = Uint8Array.from(${JSON.stringify(Array.from(NO_FOG))});`,
     `const KEYFRAMES = { day: { ramps: ${JSON.stringify(KEYFRAMES.day.ramps)} } };`,
-    `const clamp = ${clamp};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`,
+    `const clamp = ${clamp};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`, `const pack = ${pack};`,
     `${hash2}`, `${terrainHeight}`, `${skyState}`,
     `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null };`,
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
@@ -3806,6 +4162,18 @@ function merchantPose(m, dt) {
   return st;
 }
 
+// The look the world is drawn in: painted (square pixels of continuous colour, each carrying one
+// letter) or mosaic (a glyph in two palette colours per cell, fitted to the shapes inside it).
+// L switches between them; ?look=mosaic starts in the mosaic.
+const LOOK_NAMES = ['PAINTED', 'MOSAIC'];
+const looks = { mode: new URLSearchParams(location.search).get('look') === 'mosaic' ? 1 : 0 };
+document.getElementById('look').textContent = LOOK_NAMES[looks.mode];
+window.addEventListener('keydown', e => {
+  if (e.target === seedInput || ui.open || e.repeat || e.code !== 'KeyL') return;
+  looks.mode = (looks.mode + 1) % LOOK_NAMES.length;
+  document.getElementById('look').textContent = LOOK_NAMES[looks.mode];
+});
+
 // Everything a frame needs that changes every frame, packed small.
 const nearLen = COL.near.reduce((a, L) => a + L.length, 0), farLen = COL.far.reduce((a, L) => a + L.length, 0);
 function frameDesc(t, dt) {
@@ -3815,14 +4183,14 @@ function frameDesc(t, dt) {
     poses[mi * 3] = st.head; poses[mi * 3 + 1] = st.look; poses[mi * 3 + 2] = st.moving ? 1 : 0;
     merch[mi * 4] = m.x; merch[mi * 4 + 1] = m.y; merch[mi * 4 + 2] = m.z; merch[mi * 4 + 3] = m.walked;
   });
-  if (!pool.workers.length) return { t, poses };
+  if (!pool.workers.length) return { t, poses, look: looks.mode };
   const col = new Uint32Array(nearLen + farLen + 2);
   let o = 0;
   for (const L of COL.near) { col.set(L, o); o += L.length; }
   for (const L of COL.far) { col.set(L, o); o += L.length; }
   col[o] = COL.glow; col[o + 1] = COL.bird;
   return {
-    type: 'frame', gen: pool.gen, t, poses, merchants: merch, col,
+    type: 'frame', gen: pool.gen, t, poses, look: looks.mode, merchants: merch, col,
     cam: [cam.x, cam.y, cam.z, cam.yaw, cam.pitch], hours: clock.hours, viewDist: view.dist,
     light: [light.lx, light.ly, light.lz, light.darkness, ...light.faceShade], cur: [cur.ambient, cur.diffuse, cur.lights, cur.stars],
   };
@@ -3883,7 +4251,7 @@ function frame(now) {
       wk.postMessage({ ...desc, buf }, buf ? [buf] : []);
     });
   } else {
-    const s = local.renderFrame(desc.t, desc.poses);
+    const s = local.renderFrame(desc.t, desc.poses, desc.look);
     ctx.putImageData(grid.img, 0, 0);
     Object.assign(frameStats, s);
     finishFrame();
