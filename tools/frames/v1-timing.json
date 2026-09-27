@@ -1,0 +1,20 @@
+{
+ "vista": {
+  "frames": 178,
+  "raymarchMs": 9.6,
+  "composeMs": 3.76,
+  "cells": "360x129"
+ },
+ "road": {
+  "frames": 180,
+  "raymarchMs": 6.69,
+  "composeMs": 3.94,
+  "cells": "360x129"
+ },
+ "fire": {
+  "frames": 180,
+  "raymarchMs": 6.97,
+  "composeMs": 3.87,
+  "cells": "360x129"
+ }
+}

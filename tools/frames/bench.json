@@ -1,0 +1,82 @@
+{
+ "a": {
+  "vista": {
+   "cellsMs": 3.5,
+   "composeMs": 5.2,
+   "putMs": 0.7,
+   "runs": 15
+  },
+  "road": {
+   "cellsMs": 3.5,
+   "composeMs": 5.1,
+   "putMs": 0.7,
+   "runs": 15
+  },
+  "fire": {
+   "cellsMs": 4,
+   "composeMs": 5.3,
+   "putMs": 0.8,
+   "runs": 15
+  }
+ },
+ "b": {
+  "vista": {
+   "cellsMs": 19.9,
+   "composeMs": 6.8,
+   "putMs": 0.9,
+   "runs": 15
+  },
+  "road": {
+   "cellsMs": 14.5,
+   "composeMs": 5.4,
+   "putMs": 0.8,
+   "runs": 15
+  },
+  "fire": {
+   "cellsMs": 14.6,
+   "composeMs": 5,
+   "putMs": 0.8,
+   "runs": 15
+  }
+ },
+ "c": {
+  "vista": {
+   "cellsMs": 13,
+   "composeMs": 7.3,
+   "putMs": 0.8,
+   "runs": 15
+  },
+  "road": {
+   "cellsMs": 7.6,
+   "composeMs": 5.7,
+   "putMs": 0.8,
+   "runs": 15
+  },
+  "fire": {
+   "cellsMs": 10.6,
+   "composeMs": 5.9,
+   "putMs": 0.9,
+   "runs": 15
+  }
+ },
+ "c6": {
+  "vista": {
+   "cellsMs": 10.9,
+   "composeMs": 5.5,
+   "putMs": 0.7,
+   "runs": 15
+  },
+  "road": {
+   "cellsMs": 8.1,
+   "composeMs": 5.4,
+   "putMs": 0.8,
+   "runs": 15
+  },
+  "fire": {
+   "cellsMs": 11.4,
+   "composeMs": 5.5,
+   "putMs": 0.7,
+   "runs": 15
+  }
+ }
+}

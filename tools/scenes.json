@@ -1,0 +1,62 @@
+{
+  "seed": 42,
+  "note": "Fixed cameras on seed 42. yaw in degrees (v1 convention: 0 = +x, -90 = -z/north), pitch is v1's horizon shift in pixels at 1440x900, t is page time in ms (birds, clouds, flames). ground:true puts the eye 1.55 + y above whatever is under the camera.",
+  "scenes": [
+    {
+      "name": "vista",
+      "title": "Castle in the valley, 09:30",
+      "hour": 9.5,
+      "t": 1000,
+      "cam": {
+        "x": 304,
+        "y": 60,
+        "z": 200,
+        "yaw": -120,
+        "pitch": -165
+      }
+    },
+    {
+      "name": "road",
+      "title": "Merchant on the lake road, 18:00",
+      "hour": 18.0,
+      "t": 1000,
+      "cam": {
+        "x": 139,
+        "y": 0.2,
+        "z": 327.5,
+        "yaw": -165,
+        "pitch": 10,
+        "ground": true
+      },
+      "merchants": [
+        {
+          "i": 3,
+          "s": 30,
+          "dir": 1,
+          "walked": 3.3
+        }
+      ]
+    },
+    {
+      "name": "fire",
+      "title": "Campfire at the stone circle, 22:30",
+      "hour": 22.5,
+      "t": 1000,
+      "cam": {
+        "x": 300,
+        "y": 33,
+        "z": 270,
+        "yaw": -45,
+        "pitch": -80
+      },
+      "merchants": [
+        {
+          "i": 0,
+          "s": 9,
+          "dir": 1,
+          "walked": 3.3
+        }
+      ]
+    }
+  ]
+}

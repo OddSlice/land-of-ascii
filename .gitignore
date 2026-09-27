@@ -1,0 +1,5 @@
+# G-buffer dumps (about 52 MB per scene) and working captures; regenerate with the tools below.
+tools/frames/*/*.bin
+tools/frames/*/*.png
+.DS_Store
+node_modules/

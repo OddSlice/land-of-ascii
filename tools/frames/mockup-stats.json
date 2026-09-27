@@ -1,0 +1,289 @@
+{
+ "c": {
+  "vista": {
+   "info": {
+    "id": "c",
+    "title": "Semantic mosaic",
+    "cellW": 6,
+    "cellH": 12,
+    "sampleGrid": "2x4 rays per cell",
+    "colorsPerCell": 2
+   },
+   "timings": {
+    "samplesMs": 14.799999999813735,
+    "cellsMs": 30,
+    "overlaysMs": 0,
+    "setupMs": 31,
+    "composeMs": 6.2000000001862645
+   },
+   "stats": {
+    "cells": 18000,
+    "edgeCells": 2765,
+    "glyphsInSet": 318,
+    "palette": "day",
+    "colorsOnScreen": 73,
+    "masksUsed": 1167
+   }
+  },
+  "road": {
+   "info": {
+    "id": "c",
+    "title": "Semantic mosaic",
+    "cellW": 6,
+    "cellH": 12,
+    "sampleGrid": "2x4 rays per cell",
+    "colorsPerCell": 2
+   },
+   "timings": {
+    "samplesMs": 26.5,
+    "cellsMs": 30.09999999962747,
+    "overlaysMs": 0.20000000018626451,
+    "setupMs": 31,
+    "composeMs": 30.5
+   },
+   "stats": {
+    "cells": 18000,
+    "edgeCells": 1782,
+    "glyphsInSet": 318,
+    "palette": "dusk",
+    "colorsOnScreen": 70,
+    "masksUsed": 982
+   }
+  },
+  "fire": {
+   "info": {
+    "id": "c",
+    "title": "Semantic mosaic",
+    "cellW": 6,
+    "cellH": 12,
+    "sampleGrid": "2x4 rays per cell",
+    "colorsPerCell": 2
+   },
+   "timings": {
+    "samplesMs": 41.5,
+    "cellsMs": 64.20000000018626,
+    "overlaysMs": 0,
+    "setupMs": 31,
+    "composeMs": 7.699999999720603
+   },
+   "stats": {
+    "cells": 18000,
+    "edgeCells": 1431,
+    "glyphsInSet": 318,
+    "palette": "night",
+    "colorsOnScreen": 78,
+    "masksUsed": 986
+   }
+  }
+ },
+ "b": {
+  "vista": {
+   "info": {
+    "id": "b",
+    "title": "Ink & paper",
+    "cellW": 8,
+    "cellH": 16,
+    "sampleGrid": "2x4 rays per cell",
+    "colorsPerCell": "1 + page"
+   },
+   "timings": {
+    "samplesMs": 16.799999999813735,
+    "cellsMs": 33.8000000002794,
+    "composeMs": 32
+   },
+   "stats": {
+    "cells": 10080,
+    "strokeCells": 400,
+    "palette": "sixteen inks on paper",
+    "colorsOnScreen": 10,
+    "masksUsed": 36
+   }
+  },
+  "road": {
+   "info": {
+    "id": "b",
+    "title": "Ink & paper",
+    "cellW": 8,
+    "cellH": 16,
+    "sampleGrid": "2x4 rays per cell",
+    "colorsPerCell": "1 + page"
+   },
+   "timings": {
+    "samplesMs": 6.5,
+    "cellsMs": 32.5,
+    "composeMs": 22.100000000093132
+   },
+   "stats": {
+    "cells": 10080,
+    "strokeCells": 756,
+    "palette": "sixteen inks on ink",
+    "colorsOnScreen": 13,
+    "masksUsed": 36
+   }
+  },
+  "fire": {
+   "info": {
+    "id": "b",
+    "title": "Ink & paper",
+    "cellW": 8,
+    "cellH": 16,
+    "sampleGrid": "2x4 rays per cell",
+    "colorsPerCell": "1 + page"
+   },
+   "timings": {
+    "samplesMs": 6.600000000093132,
+    "cellsMs": 20.5,
+    "composeMs": 5.199999999720603
+   },
+   "stats": {
+    "cells": 10080,
+    "strokeCells": 391,
+    "palette": "sixteen inks on ink",
+    "colorsOnScreen": 12,
+    "masksUsed": 36
+   }
+  }
+ },
+ "a": {
+  "vista": {
+   "info": {
+    "id": "a",
+    "title": "Chroma blocks",
+    "cellW": 6,
+    "cellH": 12,
+    "sampleGrid": "1x2 rays per cell",
+    "colorsPerCell": 2
+   },
+   "timings": {
+    "samplesMs": 4.699999999720603,
+    "cellsMs": 19.700000000186265,
+    "composeMs": 6.100000000093132
+   },
+   "stats": {
+    "cells": 18000,
+    "palette": "day",
+    "colorsOnScreen": 71,
+    "masksUsed": 26
+   }
+  },
+  "road": {
+   "info": {
+    "id": "a",
+    "title": "Chroma blocks",
+    "cellW": 6,
+    "cellH": 12,
+    "sampleGrid": "1x2 rays per cell",
+    "colorsPerCell": 2
+   },
+   "timings": {
+    "samplesMs": 4.100000000093132,
+    "cellsMs": 4.2999999998137355,
+    "composeMs": 6.100000000093132
+   },
+   "stats": {
+    "cells": 18000,
+    "palette": "dusk",
+    "colorsOnScreen": 69,
+    "masksUsed": 26
+   }
+  },
+  "fire": {
+   "info": {
+    "id": "a",
+    "title": "Chroma blocks",
+    "cellW": 6,
+    "cellH": 12,
+    "sampleGrid": "1x2 rays per cell",
+    "colorsPerCell": 2
+   },
+   "timings": {
+    "samplesMs": 3.2999999998137355,
+    "cellsMs": 6.399999999906868,
+    "composeMs": 8.200000000186265
+   },
+   "stats": {
+    "cells": 18000,
+    "palette": "night",
+    "colorsOnScreen": 71,
+    "masksUsed": 26
+   }
+  }
+ },
+ "c6": {
+  "vista": {
+   "info": {
+    "id": "c",
+    "title": "Semantic mosaic",
+    "cellW": 6,
+    "cellH": 12,
+    "sampleGrid": "2x6 rays per cell",
+    "colorsPerCell": 2
+   },
+   "timings": {
+    "samplesMs": 25.100000000093132,
+    "cellsMs": 20.300000000279397,
+    "overlaysMs": 0,
+    "setupMs": 215.10000000009313,
+    "composeMs": 9.5
+   },
+   "stats": {
+    "cells": 18000,
+    "edgeCells": 2924,
+    "glyphsInSet": 318,
+    "palette": "day",
+    "colorsOnScreen": 73,
+    "masksUsed": 1164
+   }
+  },
+  "road": {
+   "info": {
+    "id": "c",
+    "title": "Semantic mosaic",
+    "cellW": 6,
+    "cellH": 12,
+    "sampleGrid": "2x6 rays per cell",
+    "colorsPerCell": 2
+   },
+   "timings": {
+    "samplesMs": 16.800000000279397,
+    "cellsMs": 10,
+    "overlaysMs": 0,
+    "setupMs": 215.10000000009313,
+    "composeMs": 5.600000000093132
+   },
+   "stats": {
+    "cells": 18000,
+    "edgeCells": 1906,
+    "glyphsInSet": 318,
+    "palette": "dusk",
+    "colorsOnScreen": 70,
+    "masksUsed": 982
+   }
+  },
+  "fire": {
+   "info": {
+    "id": "c",
+    "title": "Semantic mosaic",
+    "cellW": 6,
+    "cellH": 12,
+    "sampleGrid": "2x6 rays per cell",
+    "colorsPerCell": 2
+   },
+   "timings": {
+    "samplesMs": 24.200000000186265,
+    "cellsMs": 31.5,
+    "overlaysMs": 0,
+    "setupMs": 215.10000000009313,
+    "composeMs": 7.2000000001862645
+   },
+   "stats": {
+    "cells": 18000,
+    "edgeCells": 1518,
+    "glyphsInSet": 318,
+    "palette": "night",
+    "colorsOnScreen": 79,
+    "masksUsed": 987
+   }
+  }
+ }
+}

@@ -1,0 +1,152 @@
+{
+ "vista": {
+  "4x7": {
+   "label": "v1 cells (one sample per 4x7 cell)",
+   "median": 14,
+   "p90": 25.8,
+   "cols": 360,
+   "rows": 129,
+   "medianWithAttributes": 12.3
+  },
+  "6x6": {
+   "label": "A: 1x2 per 6x12 cell",
+   "median": 8,
+   "p90": 8.6,
+   "cols": 240,
+   "rows": 150,
+   "medianWithAttributes": 9.8
+  },
+  "4x4": {
+   "label": "B: 2x4 per 8x16 cell",
+   "median": 13.4,
+   "p90": 14.2,
+   "cols": 360,
+   "rows": 225,
+   "medianWithAttributes": 18.9
+  },
+  "3x3": {
+   "label": "2x4 per 6x12 cell",
+   "median": 20.4,
+   "p90": 22.9,
+   "cols": 480,
+   "rows": 300,
+   "medianWithAttributes": 28.2
+  },
+  "2x2": {
+   "label": "C: 3x6 per 6x12 cell",
+   "median": 39.8,
+   "p90": 54.2,
+   "cols": 720,
+   "rows": 450,
+   "medianWithAttributes": 54.4
+  },
+  "3x2": {
+   "label": "2x6 per 6x12 cell",
+   "median": 25.2,
+   "p90": 26.7,
+   "cols": 480,
+   "rows": 450,
+   "medianWithAttributes": 33.6
+  }
+ },
+ "road": {
+  "4x7": {
+   "label": "v1 cells (one sample per 4x7 cell)",
+   "median": 10.7,
+   "p90": 25.8,
+   "cols": 360,
+   "rows": 129,
+   "medianWithAttributes": 10.9
+  },
+  "6x6": {
+   "label": "A: 1x2 per 6x12 cell",
+   "median": 6.6,
+   "p90": 9.9,
+   "cols": 240,
+   "rows": 150,
+   "medianWithAttributes": 8
+  },
+  "4x4": {
+   "label": "B: 2x4 per 8x16 cell",
+   "median": 9.7,
+   "p90": 11.3,
+   "cols": 360,
+   "rows": 225,
+   "medianWithAttributes": 16.8
+  },
+  "3x3": {
+   "label": "2x4 per 6x12 cell",
+   "median": 16.8,
+   "p90": 21.2,
+   "cols": 480,
+   "rows": 300,
+   "medianWithAttributes": 28.7
+  },
+  "2x2": {
+   "label": "C: 3x6 per 6x12 cell",
+   "median": 34.4,
+   "p90": 37.7,
+   "cols": 720,
+   "rows": 450,
+   "medianWithAttributes": 63.1
+  },
+  "3x2": {
+   "label": "2x6 per 6x12 cell",
+   "median": 24.8,
+   "p90": 37.1,
+   "cols": 480,
+   "rows": 450,
+   "medianWithAttributes": 43.6
+  }
+ },
+ "fire": {
+  "4x7": {
+   "label": "v1 cells (one sample per 4x7 cell)",
+   "median": 7,
+   "p90": 7.5,
+   "cols": 360,
+   "rows": 129,
+   "medianWithAttributes": 10.2
+  },
+  "6x6": {
+   "label": "A: 1x2 per 6x12 cell",
+   "median": 5.3,
+   "p90": 6.2,
+   "cols": 240,
+   "rows": 150,
+   "medianWithAttributes": 7.7
+  },
+  "4x4": {
+   "label": "B: 2x4 per 8x16 cell",
+   "median": 8.5,
+   "p90": 8.9,
+   "cols": 360,
+   "rows": 225,
+   "medianWithAttributes": 13.8
+  },
+  "3x3": {
+   "label": "2x4 per 6x12 cell",
+   "median": 13.3,
+   "p90": 13.6,
+   "cols": 480,
+   "rows": 300,
+   "medianWithAttributes": 22.5
+  },
+  "2x2": {
+   "label": "C: 3x6 per 6x12 cell",
+   "median": 24.6,
+   "p90": 26.8,
+   "cols": 720,
+   "rows": 450,
+   "medianWithAttributes": 47.5
+  },
+  "3x2": {
+   "label": "2x6 per 6x12 cell",
+   "median": 16.2,
+   "p90": 16.5,
+   "cols": 480,
+   "rows": 450,
+   "medianWithAttributes": 30.7
+  }
+ }
+}
