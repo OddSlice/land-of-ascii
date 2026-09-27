@@ -1,11 +1,13 @@
-// v2 keeps v1's simulation as written: these sections of reference/v1-index.html must appear in
-// index.html byte for byte. (tools/test-sim.mjs proves they also behave the same.)
+// v2's simulation is v1's as written, plus the deliberate fixes in tools/lib/v2-fixes.mjs: these
+// sections of reference/v1-index.html, with those fixes applied, must appear in index.html byte
+// for byte. (tools/test-sim.mjs shows they also behave the same.)
 //   node tools/check-verbatim.mjs
 import fs from 'node:fs';
 import path from 'node:path';
 import { ROOT } from './lib/harness.mjs';
+import { applyFixes, FIXES } from './lib/v2-fixes.mjs';
 
-const v1 = fs.readFileSync(path.join(ROOT, 'reference/v1-index.html'), 'utf8').split('\n');
+const v1 = applyFixes(fs.readFileSync(path.join(ROOT, 'reference/v1-index.html'), 'utf8')).split('\n');
 const v2 = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const SECTIONS = [   // [first line, last line, what]
   [89, 113, 'world and movement constants'],
@@ -23,4 +25,5 @@ for (const [a, b, what] of SECTIONS) {
   if (!ok) bad++;
   console.log(`${ok ? 'ok  ' : 'DIFF'} v1 ${a}-${b} (${b - a + 1} lines): ${what}`);
 }
+console.log(`(with ${FIXES.length} deliberate fix${FIXES.length === 1 ? '' : 'es'} applied to v1 first)`);
 process.exit(bad ? 1 : 0);

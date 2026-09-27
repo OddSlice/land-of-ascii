@@ -1,6 +1,6 @@
 # Phase 1: the build
 
-`index.html` is Text Voxel v2: v1's world, rules, controls, HUD and trade panel, drawn by a new renderer in direction C ("Semantic mosaic") with 3D solids for the trees and the merchants. It is one self-contained file with no dependencies. Open it, or serve the folder, and play. `?seed=42` gives the world in these pictures.
+`index.html` is Text Voxel v2: a seeded world with castles, roads, forests, merchants, walking and trading (carried over from v1), drawn by a new renderer in direction C ("Semantic mosaic") with 3D solids for the trees and the merchants. It is one self-contained file with no dependencies. Open it, or serve the folder, and play. `?seed=42` gives the world in these pictures.
 
 | | |
 |---|---|
@@ -68,21 +68,23 @@ The screen is a grid of text cells, 6×12 px by default (`−` / `+` step throug
 - The world goes to the workers once per seed, the lighting whenever the sun moves, and the camera, clock and palette with every frame.
 - Without workers, or with `?threads=0`, the same code runs on the main thread.
 
-## The world is v1's
+## The simulation
 
-- **Verbatim code.** `tools/check-verbatim.mjs` checks that 1,366 lines of v1's simulation appear in `index.html` byte for byte: constants, terrain, rivers, structures, roads, trees, birds, lights, clouds, merchants, sky and lighting, input, movement, trade, HUD and lifecycle. The only change to v1's input code is the `− / +` key, which now steps through cell sizes.
-- **Identical behaviour.** `tools/test-sim.mjs` drives v1 and v2 side by side:
-  - **Worlds.** Seeds 42, 7, 1234, 99991 and 31337 give identical checksums of every world array and object: heights, materials, normals, roads, trees, structures and their voxels, lights, clouds, birds, merchants.
+v2's world, rules, movement and trade came over from v1, and v2 owns them now. Two tests guard the port and flag any change to the simulation, so every change is a deliberate one, listed in `tools/lib/v2-fixes.mjs`.
+
+- **Verbatim code.** `tools/check-verbatim.mjs` checks that 1,366 lines of v1's simulation, with v2's fixes applied, appear in `index.html` byte for byte: constants, terrain, rivers, structures, roads, trees, birds, lights, clouds, merchants, sky and lighting, input, movement, trade, HUD and lifecycle. The only change to v1's input code is the `− / +` key, which now steps through cell sizes.
+- **Identical behaviour.** `tools/test-sim.mjs` drives v1 (with v2's fixes applied) and v2 side by side:
+  - **Worlds.** Seeds 42, 7, 1234, 99991 and 31337 give identical checksums of every world array and object: heights, materials, normals, roads, trees, structures and their voxels, lights, clouds, birds, merchants. No v2 world has a NaN height.
   - **Play.** A 20.7 s scripted session (walk, sprint, jump, strafe, turn, fly, land) is **bit-identical** in both, every step, for the player, camera, merchants and clock.
   - **Walks.** Walking into every castle gate and every tower door of seed 42 takes the same path in both, and every walk ends inside.
 - `window.TV` keeps v1's debug surface: `world, cam, clock, grid, stats, view, light, player, keys, ui, regenerate, setMode, update, updateMerchants, updateNearest, openPanel, closePanel, groundAt, setHour`. It adds `setCells(preset)`, `whenIdle()` (a promise for the frame in flight) and `renderer` (the main-thread renderer's buffers, live with `?threads=0`).
 
-**A bug found in v1's world (not fixed, your call).**
+**Fixed in v2: a NaN height.**
 
-- **Where.** For seed 42, the lowest cell of the world, (416, 390), has a NaN height, and a conifer stands on it.
-- **Cause.** The first generation step computes `Math.pow((H[i] - min) / range, 1.5)` on a Float32Array. When the minimum rounds down on storage, the base goes slightly negative and `pow` returns NaN. The sea flood then skips the cell, because `NaN < seaLevel` is false.
-- **Effect.** v1's renderer happens to skip NaN, and v2's is written to. But a player who wades onto that cell gets a NaN foot height.
-- **Fix.** Clamping the base with `Math.max(0, …)` fixes it. It changes seed 42's world slightly, since the percentile lines shift by one rank, so I left the generator as v1 has it.
+- **Where.** v1's generator could give the lowest cell of a world a NaN height. On seed 42 that is cell (416, 390), with a conifer on it.
+- **Cause.** The first step computes `Math.pow((H[i] - min) / range, 1.5)` on a Float32Array. When the minimum rounds down on storage, the base goes slightly negative and `pow` returns NaN. The sea flood then skips the cell, because `NaN < seaLevel` is false.
+- **Effect in v1.** A player who waded onto that cell got a NaN foot height.
+- **Fix.** v2 clamps the base at 0, so the cell joins the sea. The fix is listed in `tools/lib/v2-fixes.mjs`. The v1 comparison tests apply the same fixes to v1 before comparing, so they keep checking that nothing else changed. They also check that no v2 world has a NaN height.
 
 ## Speed
 
@@ -107,8 +109,8 @@ Not measured here:
 ## Tools
 
 ```sh
-node tools/test-sim.mjs          # v1 vs v2: worlds, a scripted session, gate and door walks
-node tools/check-verbatim.mjs    # v1's simulation code, byte for byte
+node tools/test-sim.mjs          # the simulation still behaves as ported: worlds, a scripted session, gate and door walks
+node tools/check-verbatim.mjs    # the ported simulation code, byte for byte (plus v2's listed fixes)
 node tools/shoot.mjs             # screenshots of every scene in tools/scenes.json -> shots/
 node tools/shoot.mjs --cam 300,70,250,-105,40 --hour 17 --out shots/x.png   # any camera
 node tools/bench-v2.mjs          # frame timings (--threads 0 for the main thread, --browser firefox|webkit)

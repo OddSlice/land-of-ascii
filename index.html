@@ -368,7 +368,7 @@ function generateWorld(seed) {
     }
   }
   const range = max - min || 1;
-  for (let i = 0; i < N; i++) H[i] = Math.pow((H[i] - min) / range, 1.5) * HEIGHT_SCALE;
+  for (let i = 0; i < N; i++) H[i] = Math.pow(Math.max(0, (H[i] - min) / range), 1.5) * HEIGHT_SCALE;
 
   // 2. Sea level and material lines come from percentiles, so every seed has water, rock and snow.
   const sorted = Float32Array.from(H).sort();

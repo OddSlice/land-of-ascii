@@ -1,5 +1,6 @@
-// The world survived the port: v1 (reference/v1-index.html) and v2 (index.html) are driven side by
-// side and must agree exactly.
+// v2's simulation came from v1 and must still behave exactly like it, apart from the deliberate
+// fixes in tools/lib/v2-fixes.mjs: v1 (reference/v1-index.html, with those fixes applied as it is
+// served) and v2 (index.html) are driven side by side and must agree exactly.
 //   1. World: for several seeds, a checksum of every world array and object (heights, materials,
 //      water, roads, trees, structures and their voxels, lights, clouds, birds, merchants).
 //   2. Simulation: one scripted session of held keys and mouse turns, stepped through
@@ -7,13 +8,19 @@
 //      be bit-identical after every step.
 //   3. Walks: from outside every castle gate and every tower door, walk in; both must end inside
 //      the footprint, on the same path.
+//   4. No NaN: no height in any of v2's worlds is NaN (the first fix).
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs
-import { startServer, launch } from './lib/harness.mjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { startServer, launch, ROOT } from './lib/harness.mjs';
+import { applyFixes } from './lib/v2-fixes.mjs';
 
 const SEEDS = [42, 7, 1234, 99991, 31337];
 const { server, port } = await startServer();
 const { browser, page: p1 } = await launch();
+const v1Fixed = applyFixes(fs.readFileSync(path.join(ROOT, 'reference/v1-index.html'), 'utf8'));
+await p1.route('**/reference/v1-index.html*', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: v1Fixed }));
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const { TIME_CONTROL } = await import('./lib/harness.mjs');
 await p2.addInitScript(TIME_CONTROL);
@@ -66,8 +73,10 @@ for (const seed of SEEDS) {
   const res = [];
   for (const [, page, url] of pages) { await load(page, url, seed); res.push(await page.evaluate(WORLD_HASH)); }
   const bad = Object.keys(res[0]).filter(k => res[0][k] !== res[1][k]);
+  const nan = await p2.evaluate(() => { const H = window.TV.world.H, T = window.TV.world.trees; let n = 0; for (let i = 0; i < H.length; i++) if (H[i] !== H[i]) n++; for (let i = 0; i < T.n; i++) if (T.y[i] !== T.y[i]) n++; return n; });
   if (bad.length) fail(`seed ${seed}: differs in ${bad.join(', ')}`);
-  else console.log(`  seed ${seed}: identical (${Object.keys(res[0]).length} parts)`);
+  else if (nan) fail(`seed ${seed}: ${nan} NaN heights in v2`);
+  else console.log(`  seed ${seed}: identical (${Object.keys(res[0]).length} parts), no NaN heights`);
 }
 
 // ---- 2. a scripted session ----
