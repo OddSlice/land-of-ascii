@@ -1,32 +1,53 @@
 # Text Voxel v2
 
-The renderer rebuild of [Text Voxel](https://github.com/OddSlice/text-voxel). The seeded voxel world stays: terrain, rivers, castles, roads, forests, merchants, lights, walking and trading. The way it is drawn changes, from v1's soft pixel mosaic to a deliberate, art-directed text-mode look that can stand next to the terminal RPG Swaggerfall.
+The renderer rebuild of [Text Voxel](https://github.com/OddSlice/text-voxel). The seeded voxel world is v1's, byte for byte: terrain, rivers, castles, roads, forests, merchants, lights, walking and trading. What changed is how it is drawn: a deliberate, art-directed text-mode look where every cell is one glyph in two colours from a hand-built palette, and the trees and merchants are real 3D solids.
 
-v1 stays live as the baseline: https://oddslice.github.io/text-voxel/ (add `?seed=42`).
+**Play:** open `index.html` (no build, no dependencies). `?seed=42` gives the world in the pictures below. v1 stays live as the baseline: https://oddslice.github.io/text-voxel/.
 
-## Status: phase 0, choosing a direction
+| | |
+|---|---|
+| ![Merchant on the lake road, 18:00](shots/road.png) | ![A merchant walking toward you](shots/merchant.png) |
+| ![Campfire at the stone circle, 22:30](shots/fire.png) | ![The castle gate at night](shots/gate.png) |
 
-No engine code yet. This phase is research and mockups:
+![v1 and v2, the same camera and hour](shots/compare-road.png)
 
-- **[docs/direction.md](docs/direction.md)**: the three candidates side by side, their grids, palettes, glyph sets and measured costs, the open numbers, and the recommendation (C, "Semantic mosaic").
-- **[docs/research.md](docs/research.md)**: Swaggerfall, block and mosaic characters, shape-matched glyphs, dithering, ANSI and PETSCII discipline, palettes, with sources.
-- **[docs/brief.md](docs/brief.md)**: the brief for this attempt.
+## Controls
 
-![Castle in the valley: v1 and the three candidates](mockups/vista/compare.png)
+As v1: click to capture the mouse (Esc releases it; where pointer lock is refused, drag to look).
 
-## How the mockups are made
+| Key | Action |
+|---|---|
+| W A S D | walk (or fly) |
+| Space / Shift | jump / sprint (walking) · up / down (flying) |
+| F | walk / fly |
+| E | talk to the merchant named in the prompt |
+| R | new random seed |
+| T | clock ×10 |
+| − / + | cell size: 5×10, 6×12, 7×14, 8×16 px |
+| [ / ] | view distance |
 
-All mockups are rendered from real frames of the v1 world (seed 42, fixed cameras in `tools/scenes.json`), not painted. You need Node 18+ and Playwright's Chromium (`npm i -g playwright && npx playwright install chromium`); the sheets also need Pillow.
+## Docs
+
+- **[docs/phase1.md](docs/phase1.md)** covers the build:
+  - how a frame is drawn, and the 3D merchants and trees;
+  - the render workers;
+  - the tests proving the world is v1's;
+  - measured speed;
+  - what is still rough.
+- **[docs/direction.md](docs/direction.md)**: phase 0. Three rendered directions and why C was chosen.
+- **[docs/research.md](docs/research.md)**: Swaggerfall, mosaic characters, shape-matched glyphs, dithering, palettes, with sources.
+- **[docs/brief.md](docs/brief.md)**: the brief.
+
+## Tests and tools
+
+You need Node 18+ and Playwright's Chromium.
 
 ```sh
-node tools/capture-v1.mjs        # v1 baseline frames + v1 timings              -> mockups/<scene>/v1.png
-node tools/build-gbuffer.mjs     # instrument a copy of v1 to record what every pixel hit
-node tools/capture-gbuffer.mjs   # dump one frame of world data per camera      -> tools/frames/<scene>/
-node tools/render-mockups.mjs    # render candidates A, B, C from the dumps     -> mockups/<scene>/{a,b,c}.png
-node tools/time-raymarch.mjs     # v1's raymarch at each candidate's ray density
-node tools/bench.mjs             # cell-stage and compose timings
-python3 tools/sheets.py          # comparison and zoom sheets, colours on screen
+node tools/test-sim.mjs          # v1 vs v2 on the same seeds and inputs: must agree exactly
+node tools/check-verbatim.mjs    # v1's simulation code appears in index.html byte for byte
+node tools/shoot.mjs             # screenshots of the scenes in tools/scenes.json -> shots/
+node tools/bench-v2.mjs          # frame timings per scene
 ```
 
-- `reference/v1-index.html` is v1 pinned at commit `989360b`. The world simulation will be ported from it.
-- `tools/mockup/` holds the candidate renderers. It composes through the same Canvas2D ImageData path the engine will use.
+- `reference/v1-index.html` is v1 pinned at commit `989360b`.
+- The phase 0 mockup tools (`tools/mockup/`, `capture-*.mjs`, `render-mockups.mjs`) are described in [docs/direction.md](docs/direction.md).

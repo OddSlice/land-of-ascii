@@ -2598,7 +2598,7 @@ function shadeCells(t) {
     plan.list = new Int16Array(n); plan.X = new Float32Array(n); plan.kind = new Uint8Array(n); plan.ramp = new Uint8Array(n); plan.P = new Float32Array(n); plan.mid = new Int32Array(n);
   }
   const pList = plan.list, pX = plan.X, pKind = plan.kind, pRampId = plan.ramp, pP = plan.P, pMid = plan.mid;
-  const starAmt = cur.stars, yawCols = Math.round(cam.yaw / (FOV / cols)), pitchRows = Math.round(cam.pitch / cellH);
+  const starAmt = cur.stars > 0.3 ? (cur.stars - 0.3) / 0.7 : 0, yawCols = Math.round(cam.yaw / (FOV / cols)), pitchRows = Math.round(cam.pitch / cellH);
   const glowC = COL.glow, starC = COL.near[R.star][0], starB = COL.near[R.star][1];
   const sky = COL.near[R.sky], skyN = sky.length;
   const shimmer = Math.floor(t * 1.5);
@@ -2636,8 +2636,10 @@ function shadeCells(t) {
         if (b) { pat |= 1 << k; nB++; bP += pos[i]; bF += fi; bL += lit[i]; } else { aP += pos[i]; aF += fi; aL += lit[i]; }
       }
       const nA = NS - nB;
-      const ca = solidColor(ramp[i0], aP / nA, aF / nA, aL / nA, kind[i0]);
-      const cb = solidColor(ramp[seedB], bP / nB, bF / nB, bL / nB, kind[seedB]);
+      let ca = solidColor(ramp[i0], aP / nA, aF / nA, aL / nA, kind[i0]);
+      let cb = solidColor(ramp[seedB], bP / nB, bF / nB, bL / nB, kind[seedB]);
+      // the rim of the sun sits inside its glow, so the sky beside it takes the glow's colour
+      if (kind[i0] === K.SUN && kind[seedB] === K.SKY) cb = glowC; else if (kind[seedB] === K.SUN && kind[i0] === K.SKY) ca = glowC;
       if (ca !== cb) {
         edges++;
         const fl = kind[seedB] === K.FLAME ? seedB : kind[i0] === K.FLAME ? i0 : -1;
@@ -2654,10 +2656,10 @@ function shadeCells(t) {
     if (kd === K.SKY) {
       const X = P * (skyN - 1), k = Math.min(skyN - 2, Math.floor(X)), a = X - k;
       let bg = sky[k], fg = sky[k + 1], g = a < 0.25 ? SPACE : a < 0.5 ? SHADE[1] : a < 0.75 ? SHADE[2] : SHADE[3];
-      if (sunScreen) {   // the air around the sun glows
+      if (sunScreen) {   // the air close around the sun glows: a ▓ ring fading through ▒ to ░
         const ex = (c + 0.5 - sunCol) / sunRX, ey = (r + 0.5 - sunRow) / sunRY, d2 = ex * ex + ey * ey;
-        const glow = d2 > 1 && d2 < 49 ? Math.exp(-Math.sqrt(d2) * 0.5) * 0.75 : 0;
-        if (glow > 0.12) { fg = glowC; g = glow < 0.25 ? SHADE[1] : glow < 0.45 ? SHADE[2] : glow < 0.6 ? SHADE[3] : FULL; }
+        const glow = d2 > 1 && d2 < 16 ? Math.exp(-Math.sqrt(d2) * 0.9) * 0.9 : 0;
+        if (glow > 0.12) { fg = glowC; g = glow < 0.2 ? SHADE[1] : glow < 0.32 ? SHADE[2] : SHADE[3]; }
       }
       if (starAmt > 0.05 && P < 0.85) {
         const h = hash2(c + yawCols, r - pitchRows, 77);
