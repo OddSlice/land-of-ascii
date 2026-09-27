@@ -14,13 +14,15 @@ const { browser, page } = await launch({ timeControl: false, jsFlags });
 await page.goto(`http://127.0.0.1:${port}/index.html?seed=${cfg.seed}`);
 await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
 const c = sc.cam, cam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
-const setup = async () => page.evaluate(({ cam, hour, ground, merchants }) => {
+const setup = async () => page.evaluate(({ seed, view, cam, hour, ground, merchants }) => {
   const TV = window.TV;
+  if (TV.world.seed !== seed) TV.regenerate(seed);
+  TV.view.dist = view || 500;
   TV.clock.scale = 0; TV.setMode('fly');
   if (ground) cam.y = TV.groundAt(cam.x, cam.z, 1e9) + 1.55 + cam.y;
   window.__hold = () => { Object.assign(TV.cam, cam); for (const m of merchants || []) TV.world.merchants[m.i].s = m.s; };
   window.__hold(); TV.setHour(hour);
-}, { cam, hour: sc.hour, ground: !!c.ground, merchants: sc.merchants });
+}, { seed: sc.seed ?? cfg.seed, view: sc.view, cam, hour: sc.hour, ground: !!c.ground, merchants: sc.merchants });
 await setup();
 await page.waitForTimeout(500);
 await setup();

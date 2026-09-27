@@ -1,118 +1,356 @@
 {
   "seed": 42,
-  "note": "Fixed cameras on seed 42. yaw in degrees (v1 convention: 0 = +x, -90 = -z/north), pitch is v1's horizon shift in pixels at 1440x900, t is page time in ms (birds, clouds, flames). ground:true puts the eye 1.55 + y above whatever is under the camera.",
+  "note": "Fixed cameras. seed: the world (default: the top-level seed). yaw in degrees (v1 convention: 0 = +x, -90 = -z/north), pitch is v1's horizon shift in pixels at 1440x900, t is page time in ms (birds, clouds, flames), view is the view distance (default 500). ground:true puts the eye 1.55 + y above whatever is under the camera. Re-aim with node tools/find-views.mjs after world generation changes (--classic for the six phase-1 scenes, --aerial-only --seed N for aerials).",
   "scenes": [
     {
       "name": "vista",
       "title": "Castle in the valley, 09:30",
+      "seed": 42,
       "hour": 9.5,
       "t": 1000,
       "cam": {
-        "x": 304,
-        "y": 60,
-        "z": 200,
-        "yaw": -120,
+        "x": 186,
+        "y": 62.13,
+        "z": 434,
+        "yaw": 90,
         "pitch": -165
       }
     },
     {
       "name": "road",
-      "title": "Merchant on the lake road, 18:00",
-      "hour": 18.0,
+      "title": "Elska Longstride on the road, 18:00",
+      "seed": 42,
+      "hour": 18,
       "t": 1000,
-      "cam": {
-        "x": 139,
-        "y": 0.2,
-        "z": 327.5,
-        "yaw": -165,
-        "pitch": 10,
-        "ground": true
-      },
       "merchants": [
         {
-          "i": 3,
-          "s": 30,
+          "i": 0,
+          "s": 70,
           "dir": 1,
           "walked": 3.3
         }
-      ]
+      ],
+      "cam": {
+        "x": 220.29,
+        "y": 0.2,
+        "z": 40.5,
+        "yaw": -7.6,
+        "pitch": 10,
+        "ground": true
+      }
     },
     {
       "name": "fire",
       "title": "Campfire at the stone circle, 22:30",
+      "seed": 42,
       "hour": 22.5,
       "t": 1000,
       "cam": {
-        "x": 300,
-        "y": 33,
-        "z": 270,
-        "yaw": -45,
-        "pitch": -80
-      },
-      "merchants": [
-        {
-          "i": 0,
-          "s": 9,
-          "dir": 1,
-          "walked": 3.3
-        }
-      ]
+        "x": 21.37,
+        "y": 106.47,
+        "z": 125.78,
+        "yaw": 157.5,
+        "pitch": -265
+      }
     },
     {
       "name": "merchant",
-      "title": "Tobin Saltbeard walking toward you, 10:30",
+      "title": "Elska Longstride walking toward you, 10:30",
+      "seed": 42,
       "hour": 10.5,
       "t": 1000,
-      "cam": {
-        "x": 129.34,
-        "y": 0,
-        "z": 326.5,
-        "yaw": 0,
-        "pitch": 0,
-        "ground": true
-      },
       "merchants": [
         {
-          "i": 3,
-          "s": 30,
+          "i": 0,
+          "s": 70,
           "dir": 1,
           "walked": 3.3
         }
-      ]
+      ],
+      "cam": {
+        "x": 235.42,
+        "y": 0,
+        "z": 33.58,
+        "yaw": 135,
+        "pitch": 0,
+        "ground": true
+      }
     },
     {
       "name": "merchant-night",
       "title": "The same, at 21:30, by lantern light",
+      "seed": 42,
       "hour": 21.5,
       "t": 1000,
-      "cam": {
-        "x": 129.34,
-        "y": 0,
-        "z": 326.5,
-        "yaw": 0,
-        "pitch": 0,
-        "ground": true
-      },
       "merchants": [
         {
-          "i": 3,
-          "s": 30,
+          "i": 0,
+          "s": 70,
           "dir": 1,
           "walked": 3.3
         }
-      ]
+      ],
+      "cam": {
+        "x": 235.42,
+        "y": 0,
+        "z": 33.58,
+        "yaw": 135,
+        "pitch": 0,
+        "ground": true
+      }
     },
     {
       "name": "gate",
-      "title": "The concentric castle's gate at night, 21:00 (the spawn point)",
-      "hour": 21.0,
+      "title": "The spawn castle's gate at night, 21:00",
+      "seed": 42,
+      "hour": 21,
       "t": 1000,
       "cam": {
-        "x": 255.5,
+        "x": 297.5,
         "y": 0,
-        "z": 162.5,
+        "z": 33.5,
         "yaw": -90,
         "pitch": 40,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-grassland",
+      "title": "Grassland, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "cam": {
+        "x": 216.5,
+        "y": 1.5,
+        "z": 144.5,
+        "yaw": -67.5,
+        "pitch": -110,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-forest",
+      "title": "Forest, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "cam": {
+        "x": 150.5,
+        "y": 1.5,
+        "z": 300.5,
+        "yaw": 0,
+        "pitch": -40,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-pine-forest",
+      "title": "Pine forest, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "cam": {
+        "x": 168.5,
+        "y": 1.5,
+        "z": 210.5,
+        "yaw": 112.5,
+        "pitch": -60,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-snowy-peaks",
+      "title": "Snowy peaks, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "cam": {
+        "x": 12.5,
+        "y": 2,
+        "z": 168.5,
+        "yaw": 0,
+        "pitch": 50,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-badlands",
+      "title": "Badlands, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "cam": {
+        "x": 390.5,
+        "y": 3,
+        "z": 276.5,
+        "yaw": 90,
+        "pitch": -80,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-marsh",
+      "title": "Marsh, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "cam": {
+        "x": 186.5,
+        "y": 1,
+        "z": 360.5,
+        "yaw": -135,
+        "pitch": -150,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-beach",
+      "title": "Beach, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "cam": {
+        "x": 36.5,
+        "y": 1,
+        "z": 369.5,
+        "yaw": -135,
+        "pitch": -90,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-sea-cliffs",
+      "title": "Sea cliffs, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "cam": {
+        "x": 16.5,
+        "y": 4,
+        "z": 272.5,
+        "yaw": -22.5,
+        "pitch": -20,
+        "ground": true
+      }
+    },
+    {
+      "name": "aerial-42",
+      "title": "Seed 42 from the air, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "view": 700,
+      "cam": {
+        "x": 0.5,
+        "y": 190,
+        "z": 0.5,
+        "yaw": 90,
+        "pitch": -330
+      }
+    },
+    {
+      "name": "aerial-7",
+      "title": "Seed 7 from the air, 10:30",
+      "seed": 7,
+      "hour": 10.5,
+      "t": 1000,
+      "view": 700,
+      "cam": {
+        "x": 0.5,
+        "y": 190,
+        "z": 0.5,
+        "yaw": 0,
+        "pitch": -330
+      }
+    },
+    {
+      "name": "aerial-1234",
+      "title": "Seed 1234 from the air, 10:30",
+      "seed": 1234,
+      "hour": 10.5,
+      "t": 1000,
+      "view": 700,
+      "cam": {
+        "x": 192.5,
+        "y": 190,
+        "z": 0.5,
+        "yaw": -45,
+        "pitch": -330
+      }
+    },
+    {
+      "name": "aerial-31337",
+      "title": "Seed 31337 from the air, 10:30",
+      "seed": 31337,
+      "hour": 10.5,
+      "t": 1000,
+      "view": 700,
+      "cam": {
+        "x": 0.5,
+        "y": 190,
+        "z": 0.5,
+        "yaw": 90,
+        "pitch": -330
+      }
+    },
+    {
+      "name": "region-badlands-dusk",
+      "title": "Badlands at sunset, 18:12",
+      "seed": 42,
+      "hour": 18.2,
+      "t": 1000,
+      "cam": {
+        "x": 390.5,
+        "y": 3,
+        "z": 276.5,
+        "yaw": 90,
+        "pitch": -80,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-beach-dusk",
+      "title": "Beach at dusk, 18:24",
+      "seed": 42,
+      "hour": 18.4,
+      "t": 1000,
+      "cam": {
+        "x": 36.5,
+        "y": 1,
+        "z": 369.5,
+        "yaw": -135,
+        "pitch": -90,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-marsh-night",
+      "title": "Marsh at night, 21:30",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "cam": {
+        "x": 186.5,
+        "y": 1,
+        "z": 360.5,
+        "yaw": -135,
+        "pitch": -150,
+        "ground": true
+      }
+    },
+    {
+      "name": "region-snowy-peaks-dawn",
+      "title": "Snowy peaks at dawn, 06:36",
+      "seed": 42,
+      "hour": 6.6,
+      "t": 1000,
+      "cam": {
+        "x": 12.5,
+        "y": 2,
+        "z": 168.5,
+        "yaw": 0,
+        "pitch": 50,
         "ground": true
       }
     }

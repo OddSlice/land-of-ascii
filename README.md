@@ -4,7 +4,7 @@ A first-person explorer drawn as a mosaic of text characters: a seeded world of 
 
 Land of Ascii started as v2 of [Text Voxel](https://github.com/OddSlice/text-voxel): phase 1 rebuilt the renderer and took over v1's simulation (fixes are listed in `tools/lib/v2-fixes.mjs`). Phase 2 gives it a world of its own: see [docs/phase2-world.md](docs/phase2-world.md).
 
-**Play:** open `index.html` (no build, no dependencies). `?seed=42` gives the world in the pictures below. v1 stays live for comparison: https://oddslice.github.io/text-voxel/.
+**Play:** open `index.html` (no build, no dependencies). The pictures below are from phase 1; phase 2 is giving every seed a new world, and its pictures are in [docs/phase2.md](docs/phase2.md). v1 stays live for comparison: https://oddslice.github.io/text-voxel/.
 
 | | |
 |---|---|
@@ -31,6 +31,7 @@ As v1: click to capture the mouse (Esc releases it; where pointer lock is refuse
 ## Docs
 
 - **[docs/phase2-world.md](docs/phase2-world.md)**: the phase 2 brief (in progress). Varied land, villages and towns, people and animals, and the tests that change with the world.
+- **[docs/phase2.md](docs/phase2.md)**: phase 2 as it is built. Step 1: eight regions, terrain shaped per region, new ground materials, rock strata ([pictures](shots/phase2/sheet-regions.png)).
 - **[docs/phase1.md](docs/phase1.md)** covers the build:
   - how a frame is drawn, and the 3D merchants and trees;
   - the render workers;
@@ -46,8 +47,8 @@ As v1: click to capture the mouse (Esc releases it; where pointer lock is refuse
 You need Node 18+ and Playwright's Chromium.
 
 ```sh
-node tools/test-sim.mjs          # the simulation still behaves as ported (same seeds, same inputs, exact)
-node tools/check-verbatim.mjs    # the ported simulation code is unchanged except for listed fixes
+node tools/test-sim.mjs          # worlds are deterministic and as recorded; v1's movement code agrees with v2's, exactly
+node tools/check-verbatim.mjs    # the v1 code still in use is unchanged except for listed fixes
 node tools/shoot.mjs             # screenshots of the scenes in tools/scenes.json -> shots/
 node tools/bench-v2.mjs          # frame timings per scene
 ```

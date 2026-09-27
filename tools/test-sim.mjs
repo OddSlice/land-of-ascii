@@ -1,31 +1,34 @@
-// v2's simulation came from v1 and must still behave exactly like it, apart from the deliberate
-// fixes in tools/lib/v2-fixes.mjs: v1 (reference/v1-index.html, with those fixes applied as it is
-// served) and v2 (index.html) are driven side by side and must agree exactly.
-//   1. World: for several seeds, a checksum of every world array and object (heights, materials,
-//      water, roads, trees, structures and their voxels, lights, clouds, birds, merchants).
-//   2. Simulation: one scripted session of held keys and mouse turns, stepped through
-//      TV.update(1/60) and TV.updateMerchants(1/60); the player, camera, merchants and clock must
-//      be bit-identical after every step.
-//   3. Walks: from outside every castle gate and every tower door, walk in; both must end inside
-//      the footprint, on the same path.
-//   4. No NaN: no height in any of v2's worlds is NaN (the first fix).
+// v2's world is its own since phase 2; its movement code is still v1's (tools/check-verbatim.mjs).
+//   1. Worlds: for several seeds, generating a world twice gives the same checksum of every world
+//      array and object (heights, materials, regions, climate, water, roads, trees, structures and
+//      their voxels, lights, clouds, birds, merchants), and it matches the checksum recorded in
+//      tools/world-hashes.json. After a deliberate change to world generation, re-record with
+//      --record. No height is NaN or out of reach, no land lies below the sea, and every region
+//      is present.
+//   2. Movement: v1 (reference/v1-index.html, with the fixes in tools/lib/v2-fixes.mjs applied as
+//      it is served) is loaded with v2's world, and both are driven through one scripted session of
+//      held keys and mouse turns, stepped through TV.update(1/60) and TV.updateMerchants(1/60): the
+//      player, camera, merchants and clock must be bit-identical after every step. Along the way
+//      the player never falls through the ground and never gets stuck.
+//   3. Walks: from outside every castle gate and every tower door, walk in; both must end inside the
+//      footprint, on the same path.
 // Page time is frozen in both, so the render loop never runs between the steps we take.
-//   node tools/test-sim.mjs
+//   node tools/test-sim.mjs [--record]
 import fs from 'node:fs';
 import path from 'node:path';
-import { startServer, launch, ROOT } from './lib/harness.mjs';
+import { startServer, launch, ROOT, TIME_CONTROL } from './lib/harness.mjs';
 import { applyFixes } from './lib/v2-fixes.mjs';
 
+const record = process.argv.includes('--record');
 const SEEDS = [42, 7, 1234, 99991, 31337];
+const HASH_FILE = path.join(ROOT, 'tools/world-hashes.json');
 const { server, port } = await startServer();
 const { browser, page: p1 } = await launch();
 const v1Fixed = applyFixes(fs.readFileSync(path.join(ROOT, 'reference/v1-index.html'), 'utf8'));
 await p1.route('**/reference/v1-index.html*', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: v1Fixed }));
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-const { TIME_CONTROL } = await import('./lib/harness.mjs');
 await p2.addInitScript(TIME_CONTROL);
 p2.on('pageerror', e => console.error('[v2 pageerror]', e.message));
-const pages = [['v1', p1, 'reference/v1-index.html'], ['v2', p2, 'index.html']];
 let failures = 0;
 const fail = msg => { failures++; console.log('  FAIL ' + msg); };
 
@@ -48,17 +51,28 @@ const WORLD_HASH = () => {
     for (const k of Object.keys(v).sort()) { str(k); any(v[k]); }
   };
   const parts = {};
-  for (const k of ['H', 'mat', 'water', 'road', 'treeMask', 'tex', 'nx', 'ny', 'nz']) { h = 2166136261 >>> 0; bytes(w[k]); parts[k] = h; }
+  for (const k of ['H', 'mat', 'biome', 'heat', 'damp', 'water', 'road', 'treeMask', 'tex', 'nx', 'ny', 'nz']) { h = 2166136261 >>> 0; bytes(w[k]); parts[k] = h; }
   for (const k of ['seaLevel', 'rockLine', 'snowLine', 'rivers', 'roads', 'trees', 'birds', 'clouds', 'wind', 'lights']) { h = 2166136261 >>> 0; any(w[k]); parts[k] = h; }
   h = 2166136261 >>> 0; for (const s of w.structs) { const { tpl, ...rest } = s; any(rest); any(tpl.vox); any(tpl.topSolid); any(tpl.spans); num(tpl.sx); num(tpl.sy); num(tpl.sz); } parts.structs = h;
   h = 2166136261 >>> 0; for (const m of w.merchants) { any({ name: m.name, greeting: m.greeting, goods: m.goods, robe: m.robe, cells: m.cells, cum: m.cum, total: m.total, s: m.s, dir: m.dir, x: m.x, y: m.y, z: m.z }); } parts.merchants = h;
   return parts;
 };
-const STATE = () => {
-  const TV = window.TV, c = TV.cam, p = TV.player;
-  const out = [c.x, c.y, c.z, c.yaw, c.pitch, p.feetY, p.vy, p.grounded ? 1 : 0, p.mode === 'walk' ? 1 : 0, TV.clock.hours];
-  for (const m of TV.world.merchants) out.push(m.x, m.y, m.z, m.s, m.dir, m.walked, m.seg);
-  out.push(TV.ui.nearest ? TV.world.merchants.indexOf(TV.ui.nearest) : -1);
+// Sanity of one world: heights, water, regions.
+const WORLD_CHECK = () => {
+  const TV = window.TV, w = TV.world, D = TV.defs, N = w.H.length, out = { nan: 0, above: 0, drowned: 0, top: -Infinity, regions: {} };
+  const counts = new Array(D.BIOME_NAMES.length).fill(0);
+  for (let i = 0; i < N; i++) {
+    const h = w.H[i];
+    if (!(h === h) || !Number.isFinite(h)) { out.nan++; continue; }
+    if (h > out.top) out.top = h;
+    if (h > 280) out.above++;                                   // out of reach: above the fly camera's ceiling (HEIGHT_SCALE × 2)
+    if (h < w.seaLevel) out.drowned++;                          // nothing lies below the sea: the sea fills it
+    counts[w.biome[i]]++;
+  }
+  for (let i = 0; i < w.trees.n; i++) if (!(w.trees.y[i] === w.trees.y[i])) out.nan++;
+  let land = 0;
+  for (let b = 1; b < counts.length; b++) land += counts[b];
+  D.BIOME_NAMES.forEach((n, b) => { if (b) out.regions[n] = +(100 * counts[b] / land).toFixed(1); });
   return out;
 };
 
@@ -69,32 +83,78 @@ async function load(page, url, seed) {
 
 // ---- 1. worlds ----
 console.log('1. worlds');
+const recorded = fs.existsSync(HASH_FILE) ? JSON.parse(fs.readFileSync(HASH_FILE, 'utf8')) : { seeds: {} };
+await load(p2, 'index.html', SEEDS[0]);
 for (const seed of SEEDS) {
-  const res = [];
-  for (const [, page, url] of pages) { await load(page, url, seed); res.push(await page.evaluate(WORLD_HASH)); }
-  const bad = Object.keys(res[0]).filter(k => res[0][k] !== res[1][k]);
-  const nan = await p2.evaluate(() => { const H = window.TV.world.H, T = window.TV.world.trees; let n = 0; for (let i = 0; i < H.length; i++) if (H[i] !== H[i]) n++; for (let i = 0; i < T.n; i++) if (T.y[i] !== T.y[i]) n++; return n; });
-  if (bad.length) fail(`seed ${seed}: differs in ${bad.join(', ')}`);
-  else if (nan) fail(`seed ${seed}: ${nan} NaN heights in v2`);
-  else console.log(`  seed ${seed}: identical (${Object.keys(res[0]).length} parts), no NaN heights`);
+  const t0 = Date.now();
+  await p2.evaluate(s => window.TV.regenerate(s), seed);
+  const ms = Date.now() - t0;
+  const h1 = await p2.evaluate(WORLD_HASH);
+  const check = await p2.evaluate(WORLD_CHECK);
+  await p2.evaluate(s => window.TV.regenerate(s + 1), seed);   // something else in between
+  await p2.evaluate(s => window.TV.regenerate(s), seed);
+  const h2 = await p2.evaluate(WORLD_HASH);
+  const unstable = Object.keys(h1).filter(k => h1[k] !== h2[k]);
+  const rec = recorded.seeds[seed];
+  const changed = rec ? Object.keys(h1).filter(k => h1[k] !== rec[k]) : [];
+  const missing = Object.entries(check.regions).filter(([, v]) => !(v > 0)).map(([n]) => n);
+  if (unstable.length) fail(`seed ${seed}: generating twice differs in ${unstable.join(', ')}`);
+  else if (!rec && !record) fail(`seed ${seed}: no recorded hashes (run with --record)`);
+  else if (changed.length && !record) fail(`seed ${seed}: differs from the recorded world in ${changed.join(', ')} (if deliberate, run with --record)`);
+  else if (check.nan) fail(`seed ${seed}: ${check.nan} NaN heights`);
+  else if (check.above || check.drowned) fail(`seed ${seed}: ${check.above} heights out of reach, ${check.drowned} below the sea`);
+  else if (missing.length) fail(`seed ${seed}: no ${missing.join(', ')}`);
+  else console.log(`  seed ${seed}: deterministic${rec && !changed.length ? ', as recorded' : ''} (${Object.keys(h1).length} parts), ${ms} ms, highest ${check.top.toFixed(1)}; ` +
+    Object.entries(check.regions).map(([n, v]) => `${n} ${v}%`).join(', '));
+  if (record) recorded.seeds[seed] = h1;
+}
+if (record) {
+  recorded.note = 'Checksums of each seed\'s world, part by part (tools/test-sim.mjs). Re-record with node tools/test-sim.mjs --record after a deliberate change to world generation. Recorded in Chromium.';
+  fs.writeFileSync(HASH_FILE, JSON.stringify(recorded, null, 1) + '\n');
+  console.log('  recorded tools/world-hashes.json');
 }
 
+// v2's world, in a form v1's page can take: the heights, tree trunks, landmarks and merchants its
+// movement and merchant code read.
+const WORLD_FOR_V1 = () => {
+  const w = window.TV.world;
+  return {
+    H: Array.from(w.H), treeMask: Array.from(w.treeMask),
+    structs: w.structs.map(s => ({ type: s.type, variant: s.variant, cx: s.cx, cz: s.cz, half: s.half, baseY: s.baseY, x0: s.x0, z0: s.z0, radius: s.radius, anchor: s.anchor,
+      tpl: { sx: s.tpl.sx, sy: s.tpl.sy, sz: s.tpl.sz, spans: s.tpl.spans, topSolid: Array.from(s.tpl.topSolid) } })),
+    merchants: w.merchants.map(m => ({ name: m.name, greeting: m.greeting, goods: m.goods, robe: m.robe, cells: m.cells, cum: Array.from(m.cum), total: m.total, s: m.s, dir: m.dir, walked: m.walked, x: m.x, y: m.y, z: m.z, seg: m.seg })),
+  };
+};
+const TAKE_WORLD = d => {
+  const w = window.TV.world;
+  w.H.set(d.H); w.treeMask.set(d.treeMask);
+  w.structs = d.structs.map(s => ({ ...s, tpl: { ...s.tpl, topSolid: Uint8Array.from(s.tpl.topSolid) } }));
+  w.merchants = d.merchants.map(m => ({ ...m, cum: Float32Array.from(m.cum) }));
+};
+const START = () => { const TV = window.TV, c = TV.cam, p = TV.player; return { cam: { x: c.x, y: c.y, z: c.z, yaw: c.yaw, pitch: c.pitch }, player: { mode: p.mode, feetY: p.feetY, vy: p.vy, grounded: p.grounded }, hours: TV.clock.hours }; };
+const SET_START = st => { const TV = window.TV; Object.assign(TV.cam, st.cam); Object.assign(TV.player, st.player); TV.clock.hours = st.hours; };
+
+// Both pages on seed 42, v1 carrying v2's world.
+await load(p1, 'reference/v1-index.html', 42);
+await load(p2, 'index.html', 42);
+await p1.evaluate(TAKE_WORLD, await p2.evaluate(WORLD_FOR_V1));
+
 // ---- 2. a scripted session ----
-console.log('2. scripted session, seed 42');
+console.log('2. scripted session on v2\'s world, seed 42: v1\'s movement code and v2\'s');
 const SCRIPT = [   // [seconds, keys held, yaw turn per second, extra action]
   [2.0, ['KeyW'], 0], [1.0, ['KeyW', 'ShiftLeft'], 0.8], [0.4, ['KeyW', 'Space'], 0], [1.5, ['KeyA'], -0.5],
   [2.0, ['KeyW'], 1.2], [0.8, ['KeyS', 'KeyD'], 0], [0.5, [], 0, 'fly'], [2.0, ['KeyW', 'Space'], 0.3],
   [1.0, ['KeyW', 'ShiftLeft'], 0], [0.5, [], 0, 'walk'], [3.0, [], 0], [4.0, ['KeyW'], -0.7], [2.0, ['KeyW', 'Space'], 0.2],
 ];
-for (const [, page, url] of pages) {
-  await load(page, url, 42);
-  await page.evaluate(() => { window.TV.clock.scale = 1; });
-}
-let steps = 0, firstDiff = null;
+const start = await p2.evaluate(START);
+for (const page of [p1, p2]) await page.evaluate(() => { window.TV.clock.scale = 1; });
+await p1.evaluate(SET_START, start);
+let steps = 0, firstDiff = null, fell = null;
+const stuck = [];
 for (const [secs, keys, turn, action] of SCRIPT) {
   const n = Math.round(secs * 60);
   const states = [];
-  for (const [, page] of pages) {
+  for (const page of [p1, p2]) {
     states.push(await page.evaluate(({ n, keys, turn, action }) => {
       const TV = window.TV, out = [];
       if (action) TV.setMode(action);
@@ -109,28 +169,40 @@ for (const [secs, keys, turn, action] of SCRIPT) {
       for (let i = 0; i < n; i++) {
         TV.cam.yaw += turn / 60;
         TV.update(1 / 60); TV.updateMerchants(1 / 60); TV.updateNearest();
-        out.push(STATE());
+        const st = STATE();
+        // how far the feet are below the ground under them (walking only; > 0 would be falling through)
+        st.push(TV.player.mode === 'walk' ? TV.groundAt(TV.cam.x, TV.cam.z, TV.player.feetY) - TV.player.feetY : 0);
+        out.push(st);
       }
       return out;
     }, { n, keys, turn, action }));
   }
   for (let i = 0; i < n; i++) {
-    const a = states[0][i], b = states[1][i];
+    const a = states[0][i].slice(0, -1), b = states[1][i].slice(0, -1);
     const j = a.findIndex((v, k) => !Object.is(v, b[k]));
     if (j >= 0 && !firstDiff) firstDiff = { step: steps + i, field: j, v1: a[j], v2: b[j] };
+    const below = states[1][i][states[1][i].length - 1];
+    if (!(below <= 1e-6) && !fell) fell = { step: steps + i, below };
   }
+  // a walking segment of a second or more with movement keys held must get somewhere
+  const moving = keys.some(k => ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(k));
+  const first = states[1][0], last = states[1][n - 1];
+  if (moving && secs >= 1 && last[8] === 1 && Math.hypot(last[0] - first[0], last[2] - first[2]) < 0.1) stuck.push(`${secs} s of ${keys.join('+')} at step ${steps}`);
   steps += n;
 }
 if (firstDiff) fail(`session diverges at step ${firstDiff.step}, field ${firstDiff.field}: v1 ${firstDiff.v1} v2 ${firstDiff.v2}`);
 else console.log(`  ${steps} steps (${(steps / 60).toFixed(1)} s of play): player, camera, merchants and clock bit-identical`);
+if (fell) fail(`the player's feet went ${fell.below.toFixed(3)} below the ground at step ${fell.step}`);
+else console.log('  never below the ground');
+if (stuck.length) fail('stuck: ' + stuck.join('; '));
+else console.log('  never stuck');
 
 // ---- 3. walks through every gate and door ----
 console.log('3. gate and door walks, seed 42');
-const walks = await p1.evaluate(() => window.TV.world.structs.map((s, i) => ({ i, type: s.type, cx: s.cx, cz: s.cz, half: s.half, z0: s.z0, sz: s.tpl.sz })).filter(s => s.type === 'castle' || s.type === 'tower'));
+const walks = await p2.evaluate(() => window.TV.world.structs.map((s, i) => ({ i, type: s.type, cx: s.cx, cz: s.cz, half: s.half, z0: s.z0, sz: s.tpl.sz })).filter(s => s.type === 'castle' || s.type === 'tower'));
 for (const s of walks) {
   const res = [];
-  for (const [, page, url] of pages) {
-    await load(page, url, 42);
+  for (const page of [p1, p2]) {
     res.push(await page.evaluate(s => {
       const TV = window.TV, W = 512;
       TV.clock.scale = 0; TV.setMode('walk');

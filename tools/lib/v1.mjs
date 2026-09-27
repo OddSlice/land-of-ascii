@@ -14,11 +14,12 @@ export const MAC_METRICS = `(() => {
 export const HIDE_OVERLAYS = '#hud,#help,#hint,#prompt,#panel{display:none!important}';
 
 // Put the world into a scene's state and draw exactly one frame at page time tMs.
-// scene: { seed, hour, cam: {x,y,z,yaw,pitch}, merchants: [{i, s}] , t }
+// scene: { seed, hour, cam: {x,y,z,yaw,pitch}, merchants: [{i, s}] , t, view }
 export async function showScene(page, scene) {
   await page.evaluate(sc => {
     const TV = window.TV;
     if (TV.world.seed !== sc.seed) TV.regenerate(sc.seed);
+    TV.view.dist = sc.view || 500;
     TV.clock.scale = 0;
     TV.setMode('fly');
     Object.assign(TV.cam, sc.cam);

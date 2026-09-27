@@ -1,6 +1,9 @@
-// v2's simulation is v1's as written, plus the deliberate fixes in tools/lib/v2-fixes.mjs: these
-// sections of reference/v1-index.html, with those fixes applied, must appear in index.html byte
-// for byte. (tools/test-sim.mjs shows they also behave the same.)
+// Where v2's simulation is still v1's as written, plus the deliberate fixes in tools/lib/v2-fixes.mjs:
+// these sections of reference/v1-index.html, with those fixes applied, must appear in index.html
+// byte for byte. (tools/test-sim.mjs shows the movement code also behaves the same.)
+// Retired in phase 2, because the world is now v2's own: the materials, the world state and
+// generateWorld (v1 118-119, 261-360: regions, terrain shaping, coasts and marsh pools) and tree
+// placement (v1 911-958: forests by region).
 //   node tools/check-verbatim.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -11,8 +14,12 @@ const v1 = applyFixes(fs.readFileSync(path.join(ROOT, 'reference/v1-index.html')
 const v2 = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 const SECTIONS = [   // [first line, last line, what]
   [89, 113, 'world and movement constants'],
-  [118, 119, 'materials'],
-  [202, 1126, 'helpers, noise, terrain, rivers, structures, roads, trees, birds, lights, clouds, merchants, sky and lighting'],
+  [202, 260, 'helpers and noise'],
+  [361, 453, 'rivers'],
+  [454, 775, 'structures'],
+  [776, 905, 'roads'],
+  [906, 910, 'tree constants'],
+  [959, 1126, 'birds, lights, clouds, merchants, sky and lighting'],
   [1223, 1306, 'camera and input (up to the cell-size key)'],
   [1311, 1321, 'view distance, resize'],
   [1322, 1487, 'movement: walking, collision, flying'],

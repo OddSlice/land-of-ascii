@@ -112,9 +112,15 @@ const SUBSTEP = 0.3;            // longest horizontal move checked in one go: th
 const DAY_SECONDS = 240;                  // one full in-game day in real seconds
 const START_HOUR = 9;
 
-const MAT = { WATER: 0, GRASS: 1, ROCK: 2, SNOW: 3, HAZE: 4, STONE: 5, WOOD: 6, LEAF: 7, ROAD: 8, GRASS2: 9 };
-const MAT_COUNT = 10;
+const MAT = { WATER: 0, GRASS: 1, ROCK: 2, SNOW: 3, HAZE: 4, STONE: 5, WOOD: 6, LEAF: 7, ROAD: 8, GRASS2: 9, SAND: 10, REDROCK: 11, DRYGRASS: 12, MUD: 13, REEDS: 14 };
+const MAT_COUNT = 15;
 const ROBE_COUNT = 4;
+
+// Regions. Every cell of land belongs to one, picked from its climate and height; where two meet
+// they interleave over a short band rather than along a line.
+const BIOME = { SEA: 0, GRASSLAND: 1, FOREST: 2, PINES: 3, PEAKS: 4, BADLANDS: 5, MARSH: 6, BEACH: 7, CLIFFS: 8 };
+const BIOME_NAMES = ['sea', 'grassland', 'forest', 'pine forest', 'snowy peaks', 'badlands', 'marsh', 'beach', 'sea cliffs'];
+const BIOME_COUNT = BIOME_NAMES.length;
 
 
 // The screen is a grid of text cells, and every cell is one glyph in two colours. Rays are cast on
@@ -126,7 +132,7 @@ const NEAR_SMOOTH = 26;                   // nearer than this, terrain is sample
 // What a ray hit, recorded per ray and read by the cell stage.
 const K = { SKY: 0, TERRAIN: 1, WALL: 2, TOP: 3, UNDER: 4, TREE: 5, CONIFER: 6, BUSH: 7, TRUNK: 8, BOULDER: 9, MERCHANT: 10, CLOUD: 12, FLAME: 13, LOGS: 14, SUN: 16, MOON: 17, NONE: 255 };
 const PART = { STAFF: 1, LANTERN: 2, BOOT: 3, LEG: 4, BELT: 5, ROBE: 6, HAND: 8, SLEEVE: 9, SKIN: 10, EYE: 11, BRIM: 12, CROWN: 13, PACK: 14 };
-const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8;   // per-ray flags
+const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8, F_FACE = 16;   // per-ray flags (F_FACE: on a banded face of rock)
 
 // =====================================================================
 //  PALETTES  (the art stays, the palette follows the sun)
@@ -134,7 +140,7 @@ const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8;   // per-ray flag
 // Three keyframes, blended by the clock. Each carries the lighting constants the world is shaded
 // with and the hand-built colour ramps everything is drawn in. Every ramp runs dark to light and
 // is hue-shifted: shadows lean cool and lights lean warm. A ramp has the same length in all three.
-const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack'];
+const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack', 'sand', 'redrock', 'drygrass', 'mud', 'reeds'];
 const R = {};
 RAMP_NAMES.forEach((n, i) => { R[n] = i; });
 const KEYFRAMES = {
@@ -164,6 +170,11 @@ const KEYFRAMES = {
       sun: ['#ffe7a6', '#fff6d4'], moon: ['#b9c2d0', '#e6eaf0'],
       ink: ['#11151e'], star: ['#dfe6f2', '#ffffff'],
       pack: ['#3a3530', '#6b6254', '#9c9078'],
+      sand: ['#4a4658', '#7d7470', '#ae9f85', '#d6c59b', '#f1e3b6'],
+      redrock: ['#34202f', '#5e2c31', '#8c4034', '#b8623d', '#dc8f55'],
+      drygrass: ['#383a2c', '#62603a', '#8f8647', '#bcae5e'],
+      mud: ['#241f26', '#3b3130', '#584736', '#76603f'],
+      reeds: ['#1c2c2e', '#2f4a42', '#4f6e52', '#7e9866'],
     },
   },
   dusk: {
@@ -192,6 +203,11 @@ const KEYFRAMES = {
       sun: ['#ff9a58', '#ffd9a0'], moon: ['#a8a4b8', '#d9dce6'],
       ink: ['#120f1a'], star: ['#b8b0d0', '#e8e0f4'],
       pack: ['#2a2228', '#4e4448', '#766662'],
+      sand: ['#28213a', '#4d3c4e', '#7c5c5c', '#b3806a', '#e3a87c'],
+      redrock: ['#1e1428', '#3c1e30', '#6a2e34', '#9e4a3c', '#d27250'],
+      drygrass: ['#221d2a', '#403630', '#6a5836', '#98803e'],
+      mud: ['#17121e', '#281d24', '#3d2c2a', '#584030'],
+      reeds: ['#161a28', '#262f34', '#3e4a40', '#62684c'],
     },
   },
   night: {
@@ -220,6 +236,11 @@ const KEYFRAMES = {
       sun: ['#ff9a58', '#ffb268'], moon: ['#b8c0cc', '#e2e7f0'],
       ink: ['#05070c'], star: ['#8e9cb8', '#e6ecf8'],
       pack: ['#0f0e12', '#1d1b20', '#2f2c30'],
+      sand: ['#080b13', '#111827', '#1d283a', '#2d3c50', '#435468'],
+      redrock: ['#08070d', '#120d16', '#1e1520', '#2e2029', '#422f36'],
+      drygrass: ['#070a0d', '#0f1416', '#1a211e', '#283026'],
+      mud: ['#040508', '#08090d', '#0e1114', '#15191b'],
+      reeds: ['#04090c', '#091316', '#0f1f21', '#182d2c'],
     },
   },
 };
@@ -334,6 +355,9 @@ const world = {
   shade: new Float32Array(N),  // lighting 0..1 per cell, refreshed as the sun moves
   nx: new Float32Array(N), ny: new Float32Array(N), nz: new Float32Array(N),
   water: new Uint8Array(N),
+  biome: new Uint8Array(N),    // region per cell (BIOME)
+  heat: new Float32Array(N),   // climate, as percentiles of the land: 0 coldest .. 1 hottest,
+  damp: new Float32Array(N),   //   and 0 driest .. 1 wettest
   seaLevel: 0, rockLine: 0, snowLine: 0,
   rivers: [],
   structs: [],                 // placed landmarks, each with its own local voxel grid
@@ -370,24 +394,33 @@ function generateWorld(seed) {
   const range = max - min || 1;
   for (let i = 0; i < N; i++) H[i] = Math.pow(Math.max(0, (H[i] - min) / range), 1.5) * HEIGHT_SCALE;
 
-  // 2. Sea level and material lines come from percentiles, so every seed has water, rock and snow.
+  // 2. Sea level comes from a percentile, so every seed has about a quarter of its map under water.
+  world.seaLevel = Float32Array.from(H).sort()[(N * 0.25) | 0];
+
+  // 3. Regions: the climate decides which region each cell belongs to, each region shapes its own
+  //    ground, and the shores get beaches and cliffs. The rock and snow lines follow the shaped land.
+  makeClimate(seed);
+  weighRegions();
+  shapeRegions(seed);
+  shapeCoast(seed);
+  pickRegions(seed);
   const sorted = Float32Array.from(H).sort();
-  world.seaLevel = sorted[(N * 0.25) | 0];
   world.rockLine = sorted[(N * 0.86) | 0];
   world.snowLine = sorted[(N * 0.965) | 0];
 
-  // 3. One-time hydraulic pass: carve rivers, then flood everything below sea level.
+  // 4. One-time hydraulic pass: carve rivers, flood everything below sea level, fill the marsh pools.
   world.water.fill(0);
   carveRivers(rng);
   for (let i = 0; i < N; i++) {
-    if (H[i] < world.seaLevel) { H[i] = world.seaLevel; world.water[i] = 1; }
+    if (H[i] < world.seaLevel) { H[i] = world.seaLevel; world.water[i] = 1; world.biome[i] = BIOME.SEA; }
   }
+  fillPools(seed);
 
-  // 4. Landmarks. Castles, towers and ruins level the ground under themselves, so this
+  // 5. Landmarks. Castles, towers and ruins level the ground under themselves, so this
   //    has to run before slopes are turned into materials and normals.
   placeStructures(rng);
 
-  // 5. Roads between the landmarks (may nudge road cells by a little), then trees, which
+  // 6. Roads between the landmarks (may nudge road cells by a little), then trees, which
   //    keep off roads and footprints, then birds.
   buildRoads(rng);
   placeTrees(seed);
@@ -396,8 +429,280 @@ function generateWorld(seed) {
   spawnMerchants(rng);
   placeLights(rng);
 
-  // 6. Materials and lighting normals.
-  const { mat, nx, ny, nz, water, rockLine, snowLine } = world;
+  // 7. Materials and lighting normals.
+  paintGround();
+}
+
+// =====================================================================
+//  REGIONS  (climate, each cell's region, and the ground each region shapes)
+// =====================================================================
+// Temperature and moisture are two broad noise fields, bent by a slow warp so that borders
+// meander, and turned into percentiles of the land so every seed gets the same share of each
+// climate. The heights are colder: temperature falls with altitude before its percentiles are taken.
+const CLIMATE_WARP = 24;       // how far the warp bends a border, in cells
+const LAPSE = 0.8;             // how much colder the highest ground is, in percentiles
+const REGION_BAND = 0.045;     // half-width of a border, in climate percentiles: about ten cells of ground
+const COLD_AT = 0.24, HOT_AT = 0.62, DAMP_AT = 0.46, BAD_DAMP = 0.6;   // see weighRegions
+const BAD_TOP = 40;            // badlands stay below this height above the sea; hot hills above it are dry grassland
+const MARSH_AT = 0.88;         // marsh: the wettest, lowest, flattest 12% of the land (less where it is cold)
+const PEAK_AT = 0.93;          // snowy peaks: the highest 7% of the land (lower down where it is cold)
+
+function climateNoise(x, z, s) {
+  const wx = (valueNoise(x / 64, z / 64, W / 64, s + 1) - 0.5) * 2 * CLIMATE_WARP;
+  const wz = (valueNoise(x / 64, z / 64, W / 64, s + 2) - 0.5) * 2 * CLIMATE_WARP;
+  const u = x + wx, v = z + wz;
+  return valueNoise(u / 128, v / 128, W / 128, s + 3) * 2 + valueNoise(u / 64, v / 64, W / 64, s + 4);
+}
+
+// Replace every value in A by the share of land cells whose value is lower (0..1).
+function toLandPercentiles(A) {
+  const { H, seaLevel } = world;
+  let n = 0;
+  for (let i = 0; i < N; i++) if (H[i] >= seaLevel) n++;
+  const s = new Float32Array(n);
+  for (let i = 0, k = 0; i < N; i++) if (H[i] >= seaLevel) s[k++] = A[i];
+  s.sort();
+  for (let i = 0; i < N; i++) {
+    const v = A[i];
+    let lo = 0, hi = n;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (s[mid] < v) lo = mid + 1; else hi = mid; }
+    A[i] = lo / n;
+  }
+}
+
+function makeClimate(seed) {
+  const { H, heat, damp, seaLevel } = world;
+  let top = seaLevel + 1;
+  for (let i = 0; i < N; i++) if (H[i] > top) top = H[i];
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+    heat[z * W + x] = climateNoise(x, z, seed + 1301);
+    damp[z * W + x] = climateNoise(x, z, seed + 2711);
+  }
+  toLandPercentiles(heat);
+  for (let i = 0; i < N; i++) heat[i] -= LAPSE * clamp((H[i] - seaLevel) / (top - seaLevel), 0, 1);
+  toLandPercentiles(heat);
+  toLandPercentiles(damp);
+}
+
+// How much of each region every cell is (0..1, summing to 1), from a small climate chart: cold
+// land is pine forest; mild land is forest where damp and grassland where dry; hot land is
+// badlands where dry and grassland where damp. The wettest, lowest, flattest land is marsh and the
+// highest ground snowy peaks. The coast is weighed later, once the shape of the sea is known.
+let regionW = null;   // N × BIOME_COUNT, reused from world to world
+const lowH = new Float32Array(N), blurTmp = new Float32Array(N), marshScore = new Float32Array(N);
+function weighRegions() {
+  if (!regionW) regionW = new Float32Array(N * BIOME_COUNT);
+  regionW.fill(0);
+  const { H, heat, damp, seaLevel } = world, B = REGION_BAND;
+  boxBlur(H, lowH, 12); boxBlur(lowH, lowH, 12);   // the lie of the land, without its bumps
+  for (let i = 0; i < N; i++) marshScore[i] = damp[i] - 0.4 * clamp((H[i] - seaLevel) / 30, 0, 1) - 0.3 * smoothstep(3, 10, Math.abs(H[i] - lowH[i]));
+  toLandPercentiles(marshScore);
+  let n = 0;
+  for (let i = 0; i < N; i++) if (H[i] >= seaLevel) n++;
+  const land = new Float32Array(n);
+  for (let i = 0, k = 0; i < N; i++) if (H[i] >= seaLevel) land[k++] = H[i];
+  land.sort();
+  const peakLine = land[(n * PEAK_AT) | 0];
+  for (let i = 0; i < N; i++) {
+    const o = i * BIOME_COUNT, h = H[i];
+    if (h < seaLevel) { regionW[o + BIOME.SEA] = 1; continue; }
+    const t = heat[i], m = damp[i];
+    const cold = 1 - smoothstep(COLD_AT - B, COLD_AT + B, t), hot = smoothstep(HOT_AT - B, HOT_AT + B, t), mild = 1 - cold - hot;
+    const wet = smoothstep(DAMP_AT - B, DAMP_AT + B, m), arid = (1 - smoothstep(BAD_DAMP - B, BAD_DAMP + B, m)) * (1 - smoothstep(BAD_TOP - 10, BAD_TOP + 10, h - seaLevel));
+    const marsh = smoothstep(MARSH_AT - B, MARSH_AT + B, marshScore[i]) * (1 - cold);
+    const peak = smoothstep(peakLine - 6, peakLine + 6, h + (0.5 - t) * 16);
+    const rest = (1 - marsh) * (1 - peak);
+    regionW[o + BIOME.PINES] = cold * rest;
+    regionW[o + BIOME.FOREST] = mild * wet * rest;
+    regionW[o + BIOME.GRASSLAND] = (mild * (1 - wet) + hot * (1 - arid)) * rest;
+    regionW[o + BIOME.BADLANDS] = hot * arid * rest;
+    regionW[o + BIOME.MARSH] = marsh * (1 - peak);
+    regionW[o + BIOME.PEAKS] = peak;
+  }
+}
+
+// Each region shapes its own ground, in proportion to how much of that region a cell is: grassland
+// is smoothed into broad plains, badlands are cut into terraces with mesas and dry washes, and
+// marsh is pressed flat at the lie of the land (never below the sea), with hummocks and hollows.
+const MESA_STEP = 7;           // height of one badlands terrace (a doorway is 5)
+const MESA_RISER = 0.14;       // the share of each step taken by its steep face
+const washMask = new Uint8Array(N);   // badlands cells in a dry wash (sand)
+
+// Box blur of radius r, wrapping, from src into dst (which may be src).
+function boxBlur(src, dst, r) {
+  const k = 1 / (2 * r + 1), T = blurTmp;
+  for (let z = 0; z < W; z++) {
+    const zr = z * W;
+    let s = 0;
+    for (let x = -r; x <= r; x++) s += src[zr + (x & MASK)];
+    for (let x = 0; x < W; x++) { T[zr + x] = s * k; s += src[zr + ((x + r + 1) & MASK)] - src[zr + ((x - r) & MASK)]; }
+  }
+  for (let x = 0; x < W; x++) {
+    let s = 0;
+    for (let z = -r; z <= r; z++) s += T[(z & MASK) * W + x];
+    for (let z = 0; z < W; z++) { dst[z * W + x] = s * k; s += T[((z + r + 1) & MASK) * W + x] - T[((z - r) & MASK) * W + x]; }
+  }
+}
+
+function marshHummock(x, z, seed) {   // 0 in the hollows (where the pools lie) .. 1 on the hummocks
+  return valueNoise(x / 16, z / 16, W / 16, seed + 4001) * 0.65 + valueNoise(x / 8, z / 8, W / 8, seed + 4002) * 0.35;
+}
+
+function shapeRegions(seed) {
+  const { H, seaLevel } = world;
+  washMask.fill(0);
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+    const i = z * W + x, o = i * BIOME_COUNT, h = H[i];
+    if (h < seaLevel) continue;
+    const wG = regionW[o + BIOME.GRASSLAND], wB = regionW[o + BIOME.BADLANDS], wM = regionW[o + BIOME.MARSH];
+    if (wG + wB + wM === 0) continue;
+    let out = h * (1 - wG - wB - wM);
+    if (wG > 0) out += wG * (h + (lowH[i] - h) * 0.45);
+    if (wB > 0) out += wB * badlandsHeight(x, z, i, h, wB, seed);
+    if (wM > 0) out += wM * (Math.max(lowH[i], seaLevel) + 0.7 + 1.6 * marshHummock(x, z, seed));
+    H[i] = out;
+  }
+}
+
+// Badlands: the floor flattened toward the lie of the land, mesas and buttes raised on it in whole
+// steps (only well inside the region, so none is cut off at a border), then everything snapped to
+// terraces with steep faces. Dry washes wind across the floor as shallow sandy channels.
+function badlandsHeight(x, z, i, h, w, seed) {
+  const sea = world.seaLevel;
+  const floor = h + (lowH[i] - h) * 0.75;
+  const inner = smoothstep(0.6, 0.95, w);
+  const u = valueNoise(x / 32, z / 32, W / 32, seed + 4101) * 0.6 + valueNoise(x / 16, z / 16, W / 16, seed + 4102) * 0.3 + valueNoise(x / 8, z / 8, W / 8, seed + 4103) * 0.1;
+  const lift = MESA_STEP * inner * (smoothstep(0.555, 0.565, u) + smoothstep(0.625, 0.635, u) + smoothstep(0.695, 0.705, u));
+  const up = Math.max(0, floor + lift - sea - 1), k = Math.floor(up / MESA_STEP), f = up / MESA_STEP - k;
+  let hb = sea + 1 + MESA_STEP * (k + smoothstep(1 - MESA_RISER, 1, f));
+  if (lift < 0.5) {
+    const d = Math.abs(valueNoise(x / 64, z / 64, W / 64, seed + 4104) * 0.7 + valueNoise(x / 32, z / 32, W / 32, seed + 4105) * 0.3 - 0.5);
+    if (d < 0.02) {
+      const wash = (1 - smoothstep(0.006, 0.02, d)) * inner;
+      hb -= 1.3 * wash;
+      if (wash > 0.5) washMask[i] = 1;
+    }
+  }
+  return hb;
+}
+
+// The coast: sandy beaches where the shore is low, cliffs where it is rugged (and here and there
+// where it is not). Only real bodies of water get a coast; a pond keeps the region around it, and a
+// marsh runs straight into the water.
+const BEACH_DEPTH = 7;                 // cells of sand from the water's edge
+const CLIFF_MIN = 9, CLIFF_MAX = 18;   // cliff heights above the sea
+const COAST_WATER = 2000;              // cells a body of water needs before it has a coast
+const seaDist = new Float32Array(N);
+
+// Cells below sea level that belong to a body of water of at least minCells cells.
+function bigWater(minCells) {
+  const { H, seaLevel } = world;
+  const label = new Int32Array(N).fill(-1), out = new Uint8Array(N), stack = new Int32Array(N), sizes = [];
+  for (let s = 0; s < N; s++) {
+    if (label[s] >= 0 || !(H[s] < seaLevel)) continue;
+    const id = sizes.length;
+    let sp = 0, size = 0;
+    stack[sp++] = s; label[s] = id;
+    while (sp) {
+      const c = stack[--sp], x = c & MASK, z = (c / W) | 0;
+      size++;
+      for (let d = 0; d < 8; d += 2) {
+        const n = ((z + DIRS[d][1]) & MASK) * W + ((x + DIRS[d][0]) & MASK);
+        if (label[n] < 0 && H[n] < seaLevel) { label[n] = id; stack[sp++] = n; }
+      }
+    }
+    sizes.push(size);
+  }
+  for (let i = 0; i < N; i++) if (label[i] >= 0 && sizes[label[i]] >= minCells) out[i] = 1;
+  return out;
+}
+
+// Distance in cells from the nearest marked cell (chamfer, wrapping), up to cap.
+function distanceField(mask, D, cap) {
+  const S = Math.SQRT2;
+  for (let i = 0; i < N; i++) D[i] = mask[i] ? 0 : cap;
+  for (let pass = 0; pass < 2; pass++) {   // twice, so distances carry across the wrap
+    for (let z = 0; z < W; z++) {
+      const zr = z * W, zm = ((z - 1) & MASK) * W;
+      for (let x = 0; x < W; x++) {
+        const xm = (x - 1) & MASK, xp = (x + 1) & MASK;
+        D[zr + x] = Math.min(D[zr + x], D[zr + xm] + 1, D[zm + x] + 1, D[zm + xm] + S, D[zm + xp] + S);
+      }
+    }
+    for (let z = W - 1; z >= 0; z--) {
+      const zr = z * W, zp = ((z + 1) & MASK) * W;
+      for (let x = W - 1; x >= 0; x--) {
+        const xm = (x - 1) & MASK, xp = (x + 1) & MASK;
+        D[zr + x] = Math.min(D[zr + x], D[zr + xp] + 1, D[zp + x] + 1, D[zp + xp] + S, D[zp + xm] + S);
+      }
+    }
+  }
+}
+
+function shapeCoast(seed) {
+  const { H, seaLevel } = world;
+  distanceField(bigWater(COAST_WATER), seaDist, 16);
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+    const i = z * W + x, d = seaDist[i];
+    if (d === 0 || d >= 12 || H[i] < seaLevel) continue;
+    const o = i * BIOME_COUNT, keep = 1 - regionW[o + BIOME.MARSH];
+    const score = valueNoise(x / 64, z / 64, W / 64, seed + 5001) * 0.65 + smoothstep(4, 16, lowH[i] - seaLevel) * 0.35;
+    const cliff = smoothstep(0.36, 0.42, score);
+    const wBeach = (1 - cliff) * (1 - smoothstep(BEACH_DEPTH - 2, BEACH_DEPTH + 4, d)) * keep;
+    const wCliff = cliff * (1 - smoothstep(4, 12, d)) * keep;
+    const wc = wBeach + wCliff;
+    if (wc <= 0) continue;
+    // a cliff rises sheer from a rocky foot one to three cells wide, its top ragged along the coast
+    const foot = 1 + 2 * valueNoise(x / 8, z / 8, W / 8, seed + 5003);
+    const top = seaLevel + CLIFF_MIN + (CLIFF_MAX - CLIFF_MIN) * valueNoise(x / 32, z / 32, W / 32, seed + 5002) + (valueNoise(x / 4, z / 4, W / 4, seed + 5004) - 0.5) * 4;
+    const hCliff = d < foot ? seaLevel + 0.6 + 0.4 * d : Math.max(H[i], top);
+    H[i] = H[i] * (1 - wc) + (seaLevel + 0.35 + 0.28 * d) * wBeach + hCliff * wCliff;
+    for (let k = 1; k < BIOME_COUNT; k++) regionW[o + k] *= 1 - wc;
+    regionW[o + BIOME.BEACH] = wBeach; regionW[o + BIOME.CLIFFS] = wCliff;
+  }
+}
+
+// Each cell's region, from its weights: a blotchy noise, spread evenly over 0..1, picks along the
+// running sum of the weights, so where two regions meet they interleave in patches across the
+// width of the border instead of meeting along a line.
+const regionPick = new Float32Array(N);
+function pickRegions(seed) {
+  const { H, seaLevel, biome } = world;
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++)
+    regionPick[z * W + x] = valueNoise(x / 8, z / 8, W / 8, seed + 6001) * 0.7 + valueNoise(x / 4, z / 4, W / 4, seed + 6002) * 0.3;
+  toLandPercentiles(regionPick);
+  for (let i = 0; i < N; i++) {
+    const o = i * BIOME_COUNT;
+    if (H[i] < seaLevel) { biome[i] = BIOME.SEA; continue; }
+    const r = regionPick[i];
+    let b = 0, acc = 0, best = 1;
+    for (let k = 1; k < BIOME_COUNT; k++) {
+      if (regionW[o + k] > regionW[o + best]) best = k;
+      acc += regionW[o + k];
+      if (!b && r < acc) b = k;
+    }
+    biome[i] = b || best;   // (a sum a hair under 1 leaves the very top to the strongest region)
+  }
+}
+
+// Marsh pools: the hollows between the hummocks, well inside a marsh, hold water a little below
+// the ground around them.
+const POOL_AT = 0.4;
+function fillPools(seed) {
+  const { H, water, biome, seaLevel } = world;
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {
+    const i = z * W + x;
+    if (biome[i] !== BIOME.MARSH || water[i] || regionW[i * BIOME_COUNT + BIOME.MARSH] < 0.8) continue;
+    if (marshHummock(x, z, seed) < POOL_AT) { H[i] = Math.max(lowH[i], seaLevel) + 0.55; water[i] = 1; }
+  }
+}
+
+// Materials and lighting normals. The region decides the ground: red rock, dry grass and sandy
+// washes in the badlands, reeds and mud in the marsh, sand on the beaches, bare rock on the peaks
+// and on sea cliffs from their foot to their edge. Everywhere, steep ground is bare rock and the
+// heights hold snow, lower down where the climate is cold; the peaks are snowy wherever snow can lie.
+function paintGround() {
+  const { H, mat, nx, ny, nz, water, biome, heat, damp, road, rockLine, snowLine } = world, seed = world.seed;
   for (let z = 0; z < W; z++) {
     const zm = ((z - 1) & MASK) * W, zp = ((z + 1) & MASK) * W, zr = z * W;
     for (let x = 0; x < W; x++) {
@@ -410,15 +715,23 @@ function generateWorld(seed) {
       const len = Math.sqrt(vx * vx + 1 + vz * vz);
       nx[i] = vx / len; ny[i] = 1 / len; nz[i] = vz / len;
 
-      const slope = Math.max(Math.abs(dhdx), Math.abs(dhdz));
-      const h = H[i];
-      if (world.road[i]) mat[i] = MAT.ROAD;              // includes fords: a road strip across water
+      const slope = Math.max(Math.abs(dhdx), Math.abs(dhdz)), h = H[i], b = biome[i];
+      const patch = fbm(x, z, seed + 777, 3);   // patches of rougher or drier ground
+      if (road[i]) mat[i] = MAT.ROAD;             // includes fords: a road strip across water
       else if (water[i]) mat[i] = MAT.WATER;
-      else if (h > snowLine && slope < 7) mat[i] = MAT.SNOW;
-      else if (slope > 4.5 || h > rockLine) mat[i] = MAT.ROCK;
-      else mat[i] = fbm(x, z, world.seed + 777, 3) > 0.56 ? MAT.GRASS2 : MAT.GRASS;   // patches of rougher grass
+      else if ((h > snowLine + (heat[i] - 0.5) * 20 || b === BIOME.PEAKS) && slope < (b === BIOME.PEAKS ? 2.5 : 4)) mat[i] = MAT.SNOW;   // the peaks are snowy wherever snow can lie; steep faces stay bare
+      else if (b === BIOME.BADLANDS) mat[i] = washMask[i] && slope < 1.6 ? MAT.SAND : patch > 0.62 && slope < 1.6 ? MAT.DRYGRASS : MAT.REDROCK;
+      else if (slope > 4.5 || (b === BIOME.PEAKS && h > rockLine) || (b === BIOME.CLIFFS && seaDist[i] < 5)) mat[i] = heat[i] > HOT_AT && (b === BIOME.BEACH || b === BIOME.CLIFFS) ? MAT.REDROCK : MAT.ROCK;
+      else if (b === BIOME.BEACH) mat[i] = MAT.SAND;
+      else if (b === BIOME.MARSH) {
+        const wet = water[zr + ((x + 1) & MASK)] || water[zr + ((x - 1) & MASK)] || water[zp + x] || water[zm + x];
+        mat[i] = wet || patch > 0.52 ? MAT.REEDS : patch > 0.38 ? MAT.MUD : MAT.GRASS2;
+      }
+      else if (b === BIOME.GRASSLAND && (damp[i] < 0.12 || patch < 0.3)) mat[i] = MAT.DRYGRASS;
+      else if (b === BIOME.PINES || b === BIOME.PEAKS) mat[i] = patch > 0.45 ? MAT.GRASS : MAT.GRASS2;
+      else mat[i] = patch + (0.5 - damp[i]) * 0.3 > 0.56 ? MAT.GRASS2 : MAT.GRASS;   // rougher grass where it is drier
       // Texture: a stable per-cell dither plus the odd surface mark, so fields are mottled, not slabs.
-      const tr = hash2(x, z, world.seed + 31);
+      const tr = hash2(x, z, seed + 31);
       world.tex[i] = tr < 0.12 ? 1 : tr < 0.24 ? 2 : tr < 0.40 ? 3 : 0;
     }
   }
@@ -975,14 +1288,27 @@ function buildRoads(rng) {
 const TREE_BUCKET = 32, TREE_BUCKETS = W / TREE_BUCKET;
 const SPRITE = { TREE: 0, CONIFER: 1, BUSH: 2, BOULDER: 3 };
 
-// Forests come from a broad density noise; inside them roughly one cell in twelve gets a tree,
-// elsewhere the odd lone one. Trees keep off water, snow, steep ground, roads and footprints.
+// Forests come from a broad density noise; how thickly they grow there, and whether with
+// broadleaf trees or pines, is up to the region. Trees keep off water, snow, steep ground, roads
+// and footprints. Per region: the density at which forest begins, the most trees per cell, the
+// odd lone tree anywhere, the share of pines, bushes, and how big the trees grow (old forest is
+// taller). Badlands and marsh get plants of their own in the land step; until then bushes stand
+// in for their shrubs.
+const REGION_TREES = [];
+REGION_TREES[BIOME.GRASSLAND] = [0.56, 0.07, 0.003, 0.2, 0.01, 1];
+REGION_TREES[BIOME.FOREST] = [0.28, 0.2, 0.02, 0.1, 0.016, 1.3];
+REGION_TREES[BIOME.PINES] = [0.3, 0.18, 0.02, 0.92, 0.006, 1.35];
+REGION_TREES[BIOME.PEAKS] = [1, 0, 0.01, 1, 0, 0.9];
+REGION_TREES[BIOME.BADLANDS] = [1, 0, 0, 0, 0.006, 1];
+REGION_TREES[BIOME.MARSH] = [1, 0, 0.004, 0, 0.02, 1];
+REGION_TREES[BIOME.BEACH] = [1, 0, 0, 0, 0.002, 1];
+REGION_TREES[BIOME.CLIFFS] = [0.6, 0.05, 0.003, 0.3, 0.008, 1];
 function placeTrees(seed) {
-  const { H, water, road, treeMask, snowLine, seaLevel } = world;
+  const { H, water, road, treeMask, snowLine, seaLevel, biome, heat } = world;
   treeMask.fill(0);
   const excl = new Uint8Array(N);
   for (const s of world.structs) {
-    const r = s.half + 2;
+    const r = s.half + (s.type === 'castle' ? 16 : s.type === 'tower' ? 6 : 2);   // castles stand in a clearing, so their gate can be seen coming
     for (let oz = -r; oz <= r; oz++) for (let ox = -r; ox <= r; ox++) excl[((s.cz + oz) & MASK) * W + ((s.cx + ox) & MASK)] = 1;
   }
   for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) if (road[z * W + x]) {
@@ -994,23 +1320,24 @@ function placeTrees(seed) {
     const zr = z * W, zm = ((z - 1) & MASK) * W, zp = ((z + 1) & MASK) * W;
     for (let x = 0; x < W; x++) {
       const i = zr + x;
-      if (excl[i] || water[i] || H[i] < seaLevel + 1.5 || H[i] > snowLine) continue;
+      const rule = REGION_TREES[biome[i]];
+      if (!rule || excl[i] || water[i] || H[i] < seaLevel + 1.5 || H[i] > snowLine + (heat[i] - 0.5) * 20) continue;
       const slope = Math.max(Math.abs(H[zr + ((x + 1) & MASK)] - H[zr + ((x - 1) & MASK)]), Math.abs(H[zp + x] - H[zm + x])) * 0.5;
-      const rocky = slope > 4.5 || H[i] > rockLine;
+      const rocky = slope > 4.5 || (biome[i] === BIOME.PEAKS && H[i] > rockLine);
       const r = hash2(x, z, seed + 99);
       if (rocky) {                                              // boulders on rock
         if (slope <= 6 && r < 0.012) { xs.push(x + 0.5); zs.push(z + 0.5); ys.push(H[i]); sizes.push(0.5 + hash2(x, z, seed + 7) * 0.6); kinds.push(SPRITE.BOULDER); }
         continue;
       }
-      if (slope > 3) continue;
+      if (slope > 3.5) continue;
       const dens = fbm(x, z, seed + 4242, 3);
-      const p = clamp((dens - 0.48) * 0.6, 0, 0.13) + 0.003;
+      const p = clamp((dens - rule[0]) * 0.8, 0, rule[1]) + rule[2];
       if (r < p) {
         if (treeMask[zr + ((x - 1) & MASK)] || treeMask[zm + x] || treeMask[zm + ((x - 1) & MASK)] || treeMask[zm + ((x + 1) & MASK)]) continue;   // keep a cell between trunks
         treeMask[i] = 1;
-        const conifer = H[i] > rockLine * 0.75 || hash2(x, z, seed + 13) < 0.25;
-        xs.push(x + 0.5); zs.push(z + 0.5); ys.push(H[i]); sizes.push(0.8 + hash2(x, z, seed + 7) * 0.5); kinds.push(conifer ? SPRITE.CONIFER : SPRITE.TREE);
-      } else if (r < p + 0.008 && dens > 0.35) {                // bushes between the trees
+        const conifer = H[i] > rockLine * 0.75 || hash2(x, z, seed + 13) < rule[3];
+        xs.push(x + 0.5); zs.push(z + 0.5); ys.push(H[i]); sizes.push((0.8 + hash2(x, z, seed + 7) * 0.5) * rule[5]); kinds.push(conifer ? SPRITE.CONIFER : SPRITE.TREE);
+      } else if (r < p + rule[4]) {                             // bushes between the trees
         xs.push(x + 0.5); zs.push(z + 0.5); ys.push(H[i]); sizes.push(0.35 + hash2(x, z, seed + 7) * 0.25); kinds.push(SPRITE.BUSH);
       }
     }
@@ -1491,7 +1818,13 @@ function compose() {
 //      meet, the shape that best fits how the rays split; inside one thing, that material's own
 //      marks, or a narrow ░▒▓ band on a seam between two tones, fog layers or lit ground.
 //   3. Compose. The glyph masks are painted into one ImageData.
-const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2]);
+const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2, R.sand, R.redrock, R.drygrass, R.mud, R.reeds]);
+// Rock strata: where a face of rock stands across several rows, its rows fall into bands by height,
+// each a step of tone from the next, with crisp edges between them (the band is part of the
+// segment). Red rock is banded strongly, grey rock gently.
+const STRATA_INV = 1 / 1.4, STRATA_POS = [0, -0.2, 0.1, -0.12];
+const STRATA_K = new Float32Array(Object.keys(MAT).length);
+STRATA_K[MAT.REDROCK] = 1; STRATA_K[MAT.ROCK] = 0.35;
 const RAMP_LEN = Uint8Array.from(RAMP_NAMES, n => KEYFRAMES.day.ramps[n].length);
 const TERRAIN_SEG = K.TERRAIN << 24;
 let sunScreen = null, moonScreen = null;
@@ -1677,18 +2010,19 @@ function marchRays(t) {
       // near end is usually the far end of the step before)
       const sh1 = smoothShade(px, pz), sh0 = lastShZ === lo ? lastSh : smoothShade(camX + dx * lo, camZ + dz * lo), kSh = z > lo ? (sh1 - sh0) / (z - lo) : 0;
       const w1 = warm ? warmAt(px, h, pz) : 0, w0 = warm ? warmAt(camX + dx * lo, h, camZ + dz * lo) : 0, kW = z > lo ? (w1 - w0) / (z - lo) : 0;
-      let lastCi = -1, m = 0, kR = 0, kS = 0;
+      let lastCi = -1, m = 0, kR = 0, kS = 0, kSt = 0;
       for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
         if (kind[i] !== NONE) continue;
-        let tt = hgt * rayInvS[r];
-        if (!(tt <= z)) tt = z; else if (tt < lo) tt = lo;
+        let tt = hgt * rayInvS[r], face = false;   // (a row that never meets the plane is on the step's face)
+        if (!(tt <= z)) { tt = z; face = true; } else if (tt < lo) tt = lo;
         const wx = camX + dx * tt, wz = camZ + dz * tt;
         const ci = (Math.floor(wz) & MASK) * W + (Math.floor(wx) & MASK);
-        if (ci !== lastCi) { lastCi = ci; m = mat[ci]; kR = MAT_RAMP[m]; kS = TERRAIN_SEG | m; }
-        let fl = 0, sh = sh0 + (tt - lo) * kSh;
+        if (ci !== lastCi) { lastCi = ci; m = mat[ci]; kR = MAT_RAMP[m]; kS = TERRAIN_SEG | m; kSt = STRATA_K[m]; }
+        let fl = 0, sh = sh0 + (tt - lo) * kSh, sg = kS;
         if (m === MAT.WATER) { sh += 0.12; fl = F_WATER; if (Math.sin(wx * 0.31 + t * 1.7) + Math.sin(wz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE; }
-        const pp = (sh - posLo) * posInv;
-        kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = !(pp > 0) ? 0 : pp > 1 ? 1 : pp; depth[i] = tt;
+        let pp = (sh - posLo) * posInv;
+        if (face && kSt) { const band = Math.floor((camY + rayQ[r] * z) * STRATA_INV) & 3; pp += STRATA_POS[band] * kSt; sg |= band << 8; fl |= F_FACE; }
+        kind[i] = K.TERRAIN; seg[i] = sg; ramp[i] = kR; pos[i] = !(pp > 0) ? 0 : pp > 1 ? 1 : pp; depth[i] = tt;
         lit[i] = w0 + (tt - lo) * kW; flags[i] = fl; left--;
       }
       lastShZ = z; lastSh = sh1;
@@ -1701,8 +2035,15 @@ function marchRays(t) {
       sh += 0.12; fl = F_WATER;                       // water reflects the sky: a touch brighter than land
       if (z < vd * 0.6 && Math.sin(px * 0.31 + t * 1.7) + Math.sin(pz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE;
     }
-    const kS = TERRAIN_SEG | m, kR = MAT_RAMP[m], kP = posOf(sh), kL = warm ? warmAt(px, h, pz) : 0, end = col * RH + ybuf;
-    if (!gaps) {
+    const kS = TERRAIN_SEG | m, kR = MAT_RAMP[m], kP = posOf(sh), kL = warm ? warmAt(px, h, pz) : 0, end = col * RH + ybuf, kSt = STRATA_K[m];
+    if (kSt && ybuf - row > 2) {   // a face of rock: banded by height, lit from the light averaged over 4×4 cells so its columns agree
+      const kF = posOf(mipShade(px, pz, 2));
+      for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
+        if (kind[i] !== NONE) continue;
+        const band = Math.floor((camY + rayQ[r] * z) * STRATA_INV) & 3, p = kF + STRATA_POS[band] * kSt;
+        kind[i] = K.TERRAIN; seg[i] = kS | (band << 8); ramp[i] = kR; pos[i] = p < 0 ? 0 : p > 1 ? 1 : p; depth[i] = z; lit[i] = kL; flags[i] = fl | F_FACE; left--;
+      }
+    } else if (!gaps) {
       for (let i = col * RH + row; i < end; i++) { kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = kP; depth[i] = z; lit[i] = kL; flags[i] = fl; }
       left -= ybuf - row;
     } else {
@@ -2474,6 +2815,12 @@ MARK_SET[MAT.ROAD] = [0.45, ['grit', 'pebbles', 'pebble', 'grit']];
 MARK_SET[MAT.ROCK] = [0.5, ['pebbles', 'crag', 'pebble', 'crag']];
 MARK_SET[MAT.SNOW] = [0.4, ['dot', 'flake', 'dot']];
 MARK_SET[MAT.WATER] = [0.2, ['wave', 'ripple', 'wave', 'waves']];
+// The newer grounds borrow from the vocabulary above until they get marks of their own.
+MARK_SET[MAT.SAND] = [0.35, ['ripple', 'wave', 'ripple', 'dot']];
+MARK_SET[MAT.REDROCK] = [0.45, ['crag', 'pebbles', 'grit', 'crag']];
+MARK_SET[MAT.DRYGRASS] = [0.5, ['tick', 'pair', 'three', 'tick']];
+MARK_SET[MAT.MUD] = [0.3, ['dot', 'pebble', 'grit']];
+MARK_SET[MAT.REEDS] = [0.6, ['tufts', 'three', 'pair', 'tufts']];
 const MARK_IDS = MARK_SET.map(s => s && s[1].map(n => MK[n]));
 function splatGroundMarks(t) {
   const { cols, rows, cellW, cellH, RW, RH, rayW, rayH } = grid;
@@ -2689,7 +3036,7 @@ function shadeCells(t) {
     if (tn > nL - 1) tn = nL - 1;
     const frac = X - tn, bg = Lc[tn], kd = pKind[ci], rp = pRampId[ci], P = pP[ci], im = pMid[ci];
     let level = 0, seamFg = 0;
-    if (kd < K.TREE) for (let q = 0; q < 4; q++) {
+    if (kd < K.TREE && !(flags[im] & F_FACE)) for (let q = 0; q < 4; q++) {
       const nb = q === 0 ? (c > cm0 ? ci - 1 : -1) : q === 1 ? (c < cm1 - 1 ? ci + 1 : -1) : q === 2 ? (r > 0 ? ci - cols : -1) : (r < rows - 1 ? ci + cols : -1);
       if (nb < 0) continue;
       const ln = pList[nb];
@@ -3366,7 +3713,7 @@ function setupGrid() {
 }
 
 function workerSource() {
-  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, RAMP_NAMES, R };
+  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, RAMP_NAMES, R };
   return [
     "'use strict';",
     ...Object.entries(consts).map(([k, v]) => `const ${k} = ${JSON.stringify(v)};`),
@@ -3562,6 +3909,7 @@ window.TV = {
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
   renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0
+  defs: { KEYFRAMES, RAMP_NAMES, MAT, BIOME, BIOME_NAMES },   // for the tools that draw maps and palette sheets
 };
 })();
 </script>

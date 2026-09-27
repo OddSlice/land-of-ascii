@@ -18,21 +18,22 @@ const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/scenes.json'), 'ut
 let scenes;
 if (camArg) {
   const [x, y, z, yaw, pitch] = camArg.split(',').map(Number);
-  scenes = [{ name: path.basename(outArg || 'custom.png', '.png'), hour, t: tArg, cam: { x, y, z, yaw, pitch, ground }, out: outArg }];
+  scenes = [{ name: path.basename(outArg || 'custom.png', '.png'), seed, hour, t: tArg, cam: { x, y, z, yaw, pitch, ground }, out: outArg }];
 } else scenes = cfg.scenes.filter(s => !args.length || args.includes(s.name));
 
 const { server, port } = await startServer();
 const { browser, page } = await launch({ browser: browserName, dpr });
-await page.goto(`http://127.0.0.1:${port}/index.html?seed=${camArg ? seed : cfg.seed}${threads != null ? '&threads=' + threads : ''}`);
+await page.goto(`http://127.0.0.1:${port}/index.html?seed=${scenes[0]?.seed ?? cfg.seed}${threads != null ? '&threads=' + threads : ''}`);
 await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
 if (!keepHud) await page.addStyleTag({ content: HIDE_OVERLAYS });
 if (cells != null) await page.evaluate(p => window.TV.setCells(p), +cells);
 fs.mkdirSync(path.resolve(ROOT, dir), { recursive: true });
 for (const sc of scenes) {
-  const c = sc.cam;
+  const c = sc.cam, scSeed = sc.seed ?? cfg.seed;
+  if (await page.evaluate(s => window.TV.world.seed !== s, scSeed)) await page.evaluate(s => window.TV.regenerate(s), scSeed);
   const camv = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
   if (c.ground) camv.y = await page.evaluate(k => window.TV.groundAt(k.x, k.z, 1e9) + 1.55 + k.y, camv);
-  await showScene(page, { seed: camArg ? seed : cfg.seed, hour: sc.hour, t: sc.t, cam: camv, merchants: sc.merchants });
+  await showScene(page, { seed: scSeed, hour: sc.hour, t: sc.t, cam: camv, merchants: sc.merchants, view: sc.view });
   const out = path.resolve(ROOT, sc.out || path.join(dir, `${sc.name}${browserName === 'chromium' ? '' : '-' + browserName}.png`));
   await page.screenshot({ path: out });
   const st = await page.evaluate(() => { const s = window.TV.stats; return { edges: s.edgeCells, threads: s.threads, cols: window.TV.grid.cols, rows: window.TV.grid.rows }; });

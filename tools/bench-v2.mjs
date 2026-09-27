@@ -20,8 +20,10 @@ const rows = [];
 for (const sc of scenes) {
   const c = sc.cam;
   const cam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
-  const r = await page.evaluate(async ({ cam, hour, ground, merchants, frames, runs }) => {
+  const r = await page.evaluate(async ({ seed, view, cam, hour, ground, merchants, frames, runs }) => {
     const TV = window.TV;
+    if (TV.world.seed !== seed) TV.regenerate(seed);
+    TV.view.dist = view || 500;
     TV.clock.scale = 0; TV.setMode('fly');
     if (ground) cam.y = TV.groundAt(cam.x, cam.z, 1e9) + 1.55 + cam.y;
     const hold = () => { Object.assign(TV.cam, cam); for (const m of merchants || []) { const M = TV.world.merchants[m.i]; M.s = m.s; } };
@@ -41,7 +43,7 @@ for (const sc of scenes) {
     }
     const med = k => { const v = wins.map(o => o[k]).sort((a, b) => a - b); return +v[v.length >> 1].toFixed(2); };
     return Object.fromEntries([...keys, 'fps', 'threads'].map(k => [k, med(k)]));
-  }, { cam, hour: sc.hour, ground: !!c.ground, merchants: sc.merchants, frames, runs });
+  }, { seed: sc.seed ?? cfg.seed, view: sc.view, cam, hour: sc.hour, ground: !!c.ground, merchants: sc.merchants, frames, runs });
   rows.push({ scene: sc.name, ...r });
 }
 console.table(rows);
