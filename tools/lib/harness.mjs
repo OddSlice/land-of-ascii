@@ -53,9 +53,9 @@ export const TIME_CONTROL = `(() => {
 })();`;
 
 // timeControl: false leaves the page on the real clock (for timing runs).
-export async function launch({ width = 1440, height = 900, browser = 'chromium', dpr = 1, timeControl = true } = {}) {
+export async function launch({ width = 1440, height = 900, browser = 'chromium', dpr = 1, timeControl = true, jsFlags = '' } = {}) {
   const pw = loadPlaywright();
-  const b = await pw[browser].launch(browser === 'chromium' ? { args: ['--enable-unsafe-swiftshader'] } : {});
+  const b = await pw[browser].launch(browser === 'chromium' ? { args: ['--enable-unsafe-swiftshader', ...(jsFlags ? [`--js-flags=${jsFlags}`] : [])] } : {});
   const page = await b.newPage({ viewport: { width, height }, deviceScaleFactor: dpr });
   page.on('pageerror', e => console.error('[pageerror]', e.message));
   page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') console.error('[console]', m.text()); });

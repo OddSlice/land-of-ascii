@@ -57,6 +57,64 @@
           "walked": 3.3
         }
       ]
+    },
+    {
+      "name": "merchant",
+      "title": "Tobin Saltbeard walking toward you, 10:30",
+      "hour": 10.5,
+      "t": 1000,
+      "cam": {
+        "x": 129.34,
+        "y": 0,
+        "z": 326.5,
+        "yaw": 0,
+        "pitch": 0,
+        "ground": true
+      },
+      "merchants": [
+        {
+          "i": 3,
+          "s": 30,
+          "dir": 1,
+          "walked": 3.3
+        }
+      ]
+    },
+    {
+      "name": "merchant-night",
+      "title": "The same, at 21:30, by lantern light",
+      "hour": 21.5,
+      "t": 1000,
+      "cam": {
+        "x": 129.34,
+        "y": 0,
+        "z": 326.5,
+        "yaw": 0,
+        "pitch": 0,
+        "ground": true
+      },
+      "merchants": [
+        {
+          "i": 3,
+          "s": 30,
+          "dir": 1,
+          "walked": 3.3
+        }
+      ]
+    },
+    {
+      "name": "gate",
+      "title": "The concentric castle's gate at night, 21:00 (the spawn point)",
+      "hour": 21.0,
+      "t": 1000,
+      "cam": {
+        "x": 255.5,
+        "y": 0,
+        "z": 162.5,
+        "yaw": -90,
+        "pitch": 40,
+        "ground": true
+      }
     }
   ]
 }
