@@ -1,8 +1,10 @@
-# Text Voxel v2: notes for Claude
+# Land of Ascii: notes for Claude
 
-A first-person explorer drawn as a mosaic of text glyphs. The whole game is `index.html`: one file, no build, no dependencies. Serve the folder (or open the file) and add `?seed=42` for the world in `shots/`. v1 (https://github.com/OddSlice/text-voxel) is the ancestor: v2 took over its simulation and rebuilt the renderer. We are building v2; v1 matters only as the reference the regression tests compare against.
+A first-person explorer drawn as a mosaic of text glyphs. The whole game is `index.html`: one file, no build, no dependencies. Serve the folder (or open the file) and add `?seed=42` for the world in `shots/`. It began as v2 of Text Voxel (https://github.com/OddSlice/text-voxel), which is the ancestor: v2 took over its simulation and rebuilt the renderer. The docs and tools still call this build "v2" and the ancestor "v1"; v1 matters only as the reference the regression tests compare against.
 
 Read `docs/phase1.md` first. It explains how a frame is drawn, the workers, the tests, measured speed and the open issues.
+
+**Phase 2 is in progress: read `docs/phase2-world.md` before working on it.** It is the brief: varied land (regions, terrain, weather, bridges), villages and towns, people and animals, how the tests change once world generation changes, and the order of work (a design pass, then land, settlements, people and animals, finish), with a commit and screenshots after each step.
 
 ## How index.html is laid out
 
@@ -64,6 +66,7 @@ Test harness notes:
   - render workers;
   - one simulation fix (NaN heights);
   - docs and screenshots.
+- **Phase 2 is under way**, following `docs/phase2-world.md`.
 - **Not yet measured:** Firefox and WebKit speed. The cloud session that built this had only Chromium.
 - **Rough edges:**
   - distant ridges shimmer slightly in motion (heights aren't filtered at distance);

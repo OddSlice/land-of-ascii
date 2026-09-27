@@ -1,8 +1,8 @@
-# Text Voxel v2
+# Land of Ascii
 
 A first-person explorer drawn as a mosaic of text characters: a seeded world of terrain, rivers, castles, roads, forests, travelling merchants, torches and campfires, which you can walk, fly and trade in. Every cell of the screen is one glyph in two colours from a hand-built palette; the trees and merchants are real 3D solids.
 
-v2 rebuilds the renderer of [Text Voxel](https://github.com/OddSlice/text-voxel) and takes over its simulation (fixes are listed in `tools/lib/v2-fixes.mjs`).
+Land of Ascii started as v2 of [Text Voxel](https://github.com/OddSlice/text-voxel): phase 1 rebuilt the renderer and took over v1's simulation (fixes are listed in `tools/lib/v2-fixes.mjs`). Phase 2 gives it a world of its own: see [docs/phase2-world.md](docs/phase2-world.md).
 
 **Play:** open `index.html` (no build, no dependencies). `?seed=42` gives the world in the pictures below. v1 stays live for comparison: https://oddslice.github.io/text-voxel/.
 
@@ -30,6 +30,7 @@ As v1: click to capture the mouse (Esc releases it; where pointer lock is refuse
 
 ## Docs
 
+- **[docs/phase2-world.md](docs/phase2-world.md)**: the phase 2 brief (in progress). Varied land, villages and towns, people and animals, and the tests that change with the world.
 - **[docs/phase1.md](docs/phase1.md)** covers the build:
   - how a frame is drawn, and the 3D merchants and trees;
   - the render workers;

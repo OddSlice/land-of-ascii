@@ -4,16 +4,29 @@
 // merchants, birds, clouds and flames only move when we step the clock.
 import http from 'node:http';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
 function loadPlaywright() {
-  for (const p of ['playwright', '/opt/node22/lib/node_modules/playwright']) {
+  // a local install, the cloud container's, or the copy inside a global playwright-cli (Homebrew node)
+  for (const p of ['playwright', '/opt/node22/lib/node_modules/playwright', '/opt/homebrew/lib/node_modules/@playwright/cli/node_modules/playwright']) {
     try { return require(p); } catch (e) { /* try next */ }
   }
   throw new Error('playwright not found: npm i -g playwright (or run from a checkout that has it)');
+}
+// Firefox on macOS 27 cannot reach its profile folder (microsoft/playwright#42768); pointing
+// CFFIXED_USER_HOME at a writable folder gets it going.
+function launchOptions(browser, jsFlags) {
+  if (browser === 'chromium') return { args: ['--enable-unsafe-swiftshader', ...(jsFlags ? [`--js-flags=${jsFlags}`] : [])] };
+  if (browser === 'firefox' && process.platform === 'darwin') {
+    const home = process.env.CFFIXED_USER_HOME || path.join(os.homedir(), 'Library/Caches/ms-playwright/cf-home');
+    fs.mkdirSync(home, { recursive: true });
+    return { env: { ...process.env, CFFIXED_USER_HOME: home } };
+  }
+  return {};
 }
 
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -55,7 +68,7 @@ export const TIME_CONTROL = `(() => {
 // timeControl: false leaves the page on the real clock (for timing runs).
 export async function launch({ width = 1440, height = 900, browser = 'chromium', dpr = 1, timeControl = true, jsFlags = '' } = {}) {
   const pw = loadPlaywright();
-  const b = await pw[browser].launch(browser === 'chromium' ? { args: ['--enable-unsafe-swiftshader', ...(jsFlags ? [`--js-flags=${jsFlags}`] : [])] } : {});
+  const b = await pw[browser].launch(launchOptions(browser, jsFlags));
   const page = await b.newPage({ viewport: { width, height }, deviceScaleFactor: dpr });
   page.on('pageerror', e => console.error('[pageerror]', e.message));
   page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') console.error('[console]', m.text()); });
