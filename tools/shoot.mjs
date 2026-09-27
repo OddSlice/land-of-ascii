@@ -12,7 +12,7 @@ const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf('--' + k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
 const flag = k => { const i = args.indexOf('--' + k); if (i < 0) return false; args.splice(i, 1); return true; };
 const browserName = opt('browser', 'chromium'), dpr = +opt('dpr', 1), cells = opt('cells', null), dir = opt('dir', 'shots');
-const camArg = opt('cam', null), hour = +opt('hour', 12), seed = +opt('seed', 42), outArg = opt('out', null), tArg = +opt('t', 1000);
+const threads = opt('threads', null), camArg = opt('cam', null), hour = +opt('hour', 12), seed = +opt('seed', 42), outArg = opt('out', null), tArg = +opt('t', 1000);
 const ground = flag('ground'), keepHud = flag('hud');
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/scenes.json'), 'utf8'));
 let scenes;
@@ -23,7 +23,7 @@ if (camArg) {
 
 const { server, port } = await startServer();
 const { browser, page } = await launch({ browser: browserName, dpr });
-await page.goto(`http://127.0.0.1:${port}/index.html?seed=${camArg ? seed : cfg.seed}`);
+await page.goto(`http://127.0.0.1:${port}/index.html?seed=${camArg ? seed : cfg.seed}${threads != null ? '&threads=' + threads : ''}`);
 await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
 if (!keepHud) await page.addStyleTag({ content: HIDE_OVERLAYS });
 if (cells != null) await page.evaluate(p => window.TV.setCells(p), +cells);
@@ -35,7 +35,7 @@ for (const sc of scenes) {
   await showScene(page, { seed: camArg ? seed : cfg.seed, hour: sc.hour, t: sc.t, cam: camv, merchants: sc.merchants });
   const out = path.resolve(ROOT, sc.out || path.join(dir, `${sc.name}${browserName === 'chromium' ? '' : '-' + browserName}.png`));
   await page.screenshot({ path: out });
-  const st = await page.evaluate(() => { const s = window.TV.stats; const r = { edges: s.edgeCells, masks: window.TV.atlas.masks.length, cols: window.TV.grid.cols, rows: window.TV.grid.rows }; return r; });
+  const st = await page.evaluate(() => { const s = window.TV.stats; return { edges: s.edgeCells, threads: s.threads, cols: window.TV.grid.cols, rows: window.TV.grid.rows }; });
   console.log(path.relative(ROOT, out), JSON.stringify(st));
 }
 await browser.close(); server.close();

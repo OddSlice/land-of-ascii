@@ -25,7 +25,9 @@ export async function showScene(page, scene) {
     TV.setHour(sc.hour);
   }, scene);
   const T = (scene.t ?? 1000) * 1;
+  const idle = () => page.evaluate(() => window.TV.whenIdle && window.TV.whenIdle());   // v2 draws in workers
   await page.evaluate(T => { window.__setNow(T); window.__step(0); }, T);   // settles dt from the last frame
+  await idle();
   await page.evaluate(sc => {
     const TV = window.TV;
     Object.assign(TV.cam, sc.cam);
@@ -34,4 +36,5 @@ export async function showScene(page, scene) {
     TV.updateMerchants(0);
   }, scene);
   await page.evaluate(() => window.__step(0));                                 // dt = 0: nothing moves, one frame drawn
+  await idle();
 }

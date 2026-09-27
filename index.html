@@ -265,41 +265,6 @@ function blendPalette(h) {
   }
 }
 
-// ---- the colour model: meaning -> one palette colour -------------------------------------------
-// A ray's meaning is a ramp, a lighting position on it (0 dark .. 1 lit), a fog amount and how much
-// firelight reaches it. Fog picks a LAYER: 0 near (the material's ramp), 1 far (its far ramp),
-// 2 haze (the haze ramp, lighter with distance), 3 horizon. Enough firelight swaps in the warm
-// ramp, which runs from a dim red at the edge of the pool to pale yellow beside the flame.
-const FOG0 = 0.16, FOG1 = 0.42, FOG2 = 0.8, WARM_AT = 0.4;
-const fogOfLayer = fog => fog < FOG0 ? 0 : fog < FOG1 ? 1 : fog < FOG2 ? 2 : 3;
-// Figures catch less firelight than the ground (the merchants carry their own lantern).
-const warmth = (lit, kind, pos) => lit * (kind === K.MERCHANT ? 0.35 : kind >= K.TREE && kind <= K.BOULDER ? 0.6 : 1) * (0.55 + 0.45 * pos);
-const warmX = w => Math.min(1, Math.pow((w - WARM_AT) / (1 - WARM_AT), 0.8)) * (COL.near[R.lit].length - 1);
-const hazeX = (pos, fog) => Math.min(COL.near[R.haze].length - 2, Math.max(0, pos * 1.4 + (fog - FOG1) / (FOG2 - FOG1) * 1.6));
-// The colour lists a cell can be drawn from: every ramp near, every ramp far, the haze, the warm
-// ramp. (COL's arrays are refilled in place, so these references stay live.)
-const NR = RAMP_NAMES.length, LIST_HAZE = 2 * NR, LIST_WARM = 2 * NR + 1;
-const LISTS = [...COL.near, ...COL.far, COL.near[R.haze], COL.near[R.lit]];
-// Where a meaning lands: the list (left in planList) and the position along it (returned).
-let planList = 0;
-function planX(ramp, pos, fog, lit, kind) {
-  const nf = NO_FOG[ramp], layer = nf ? 0 : fogOfLayer(fog);
-  if (layer < 2 && !nf) {
-    const w = warmth(lit, kind, pos);
-    if (w >= WARM_AT) { planList = LIST_WARM; return warmX(w); }
-  }
-  if (layer === 0) { planList = ramp; return pos * (COL.near[ramp].length - 1); }
-  if (layer === 1) { planList = NR + ramp; return pos * 2; }
-  planList = LIST_HAZE;
-  return layer === 2 ? hazeX(pos, fog) : COL.near[R.haze].length - 1;
-}
-function solidColor(ramp, pos, fog, lit, kind) {
-  const X = planX(ramp, pos, fog, lit, kind);
-  return LISTS[planList][Math.round(X)];
-}
-// The list and tone a cell is being drawn in, for the marks drawn a step or two away from it.
-let pRamp = COL.near[0], pTone = 0;
-
 // =====================================================================
 //  SMALL HELPERS
 // =====================================================================
@@ -1226,19 +1191,65 @@ function updateLighting() {
 }
 
 // =====================================================================
+//  THE RENDERER  (rays → cells → pixels, for one stripe of the screen)
+// =====================================================================
+// Everything that draws lives in renderCore(). The page runs one copy of it on the main thread
+// (the fallback) and hands a copy of its source to each render worker, so the same code draws
+// either way. Inside, the world, camera, clock, palette and lighting are the page's own objects
+// on the main thread, and in a worker, copies refreshed from each message.
+function renderCore() {
+
+// ---- the colour model: meaning -> one palette colour -------------------------------------------
+// A ray's meaning is a ramp, a lighting position on it (0 dark .. 1 lit), a fog amount and how much
+// firelight reaches it. Fog picks a LAYER: 0 near (the material's ramp), 1 far (its far ramp),
+// 2 haze (the haze ramp, lighter with distance), 3 horizon. Enough firelight swaps in the warm
+// ramp, which runs from a dim red at the edge of the pool to pale yellow beside the flame.
+const FOG0 = 0.16, FOG1 = 0.42, FOG2 = 0.8, WARM_AT = 0.4;
+const fogOfLayer = fog => fog < FOG0 ? 0 : fog < FOG1 ? 1 : fog < FOG2 ? 2 : 3;
+// Figures catch less firelight than the ground (the merchants carry their own lantern).
+const warmth = (lit, kind, pos) => lit * (kind === K.MERCHANT ? 0.35 : kind >= K.TREE && kind <= K.BOULDER ? 0.6 : 1) * (0.55 + 0.45 * pos);
+const warmX = w => Math.min(1, Math.pow((w - WARM_AT) / (1 - WARM_AT), 0.8)) * (COL.near[R.lit].length - 1);
+const hazeX = (pos, fog) => Math.min(COL.near[R.haze].length - 2, Math.max(0, pos * 1.4 + (fog - FOG1) / (FOG2 - FOG1) * 1.6));
+// The colour lists a cell can be drawn from: every ramp near, every ramp far, the haze, the warm
+// ramp. (COL's arrays are refilled in place, so these references stay live.)
+const NR = RAMP_NAMES.length, LIST_HAZE = 2 * NR, LIST_WARM = 2 * NR + 1;
+const LISTS = [...COL.near, ...COL.far, COL.near[R.haze], COL.near[R.lit]];
+// Where a meaning lands: the list (left in planList) and the position along it (returned).
+let planList = 0;
+function planX(ramp, pos, fog, lit, kind) {
+  const nf = NO_FOG[ramp], layer = nf ? 0 : fogOfLayer(fog);
+  if (layer < 2 && !nf) {
+    const w = warmth(lit, kind, pos);
+    if (w >= WARM_AT) { planList = LIST_WARM; return warmX(w); }
+  }
+  if (layer === 0) { planList = ramp; return pos * (COL.near[ramp].length - 1); }
+  if (layer === 1) { planList = NR + ramp; return pos * 2; }
+  planList = LIST_HAZE;
+  return layer === 2 ? hazeX(pos, fog) : COL.near[R.haze].length - 1;
+}
+function solidColor(ramp, pos, fog, lit, kind) {
+  const X = planX(ramp, pos, fog, lit, kind);
+  return LISTS[planList][Math.round(X)];
+}
+// The list and tone a cell is being drawn in, for the marks drawn a step or two away from it.
+let pRamp = COL.near[0], pTone = 0;
+
+// =====================================================================
 //  GLYPHS, CELL GRID, FRAME BUFFER
 // =====================================================================
 // Every glyph is a bitmask the size of a cell, built by hand or by formula and never taken from a
 // font: a system font's block characters rasterise differently in every browser, and WebKit snaps
 // text to baselines. A frame is a grid of cells, each one glyph drawn in two palette colours
-// (fg where the mask is set, bg elsewhere), composed into one ImageData and put in one call.
-const canvas = document.getElementById('view');
-const ctx = canvas.getContext('2d', { alpha: false });
+// (fg where the mask is set, bg elsewhere), composed into one pixel buffer.
+// The renderer's view of the screen. It draws the stripe of cell columns [c0, c1): the whole
+// screen on the main thread, or one worker's share. It also computes one column of cells either
+// side (cm0, cm1), so seams are decided the same way on both sides of a stripe's edge.
 const grid = {
-  w: 0, h: 0, cols: 0, rows: 0, cellW: 6, cellH: 12, f: 800, preset: DEFAULT_CELL,
+  w: 0, h: 0, cols: 0, rows: 0, cellW: 6, cellH: 12, f: 800,
   RW: 0, RH: 0, rayW: 3, rayH: 3,                  // the ray grid: RAYS_X × RAYS_Y rays per cell
+  c0: 0, c1: 0, cm0: 0, cm1: 0, xr0: 0, xr1: 0,     // cells drawn, cells computed, ray columns computed
   glyph: new Uint16Array(0), fg: new Uint32Array(0), bg: new Uint32Array(0),
-  img: null, buf: null,
+  buf: null,                                       // the pixels, the full screen's width, Uint32 RGBA
 };
 
 // ---- building masks --------------------------------------------------------------------------
@@ -1424,15 +1435,16 @@ const rays = {
 let rayP = new Float32Array(0), rayQ = new Float32Array(0), rayInvS = new Float32Array(0);
 const cellMark = { type: new Int8Array(0), hash: new Float32Array(0), px: new Float32Array(0), py: new Float32Array(0), up: new Uint8Array(0) };
 
-function setupGrid() {
-  grid.w = window.innerWidth; grid.h = window.innerHeight;
-  canvas.width = grid.w; canvas.height = grid.h;
-  const [cw, ch] = CELL_PRESETS[grid.preset];
+function setView(w, h, preset, c0, c1, buf) {
+  grid.w = w; grid.h = h;
+  const [cw, ch] = CELL_PRESETS[preset];
   grid.cellW = cw; grid.cellH = ch;
-  grid.cols = Math.ceil(grid.w / cw); grid.rows = Math.ceil(grid.h / ch);
+  grid.cols = Math.ceil(w / cw); grid.rows = Math.ceil(h / ch);
   grid.RW = grid.cols * RAYS_X; grid.RH = grid.rows * RAYS_Y;
   grid.rayW = cw / RAYS_X; grid.rayH = ch / RAYS_Y;
-  grid.f = (grid.w / 2) / Math.tan(FOV / 2);   // focal length in pixels
+  grid.f = (w / 2) / Math.tan(FOV / 2);   // focal length in pixels
+  grid.c0 = c0; grid.c1 = c1; grid.cm0 = Math.max(0, c0 - 1); grid.cm1 = Math.min(grid.cols, c1 + 1);
+  grid.xr0 = grid.cm0 * RAYS_X; grid.xr1 = grid.cm1 * RAYS_X;
   const n = grid.cols * grid.rows, nr = grid.RW * grid.RH;
   grid.glyph = new Uint16Array(n); grid.fg = new Uint32Array(n); grid.bg = new Uint32Array(n);
   rays.kind = new Uint8Array(nr); rays.seg = new Int32Array(nr); rays.ramp = new Uint8Array(nr); rays.pos = new Float32Array(nr);
@@ -1440,19 +1452,18 @@ function setupGrid() {
   rays.flags = new Uint8Array(nr); rays.refl = new Int32Array(nr); rays.reflAmt = new Float32Array(nr);
   rayP = new Float32Array(grid.RW); rayQ = new Float32Array(grid.RH); rayInvS = new Float32Array(grid.RH);
   cellMark.type = new Int8Array(n); cellMark.hash = new Float32Array(n); cellMark.px = new Float32Array(n); cellMark.py = new Float32Array(n); cellMark.up = new Uint8Array(n);
-  grid.img = ctx.createImageData(grid.cols * cw, grid.rows * ch);
-  grid.buf = new Uint32Array(grid.img.data.buffer);
+  grid.buf = buf || new Uint32Array(grid.cols * cw * grid.rows * ch);
   if (atlas.w !== cw || atlas.h !== ch) buildAtlas(cw, ch);
 }
 
-// Paint every cell's glyph in its two colours and present the frame.
+// Paint every cell of the stripe as its glyph in its two colours.
 function compose() {
-  const { cols, rows, cellW, cellH, glyph, fg, bg, buf } = grid;
+  const { cols, rows, cellW, cellH, glyph, fg, bg, buf, c0, c1 } = grid;
   const masks = atlas.words, SPACE = atlas.SPACE, FULL = atlas.FULL;
   const stride = cols * cellW;
   for (let r = 0; r < rows; r++) {
     const rowBase = r * cellH * stride;
-    for (let c = 0; c < cols; c++) {
+    for (let c = c0; c < c1; c++) {
       const i = r * cols + c, g = glyph[i], base = rowBase + c * cellW;
       if (g === SPACE || g === FULL) {
         const col = g === SPACE ? bg[i] : fg[i];
@@ -1464,8 +1475,1442 @@ function compose() {
       }
     }
   }
-  ctx.putImageData(grid.img, 0, 0);
 }
+
+// =====================================================================
+//  RENDER  (rays → cells → pixels)
+// =====================================================================
+// Every frame runs three stages:
+//   1. Rays. RAYS_X × RAYS_Y rays per cell are marched through the heightmap and the structures,
+//      column by column, near to far, with a painted mask (as v1 did per cell). Then trees,
+//      merchants, clouds and flames are intersected analytically per ray as 3D solids and
+//      depth-tested against what the march found. Every ray records what it hit: its kind, its
+//      segment (which object and which face or part), the colour ramp it is drawn from, where on
+//      that ramp its lighting puts it, its depth and how much firelight reaches it.
+//   2. Cells. Each cell turns its rays into one glyph and two palette colours: where two things
+//      meet, the shape that best fits how the rays split; inside one thing, that material's own
+//      marks, or a narrow ░▒▓ band on a seam between two tones, fog layers or lit ground.
+//   3. Compose. The glyph masks are painted into one ImageData.
+const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2]);
+const RAMP_LEN = Uint8Array.from(RAMP_NAMES, n => KEYFRAMES.day.ramps[n].length);
+const TERRAIN_SEG = K.TERRAIN << 24;
+let sunScreen = null, moonScreen = null;
+
+// The frame's camera, lighting and fog, set at the start of render().
+let vHor = 0, vFx = 1, vFz = 0, vRx = 0, vRz = 1, vCamX = 0, vCamY = 0, vCamZ = 0, vF = 1, vVd = 500, vTanX = 1;
+let shAmb = 0.38, shDiff = 0.62, posLo = 0, posInv = 1, lightsOn = false;
+const FOG_LUT = new Float32Array(1025);
+for (let k = 0; k <= 1024; k++) { const u = (k / 1024 - 0.15) / 0.85; FOG_LUT[k] = u <= 0 ? 0 : Math.pow(u, 1.4) * 0.93; }
+const fogAt = d => { const k = d * 1024 / vVd; return k >= 1024 ? 0.93 : FOG_LUT[k | 0]; };
+
+function projectBody(el, az) {   // sun or moon, in pixels
+  const dAz = wrapAngle(az - cam.yaw);
+  if (el < -0.06 || Math.abs(dAz) > Math.PI / 2 - 0.05) return null;
+  return { x: grid.w / 2 + Math.tan(dAz) * vF, y: vHor - Math.tan(el) / Math.cos(dAz) * vF, r: 0.05 * vF };
+}
+
+// Structures close enough to matter this frame, positioned in the unwrapped frame nearest
+// the camera so the ray maths never has to think about the world wrapping.
+const active = [];
+function collectActive(vd) {
+  active.length = 0;
+  for (const s of world.structs) {
+    const dxw = wrapDelta(s.cx - cam.x), dzw = wrapDelta(s.cz - cam.z);
+    if (Math.hypot(dxw, dzw) - s.radius > vd) continue;
+    const shiftX = Math.round(cam.x + dxw - s.cx), shiftZ = Math.round(cam.z + dzw - s.cz);   // 0 or ±W
+    active.push({ s, si: world.structs.indexOf(s), ux0: s.x0 + shiftX, uz0: s.z0 + shiftZ, ux1: s.x0 + shiftX + s.tpl.sx, uz1: s.z0 + shiftZ + s.tpl.sz });
+  }
+}
+const MAX_INT = 32;
+const intT0 = new Float64Array(MAX_INT), intT1 = new Float64Array(MAX_INT), intRef = new Int32Array(MAX_INT);
+
+// ---- point lights (torches, campfires, lanterns) ---------------------------------------
+const activeLights = [];
+const lightBuckets = Array.from({ length: TREE_BUCKETS * TREE_BUCKETS }, () => []);   // per 32-cell bucket: the lights that reach it
+function collectLights(t) {
+  activeLights.length = 0;
+  for (const b of lightBuckets) b.length = 0;
+  const k = light.darkness, TB = TREE_BUCKETS;
+  const add = (x, y, z, r, c, i) => {
+    const L = { x, y, z, r, cr: c[0], cg: c[1], cb: c[2], i };
+    activeLights.push(L);
+    for (let bz = Math.floor((z - r) / TREE_BUCKET); bz <= Math.floor((z + r) / TREE_BUCKET); bz++)
+      for (let bx = Math.floor((x - r) / TREE_BUCKET); bx <= Math.floor((x + r) / TREE_BUCKET); bx++)
+        lightBuckets[((bz % TB + TB) % TB) * TB + ((bx % TB + TB) % TB)].push(L);
+  };
+  for (const L of world.lights) {
+    const flick = 0.85 + 0.15 * Math.sin(t * 9 + L.phase) * Math.sin(t * 5.3 + L.phase * 2);
+    const strength = L.kind === 'fire' ? Math.max(k, 0.3) : k;
+    if (strength < 0.05) continue;
+    add(L.x, L.y, L.z, L.r, L.color, L.i * flick * strength);
+  }
+  if (k > 0.05) for (const m of world.merchants) add(m.x, m.y + 1.1, m.z, 9, [1, 0.75, 0.4], 0.9 * k);
+}
+// How much firelight reaches a world position: 0 (none) to 1 (full warm ramp).
+function warmAt(x, y, z) {
+  const TB = TREE_BUCKETS;
+  const list = lightBuckets[((Math.floor(z / TREE_BUCKET) % TB + TB) % TB) * TB + ((Math.floor(x / TREE_BUCKET) % TB + TB) % TB)];
+  if (list.length === 0) return 0;
+  let s = 0;
+  for (let k = 0; k < list.length; k++) {
+    const L = list[k];
+    const dx = wrapDelta(x - L.x), dz = wrapDelta(z - L.z);
+    if (dx > L.r || dx < -L.r || dz > L.r || dz < -L.r) continue;
+    const dy = y - L.y, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (d >= L.r) continue;
+    const a = 1 - d / L.r;
+    s += a * a * L.i;
+  }
+  s *= 1.105;
+  return s > 1 ? 1 : s;
+}
+const hasLightsAt = (x, z) => lightBuckets[((Math.floor(z / TREE_BUCKET) % TREE_BUCKETS + TREE_BUCKETS) % TREE_BUCKETS) * TREE_BUCKETS + ((Math.floor(x / TREE_BUCKET) % TREE_BUCKETS + TREE_BUCKETS) % TREE_BUCKETS)].length > 0;
+
+// Terrain lighting between cell centres (the near ground has no flat blocks at your feet).
+function smoothShade(x, z) {
+  const fx = x - 0.5, fz = z - 0.5;
+  const x0 = Math.floor(fx), z0 = Math.floor(fz);
+  const tx = fx - x0, tz = fz - z0;
+  const S = world.shade;
+  const r0 = (z0 & MASK) * W, r1 = ((z0 + 1) & MASK) * W, c0 = x0 & MASK, c1 = (x0 + 1) & MASK;
+  const a = S[r0 + c0] + (S[r0 + c1] - S[r0 + c0]) * tx;
+  const b = S[r1 + c0] + (S[r1 + c1] - S[r1 + c0]) * tx;
+  return a + (b - a) * tz;
+}
+
+// Distant slopes are lit from averaged light: far off, one sample stands for many cells, and
+// reading a single cell's light there stripes a mountainside column by column. Levels 1 to 3
+// average 2×2, 4×4 and 8×8 cells, rebuilt whenever the lighting changes.
+const shadeMip = [null, new Float32Array((W >> 1) * (W >> 1)), new Float32Array((W >> 2) * (W >> 2)), new Float32Array((W >> 3) * (W >> 3))];
+const mipKey = [NaN, NaN, NaN, NaN, NaN];
+function updateShadeMips() {
+  const S = world.shade;
+  if (mipKey[0] === light.lx && mipKey[1] === light.ly && mipKey[2] === light.lz && mipKey[3] === S[0] && mipKey[4] === S[N >> 1] && shadeMip[0] === S) return;
+  mipKey[0] = light.lx; mipKey[1] = light.ly; mipKey[2] = light.lz; mipKey[3] = S[0]; mipKey[4] = S[N >> 1];
+  shadeMip[0] = S;
+  for (let l = 1; l < 4; l++) {
+    const src = shadeMip[l - 1], sw = W >> (l - 1), dw = W >> l, dst = shadeMip[l];
+    for (let z = 0; z < dw; z++) for (let x = 0; x < dw; x++) {
+      const a = 2 * z * sw + 2 * x;
+      dst[z * dw + x] = (src[a] + src[a + 1] + src[a + sw] + src[a + sw + 1]) * 0.25;
+    }
+  }
+}
+function mipShade(x, z, l) {   // bilinear, from level l
+  const s = 1 << l, dw = W >> l, M = dw - 1, S = shadeMip[l];
+  const fx = x / s - 0.5, fz = z / s - 0.5;
+  const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
+  const r0 = (z0 & M) * dw, r1 = ((z0 + 1) & M) * dw, c0 = x0 & M, c1 = (x0 + 1) & M;
+  const a = S[r0 + c0] + (S[r0 + c1] - S[r0 + c0]) * tx, b = S[r1 + c0] + (S[r1 + c1] - S[r1 + c0]) * tx;
+  return a + (b - a) * tz;
+}
+
+// The highest ground in every 16×16 block (and its one-cell border). Past the near field the
+// march skips a whole block when even its highest point would stay hidden below what the column
+// has already painted, which is most of the ground most of the time.
+const BLOCK = 16, NB = W / BLOCK, BM = NB - 1;
+const blockMax = new Float32Array(NB * NB);
+let blockMaxOf = -1;
+function updateBlockMax() {
+  if (blockMaxOf === world.seed && world.H === blockMaxH) return;
+  blockMaxOf = world.seed; blockMaxH = world.H;
+  const H = world.H;
+  for (let bz = 0; bz < NB; bz++) for (let bx = 0; bx < NB; bx++) {
+    let m = -Infinity;
+    for (let z = bz * BLOCK - 1; z <= (bz + 1) * BLOCK; z++) for (let x = bx * BLOCK - 1; x <= (bx + 1) * BLOCK; x++) {
+      const h = H[(z & MASK) * W + (x & MASK)];
+      if (h > m) m = h;
+    }
+    blockMax[bz * NB + bx] = m;
+  }
+}
+let blockMaxH = null;
+
+// =====================================================================
+//  RENDER 1a: THE MARCH  (terrain and structures, per ray column)
+// =====================================================================
+function marchRays(t) {
+  const { RW, RH } = grid;
+  const f = vF, invRayH = 1 / grid.rayH, rayH = grid.rayH, horizonPix = vHor;
+  const fx = vFx, fz = vFz, rx = vRx, rz = vRz;
+  const camX = vCamX, camY = vCamY, camZ = vCamZ;
+  const { H, mat, shade } = world;
+  const vd = vVd;
+  const fb = light.faceShade;
+  const { kind, seg, ramp, pos, depth, lit, u, v, flags } = rays;
+  const NONE = K.NONE;
+  kind.fill(NONE, grid.xr0 * RH, grid.xr1 * RH);
+  collectActive(vd);
+  updateBlockMax();
+
+  // Per-column state shared by the helpers below.
+  let col = 0, ybuf = 0, left = 0, dx = 0, dz = 0, zPrev = 0, gaps = false, lastShZ = -1, lastSh = 0;
+  // Attributes of whatever paint() is about to claim.
+  let aKind = 0, aSeg = 0, aRamp = 0, aPos = 0, aLit = 0, aFlags = 0, aU = 0, aV = 0;
+
+  // Claim rays [r0, r1) of this column that nothing nearer has claimed. ybuf is the row from
+  // which everything below is known to be claimed; it only moves up when a paint reaches it,
+  // so gaps under a lintel or a ceiling stay open for whatever lies behind.
+  function paint(r0, r1, z) {
+    if (r0 < 0) r0 = 0;
+    if (r1 > RH) r1 = RH;
+    for (let r = r0, i = col * RH + r0; r < r1; r++, i++) {
+      if (kind[i] === NONE) { kind[i] = aKind; seg[i] = aSeg; ramp[i] = aRamp; pos[i] = aPos; depth[i] = z; lit[i] = aLit; flags[i] = aFlags; u[i] = aU; v[i] = aV; left--; }
+    }
+    if (r1 >= ybuf) { if (r0 < ybuf) ybuf = r0; } else if (r0 < r1) gaps = true;
+  }
+  const posOf = sh => { const p = (sh - posLo) * posInv; return !(p > 0) ? 0 : p > 1 ? 1 : p; };
+
+  function terrainAt(idx, z, px, pz) {
+    const near = z < NEAR_SMOOTH;
+    const h = near ? terrainHeight(px, pz) : H[idx];
+    let row = Math.ceil((horizonPix + (camY - h) * f / z) * invRayH - 0.5);
+    if (!(row < ybuf)) return;   // (also skips a NaN height: seed 42 has one, at 416, 390)
+    if (row < 0) row = 0;
+    const warm = lightsOn && z < 120 && hasLightsAt(px, pz);
+    if (near && ybuf - row > 2) {
+      // Close up one step spans many rows: find where each row's ray meets the ground (as a plane
+      // at this step's height, between the previous step and this one) and read material,
+      // lighting and firelight there, so the ground at your feet is as sharp as the ground ahead.
+      const lo = zPrev, hgt = camY - h;
+      // lighting varies smoothly along the ray: read it at both ends of the step and blend (the
+      // near end is usually the far end of the step before)
+      const sh1 = smoothShade(px, pz), sh0 = lastShZ === lo ? lastSh : smoothShade(camX + dx * lo, camZ + dz * lo), kSh = z > lo ? (sh1 - sh0) / (z - lo) : 0;
+      const w1 = warm ? warmAt(px, h, pz) : 0, w0 = warm ? warmAt(camX + dx * lo, h, camZ + dz * lo) : 0, kW = z > lo ? (w1 - w0) / (z - lo) : 0;
+      let lastCi = -1, m = 0, kR = 0, kS = 0;
+      for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
+        if (kind[i] !== NONE) continue;
+        let tt = hgt * rayInvS[r];
+        if (!(tt <= z)) tt = z; else if (tt < lo) tt = lo;
+        const wx = camX + dx * tt, wz = camZ + dz * tt;
+        const ci = (Math.floor(wz) & MASK) * W + (Math.floor(wx) & MASK);
+        if (ci !== lastCi) { lastCi = ci; m = mat[ci]; kR = MAT_RAMP[m]; kS = TERRAIN_SEG | m; }
+        let fl = 0, sh = sh0 + (tt - lo) * kSh;
+        if (m === MAT.WATER) { sh += 0.12; fl = F_WATER; if (Math.sin(wx * 0.31 + t * 1.7) + Math.sin(wz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE; }
+        const pp = (sh - posLo) * posInv;
+        kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = !(pp > 0) ? 0 : pp > 1 ? 1 : pp; depth[i] = tt;
+        lit[i] = w0 + (tt - lo) * kW; flags[i] = fl; left--;
+      }
+      lastShZ = z; lastSh = sh1;
+      ybuf = row;
+      return;
+    }
+    const m = mat[idx];
+    let sh = near ? smoothShade(px, pz) : z < 60 ? shade[idx] : mipShade(px, pz, z < 120 ? 1 : z < 240 ? 2 : 3), fl = 0;
+    if (m === MAT.WATER) {
+      sh += 0.12; fl = F_WATER;                       // water reflects the sky: a touch brighter than land
+      if (z < vd * 0.6 && Math.sin(px * 0.31 + t * 1.7) + Math.sin(pz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE;
+    }
+    const kS = TERRAIN_SEG | m, kR = MAT_RAMP[m], kP = posOf(sh), kL = warm ? warmAt(px, h, pz) : 0, end = col * RH + ybuf;
+    if (!gaps) {
+      for (let i = col * RH + row; i < end; i++) { kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = kP; depth[i] = z; lit[i] = kL; flags[i] = fl; }
+      left -= ybuf - row;
+    } else {
+      for (let i = col * RH + row; i < end; i++) if (kind[i] === NONE) { kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = kP; depth[i] = z; lit[i] = kL; flags[i] = fl; left--; }
+    }
+    ybuf = row;
+  }
+
+  // Walk the ray cell by cell through one structure's footprint (a 2D DDA), so a one-cell
+  // wall is never stepped over. Each voxel span is projected at the cell's entry depth and
+  // painted as a front face plus, when visible, its top face or underside.
+  function marchStructure(A, tIn, tOut) {
+    const s = A.s, tpl = s.tpl, sx = tpl.sx, sz = tpl.sz, baseY = s.baseY, sSeg = A.si << 4;
+    const spans = tpl.spans, topSolid = tpl.topSolid;
+    const eyeY = camY - baseY;
+    let tt = tIn;
+    const px0 = camX + dx * tt, pz0 = camZ + dz * tt;
+    let ix = Math.floor(px0), iz = Math.floor(pz0);
+    if (ix < A.ux0) ix = A.ux0; else if (ix >= A.ux1) ix = A.ux1 - 1;
+    if (iz < A.uz0) iz = A.uz0; else if (iz >= A.uz1) iz = A.uz1 - 1;
+    const stepX = dx >= 0 ? 1 : -1, stepZ = dz >= 0 ? 1 : -1;
+    const tdx = dx !== 0 ? Math.abs(1 / dx) : Infinity, tdz = dz !== 0 ? Math.abs(1 / dz) : Infinity;
+    let tmx = dx > 0 ? tt + (ix + 1 - px0) / dx : dx < 0 ? tt + (ix - px0) / dx : Infinity;
+    let tmz = dz > 0 ? tt + (iz + 1 - pz0) / dz : dz < 0 ? tt + (iz - pz0) / dz : Infinity;
+    const txIn = dx > 0 ? (A.ux0 - camX) / dx : dx < 0 ? (A.ux1 - camX) / dx : -1;
+    const tzIn = dz > 0 ? (A.uz0 - camZ) / dz : dz < 0 ? (A.uz1 - camZ) / dz : -1;
+    let face = Math.abs(txIn - tIn) < 1e-6 ? (stepX > 0 ? 1 : 0) : Math.abs(tzIn - tIn) < 1e-6 ? (stepZ > 0 ? 3 : 2) : -1;
+
+    while (tt < tOut && left > 0) {
+      let tn = tmx < tmz ? tmx : tmz;
+      if (tn > tOut) tn = tOut;
+      terrainAt((iz & MASK) * W + (ix & MASK), tt, camX + dx * tt, camZ + dz * tt);
+      zPrev = tt;
+
+      const lx = ix - A.ux0, lz = iz - A.uz0;
+      if (lx >= 0 && lx < sx && lz >= 0 && lz < sz) {
+        const sp = spans[lx * sz + lz];
+        if (sp !== null) {
+          const thisTop = topSolid[lx * sz + lz];
+          let prevTop = 0;   // topmost solid in the cell the ray came from: "is the air at eye level under a roof?"
+          if (face >= 0) {
+            const pxl = face < 2 ? lx - stepX : lx, pzl = face >= 2 ? lz - stepZ : lz;
+            if (pxl >= 0 && pxl < sx && pzl >= 0 && pzl < sz) prevTop = topSolid[pxl * sz + pzl];
+          }
+          const fc = face >= 0 ? face : 4, sideShade = fb[fc];
+          const kNear = f / tt, kFar = f / tn;
+          const wallU = face < 2 ? camZ + dz * tt : camX + dx * tt;   // where the ray meets this face, along the wall
+          const warm = lightsOn && tt < 120 && hasLightsAt(ix + 0.5, iz + 0.5);
+          for (let i = 0; i < sp.length; i += 3) {
+            const y0 = sp[i], y1 = sp[i + 1], m = VOX_MAT[sp[i + 2]];
+            const wTop = baseY + y1 + 1, wBot = baseY + y0;
+            const rT = Math.ceil((horizonPix + (camY - wTop) * kNear) * invRayH - 0.5);
+            let rB = Math.ceil((horizonPix + (camY - wBot) * kNear) * invRayH - 0.5);
+            if (rB <= rT) rB = rT + 1;   // a distant wall still gets one ray row
+            const inside = prevTop > eyeY && prevTop > y0 + 1;   // interior face: the air beside it, at eye level, is under something solid
+            aKind = K.WALL; aSeg = (K.WALL << 24) | sSeg | fc; aRamp = MAT_RAMP[m];
+            aPos = posOf(inside ? sideShade * 0.45 : sideShade); aFlags = inside ? F_INTERIOR : 0; aU = wallU;
+            const perRow = warm && tt < 60;
+            aLit = warm && !perRow ? warmAt(ix + 0.5, baseY + (y0 + y1 + 1) * 0.5, iz + 0.5) : 0;
+            // Per row, the height up the wall (courses of stone are drawn from it) and, near a
+            // light, the firelight at that height.
+            const r0 = rT < 0 ? 0 : rT, r1 = rB > RH ? RH : rB;
+            // near a light, the firelight at the top and bottom of the span, blended down it
+            const lTop = perRow ? warmAt(ix + 0.5, wTop, iz + 0.5) : aLit, lBot = perRow ? warmAt(ix + 0.5, wBot, iz + 0.5) : aLit, kL = (lBot - lTop) / (wBot - wTop);
+            for (let r = r0, i = col * RH + r0; r < r1; r++, i++) {
+              if (kind[i] !== NONE) continue;
+              const hy = camY + rayQ[r] * tt;
+              kind[i] = K.WALL; seg[i] = aSeg; ramp[i] = aRamp; pos[i] = aPos; depth[i] = tt; flags[i] = aFlags; u[i] = wallU; v[i] = hy - baseY;
+              lit[i] = lTop + (hy - wTop) * kL; left--;
+            }
+            if (r1 >= ybuf) { if (r0 < ybuf) ybuf = r0; } else if (r0 < r1) gaps = true;
+            if (camY > wTop) {           // top face, between this cell's far and near projection
+              const rF = Math.ceil((horizonPix + (camY - wTop) * kFar) * invRayH - 0.5);
+              if (rF < rT) {
+                let st = fb[4];
+                if (thisTop > y1 + 1) st *= 0.45;
+                if (m === MAT.WOOD && ((lx + lz) & 1)) st *= 0.85;   // planks: alternate cells a step darker
+                aKind = K.TOP; aSeg = (K.TOP << 24) | sSeg | 4; aPos = posOf(st); aFlags = thisTop > y1 + 1 ? F_INTERIOR : 0;
+                aLit = warm ? warmAt(ix + 0.5, wTop, iz + 0.5) : 0; aU = ix; aV = iz;
+                paint(rF, rT, tt);
+              }
+            } else if (camY < wBot) {    // underside: always in shadow
+              const rU = Math.ceil((horizonPix + (camY - wBot) * kFar) * invRayH - 0.5);
+              if (rU > rB) {
+                aKind = K.UNDER; aSeg = (K.UNDER << 24) | sSeg | 5; aPos = posOf(fb[5] * 0.7); aFlags = F_INTERIOR; aLit = 0; aU = ix; aV = iz;
+                paint(rB, rU, tt);
+              }
+            }
+          }
+        }
+      }
+      if (tmx < tmz) { ix += stepX; tt = tmx; tmx += tdx; face = stepX > 0 ? 1 : 0; }
+      else { iz += stepZ; tt = tmz; tmz += tdz; face = stepZ > 0 ? 3 : 2; }
+    }
+  }
+
+  const sunR2 = sunScreen ? sunScreen.r * sunScreen.r : 0, moonR2 = moonScreen ? moonScreen.r * moonScreen.r : 0;
+  const rayW = grid.rayW;
+  for (col = grid.xr0; col < grid.xr1; col++) {
+    const p = rayP[col];
+    dx = fx + rx * p; dz = fz + rz * p;
+    ybuf = RH; left = RH; gaps = false; lastShZ = -1;
+
+    // Which active structures does this column's ray cross, and where (nearest first)?
+    let nInt = 0;
+    for (let a = 0; a < active.length; a++) {
+      const A = active[a];
+      let t0 = 0.3, t1 = vd;
+      if (dx > 1e-9) { const uu = (A.ux0 - camX) / dx, vv = (A.ux1 - camX) / dx; if (uu > t0) t0 = uu; if (vv < t1) t1 = vv; }
+      else if (dx < -1e-9) { const uu = (A.ux1 - camX) / dx, vv = (A.ux0 - camX) / dx; if (uu > t0) t0 = uu; if (vv < t1) t1 = vv; }
+      else if (camX < A.ux0 || camX >= A.ux1) continue;
+      if (dz > 1e-9) { const uu = (A.uz0 - camZ) / dz, vv = (A.uz1 - camZ) / dz; if (uu > t0) t0 = uu; if (vv < t1) t1 = vv; }
+      else if (dz < -1e-9) { const uu = (A.uz1 - camZ) / dz, vv = (A.uz0 - camZ) / dz; if (uu > t0) t0 = uu; if (vv < t1) t1 = vv; }
+      else if (camZ < A.uz0 || camZ >= A.uz1) continue;
+      if (t0 >= t1) continue;
+      let k = nInt;
+      while (k > 0 && intT0[k - 1] > t0) { intT0[k] = intT0[k - 1]; intT1[k] = intT1[k - 1]; intRef[k] = intRef[k - 1]; k--; }
+      intT0[k] = t0; intT1[k] = t1; intRef[k] = a; nInt++;
+      if (nInt === MAX_INT) break;
+    }
+
+    // March near to far. Terrain is sampled with a growing step; when the next step would
+    // enter a structure's footprint the march stops there and the DDA takes over until the
+    // ray leaves it. Once the last footprint is behind us no structure work happens at all.
+    let k = 0, z = 1.0, blockExit = 0;
+    zPrev = 0.3;
+    while (z < vd && left > 0) {
+      if (k < nInt && intT0[k] <= z) {
+        marchStructure(active[intRef[k]], intT0[k], intT1[k]);
+        if (intT1[k] > z) { z = intT1[k]; zPrev = z; }
+        k++;
+        continue;
+      }
+      const px = camX + dx * z, pz = camZ + dz * z;
+      if (z >= NEAR_SMOOTH) {
+        if (z >= blockExit) {
+          // A new block: skip all of it if its highest point cannot rise above what is painted
+          // (the height needed changes linearly along the ray, so its ends bound it).
+          const bx = Math.floor(px / BLOCK), bz = Math.floor(pz / BLOCK);
+          const ex = dx > 0 ? ((bx + 1) * BLOCK - camX) / dx : dx < 0 ? (bx * BLOCK - camX) / dx : Infinity;
+          const ez = dz > 0 ? ((bz + 1) * BLOCK - camZ) / dz : dz < 0 ? (bz * BLOCK - camZ) / dz : Infinity;
+          blockExit = (ex < ez ? ex : ez) + 1e-4;
+          let zEnd = blockExit < vd ? blockExit : vd;
+          if (k < nInt && intT0[k] < zEnd) zEnd = intT0[k];
+          const D = ((ybuf - 0.5) * rayH - horizonPix) / f, need0 = camY - D * z, need1 = camY - D * zEnd;
+          if (blockMax[(bz & BM) * NB + (bx & BM)] < (need0 < need1 ? need0 : need1)) { zPrev = z; z = zEnd; continue; }
+        }
+        const idx = (Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK);
+        if ((horizonPix + (camY - H[idx]) * f / z) * invRayH - 0.5 <= ybuf - 1) terrainAt(idx, z, px, pz);
+      } else terrainAt((Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK), z, px, pz);
+      zPrev = z;
+      let nz = z + 0.5 + z * 0.008;
+      if (k < nInt && intT0[k] < nz) nz = intT0[k];
+      z = nz;
+    }
+
+    // Whatever is still unclaimed above the terrain is sky, or the sun or moon.
+    if (left > 0) {
+      const pxX = (col + 0.5) * rayW;
+      for (let r = 0, i = col * RH; r < ybuf; r++, i++) {
+        if (kind[i] !== NONE) continue;
+        let kd = K.SKY;
+        const pyY = (r + 0.5) * rayH;
+        if (sunScreen) { const ex = pxX - sunScreen.x, ey = pyY - sunScreen.y; if (ex * ex + ey * ey <= sunR2) kd = K.SUN; }
+        if (moonScreen && kd === K.SKY) { const ex = pxX - moonScreen.x, ey = pyY - moonScreen.y; if (ex * ex + ey * ey <= moonR2) kd = K.MOON; }
+        kind[i] = kd; seg[i] = kd === K.SKY ? 0 : kd << 24; ramp[i] = kd === K.SKY ? R.sky : kd === K.SUN ? R.sun : R.moon;
+        pos[i] = kd === K.SKY ? skyPosRow[r] : 1; depth[i] = Infinity; lit[i] = 0; flags[i] = 0;
+      }
+    }
+  }
+}
+let skyPosRow = new Float32Array(0);
+
+// =====================================================================
+//  RENDER 1b: 3D SPRITES  (analytic ray–solid intersection)
+// =====================================================================
+// Trees, bushes, boulders, clouds, campfire logs and the merchants are built from spheres,
+// ellipsoids, capsules, cylinders and cones (intersection formulas after Inigo Quilez). Each
+// primitive is rasterised over its own screen bounding box: every ray inside it is intersected
+// exactly, lit by its surface normal, and depth-tested against what is already there.
+const P_SPHERE = 0, P_ELLIPSOID = 1, P_CAPSULE = 2, P_CYLINDER = 3, P_CONE = 4, P_VCONE = 5;
+const LOOK_SOLID = 0, LOOK_CANOPY = 1, LOOK_CLOUD = 2, LOOK_GLOW = 3;
+const prims = [];
+let primCount = 0;
+function prim(type, kind, seg, ramp, look) {
+  let p = prims[primCount++];
+  if (!p) { p = { type: 0, ax: 0, ay: 0, az: 0, bx: 0, by: 0, bz: 0, r: 0, r2: 0, ex: 0, ey: 0, ez: 0, ca: 1, sa: 0, kind: 0, seg: 0, ramp: 0, look: 0, posAdd: 0, lit: 0, flags: 0, cx: 0, cy: 0, cz: 0, rad: 0, phase: 0 }; prims[primCount - 1] = p; }
+  p.type = type; p.kind = kind; p.seg = seg; p.ramp = ramp; p.look = look; p.posAdd = 0; p.lit = 0; p.flags = 0; p.ca = 1; p.sa = 0; p.marks = SPRITE_MARKS[kind] !== undefined;
+  return p;
+}
+// Constructors; positions are relative to the camera.
+function pSphere(x, y, z, r, kind, seg, ramp, look) { const p = prim(P_SPHERE, kind, seg, ramp, look); p.ax = x; p.ay = y; p.az = z; p.r = r; p.cx = x; p.cy = y; p.cz = z; p.rad = r; return p; }
+function pEllipsoid(x, y, z, ex, ey, ez, ang, kind, seg, ramp, look) {
+  const p = prim(P_ELLIPSOID, kind, seg, ramp, look); p.ax = x; p.ay = y; p.az = z; p.ex = ex; p.ey = ey; p.ez = ez; p.ca = Math.cos(ang); p.sa = Math.sin(ang);
+  p.cx = x; p.cy = y; p.cz = z; p.rad = Math.max(ex, ey, ez); return p;
+}
+function pSegment(type, ax, ay, az, bx, by, bz, r, r2, kind, seg, ramp, look) {
+  const p = prim(type, kind, seg, ramp, look); p.ax = ax; p.ay = ay; p.az = az; p.bx = bx; p.by = by; p.bz = bz; p.r = r; p.r2 = r2;
+  p.cx = (ax + bx) / 2; p.cy = (ay + by) / 2; p.cz = (az + bz) / 2; p.rad = Math.hypot(bx - ax, by - ay, bz - az) / 2 + Math.max(r, r2); return p;
+}
+const pCapsule = (ax, ay, az, bx, by, bz, r, kind, seg, ramp, look) => pSegment(P_CAPSULE, ax, ay, az, bx, by, bz, r, r, kind, seg, ramp, look);
+const pCylinder = (ax, ay, az, bx, by, bz, r, kind, seg, ramp, look) => pSegment(P_CYLINDER, ax, ay, az, bx, by, bz, r, r, kind, seg, ramp, look);
+const pCone = (ax, ay, az, bx, by, bz, ra, rb, kind, seg, ramp, look) => pSegment(P_CONE, ax, ay, az, bx, by, bz, ra, rb, kind, seg, ramp, look);
+// A vertical cone (rb < ra) or cylinder (rb = ra) standing on (x, y0, z), up to height y1.
+const pVCone = (x, y0, z, y1, ra, rb, kind, seg, ramp, look) => pSegment(P_VCONE, x, y0, z, x, y1, z, ra, rb, kind, seg, ramp, look);
+
+// The current ray from the camera, not normalised: (rdx, rdy, rdz) has a forward component of 1,
+// so a hit's parameter along it is the hit's depth. rr2 is its squared length. hn* is the unit
+// surface normal at the last hit.
+let rdx = 0, rdy = 0, rdz = 1, rr2 = 1, hnx = 0, hny = 1, hnz = 0;
+function hitSphere(cx, cy, cz, r) {   // centre relative to the camera
+  const b = rdx * cx + rdy * cy + rdz * cz, c = cx * cx + cy * cy + cz * cz - r * r, h = b * b - rr2 * c;
+  if (h < 0) return -1;
+  const t = (b - Math.sqrt(h)) / rr2;
+  if (t <= 0) return -1;
+  const ir = 1 / r;
+  hnx = (rdx * t - cx) * ir; hny = (rdy * t - cy) * ir; hnz = (rdz * t - cz) * ir;
+  return t;
+}
+function hitCapsule(p) {
+  const bax = p.bx - p.ax, bay = p.by - p.ay, baz = p.bz - p.az, r = p.r;
+  const oax = -p.ax, oay = -p.ay, oaz = -p.az;
+  const baba = bax * bax + bay * bay + baz * baz, bard = bax * rdx + bay * rdy + baz * rdz;
+  const baoa = bax * oax + bay * oay + baz * oaz, rdoa = rdx * oax + rdy * oay + rdz * oaz, oaoa = oax * oax + oay * oay + oaz * oaz;
+  const a = baba * rr2 - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - r * r * baba, h = b * b - a * c;
+  if (h < 0) return -1;
+  if (a > 1e-12) {
+    const t = (-b - Math.sqrt(h)) / a, y = baoa + t * bard;
+    if (y > 0 && y < baba) {
+      if (t <= 0) return -1;
+      const k = y / baba, ir = 1 / r;
+      hnx = (rdx * t - p.ax - bax * k) * ir; hny = (rdy * t - p.ay - bay * k) * ir; hnz = (rdz * t - p.az - baz * k) * ir;
+      return t;
+    }
+    return y <= 0 ? hitSphere(p.ax, p.ay, p.az, r) : hitSphere(p.bx, p.by, p.bz, r);
+  }
+  return bard < 0 ? hitSphere(p.bx, p.by, p.bz, r) : hitSphere(p.ax, p.ay, p.az, r);
+}
+function hitCylinder(p) {
+  const bax = p.bx - p.ax, bay = p.by - p.ay, baz = p.bz - p.az, r = p.r;
+  const ocx = -p.ax, ocy = -p.ay, ocz = -p.az;
+  const baba = bax * bax + bay * bay + baz * baz, bard = bax * rdx + bay * rdy + baz * rdz, baoc = bax * ocx + bay * ocy + baz * ocz;
+  const k2 = baba * rr2 - bard * bard, k1 = baba * (ocx * rdx + ocy * rdy + ocz * rdz) - baoc * bard;
+  const k0 = baba * (ocx * ocx + ocy * ocy + ocz * ocz) - baoc * baoc - r * r * baba;
+  let h = k1 * k1 - k2 * k0;
+  if (h < 0) return -1;
+  h = Math.sqrt(h);
+  let t = -1, y = 0;
+  if (k2 > 1e-12) {
+    t = (-k1 - h) / k2; y = baoc + t * bard;
+    if (y > 0 && y < baba) {
+      if (t <= 0) return -1;
+      const k = y / baba, ir = 1 / r;
+      hnx = (ocx + t * rdx - bax * k) * ir; hny = (ocy + t * rdy - bay * k) * ir; hnz = (ocz + t * rdz - baz * k) * ir;
+      return t;
+    }
+  } else y = baoc < 0 ? -1 : baba + 1;
+  if (Math.abs(bard) < 1e-12) return -1;
+  t = ((y < 0 ? 0 : baba) - baoc) / bard;
+  if (Math.abs(k1 + k2 * t) < h && t > 0) {
+    const s = (y < 0 ? -1 : 1) / Math.sqrt(baba);
+    hnx = bax * s; hny = bay * s; hnz = baz * s;
+    return t;
+  }
+  return -1;
+}
+function hitCone(p) {
+  const bax = p.bx - p.ax, bay = p.by - p.ay, baz = p.bz - p.az, ra = p.r, rb = p.r2;
+  const oax = -p.ax, oay = -p.ay, oaz = -p.az, obx = -p.bx, oby = -p.by, obz = -p.bz;
+  const m0 = bax * bax + bay * bay + baz * baz, m1 = oax * bax + oay * bay + oaz * baz, m2 = rdx * bax + rdy * bay + rdz * baz;
+  const m3 = rdx * oax + rdy * oay + rdz * oaz, m5 = oax * oax + oay * oay + oaz * oaz, m9 = obx * bax + oby * bay + obz * baz;
+  // caps
+  if (m1 < 0) {
+    const qx = oax * m2 - rdx * m1, qy = oay * m2 - rdy * m1, qz = oaz * m2 - rdz * m1;
+    if (qx * qx + qy * qy + qz * qz < ra * ra * m2 * m2) {
+      const t = -m1 / m2;
+      if (t <= 0) return -1;
+      const s = -1 / Math.sqrt(m0); hnx = bax * s; hny = bay * s; hnz = baz * s;
+      return t;
+    }
+  } else if (m9 > 0) {
+    const t = -m9 / m2;
+    const qx = obx + rdx * t, qy = oby + rdy * t, qz = obz + rdz * t;
+    if (qx * qx + qy * qy + qz * qz < rb * rb) {
+      if (t <= 0) return -1;
+      const s = 1 / Math.sqrt(m0); hnx = bax * s; hny = bay * s; hnz = baz * s;
+      return t;
+    }
+  }
+  // body
+  const rr = ra - rb, hy = m0 + rr * rr;
+  const k2 = m0 * m0 * rr2 - m2 * m2 * hy;
+  const k1 = m0 * m0 * m3 - m1 * m2 * hy + m0 * ra * (rr * m2);
+  const k0 = m0 * m0 * m5 - m1 * m1 * hy + m0 * ra * (rr * m1 * 2 - m0 * ra);
+  const h = k1 * k1 - k2 * k0;
+  if (h < 0 || Math.abs(k2) < 1e-12) return -1;
+  const t = (-k1 - Math.sqrt(h)) / k2;
+  const y = m1 + t * m2;
+  if (y < 0 || y > m0 || t <= 0) return -1;
+  const nx = m0 * (m0 * (oax + t * rdx) + rr * bax * ra) - bax * hy * y;
+  const ny = m0 * (m0 * (oay + t * rdy) + rr * bay * ra) - bay * hy * y;
+  const nz = m0 * (m0 * (oaz + t * rdz) + rr * baz * ra) - baz * hy * y;
+  const il = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+  hnx = nx * il; hny = ny * il; hnz = nz * il;
+  return t;
+}
+
+// Rasterise one primitive: every ray in its screen box that nothing nearer already claims. In
+// camera space the ray for column x, row y is (p, q, 1) with p = rayP[x], q = rayQ[y]: its forward
+// component is 1, so a hit's parameter along it is its depth, and spheres and ellipsoids need no
+// normalising at all. Buffers are column-major, so each column of the box is one contiguous run.
+const primBox = new Float64Array(4);   // x0, x1, y0, y1 in rays, and the nearest depth
+let primNear = 0;
+function primScreenBox(p) {
+  const fx = vFx, fz = vFz, rx = vRx, rz = vRz;
+  // the primitive's box in the world (camera-relative), from its own shape
+  let hx, hy, hz, mx, my, mz;
+  if (p.type === P_SPHERE) { mx = p.ax; my = p.ay; mz = p.az; hx = hy = hz = p.r; }
+  else if (p.type === P_ELLIPSOID) {
+    mx = p.ax; my = p.ay; mz = p.az;
+    hx = Math.sqrt(p.ex * p.ex * p.ca * p.ca + p.ez * p.ez * p.sa * p.sa); hy = p.ey; hz = Math.sqrt(p.ex * p.ex * p.sa * p.sa + p.ez * p.ez * p.ca * p.ca);
+  } else {
+    const r = p.r > p.r2 ? p.r : p.r2;
+    mx = (p.ax + p.bx) / 2; my = (p.ay + p.by) / 2; mz = (p.az + p.bz) / 2;
+    hx = Math.abs(p.bx - p.ax) / 2 + r; hy = Math.abs(p.by - p.ay) / 2 + r; hz = Math.abs(p.bz - p.az) / 2 + r;
+  }
+  let sx0 = Infinity, sx1 = -Infinity, sy0 = Infinity, sy1 = -Infinity, zmin = Infinity, zmax = -Infinity;
+  for (let k = 0; k < 8; k++) {
+    const X = mx + (k & 1 ? hx : -hx), Y = my + (k & 2 ? hy : -hy), Z = mz + (k & 4 ? hz : -hz);
+    const zc = X * fx + Z * fz;
+    if (zc < zmin) zmin = zc; if (zc > zmax) zmax = zc;
+    if (zc < 0.05) continue;
+    const xs = (X * rx + Z * rz) / zc, ys = Y / zc;
+    if (xs < sx0) sx0 = xs; if (xs > sx1) sx1 = xs; if (ys < sy0) sy0 = ys; if (ys > sy1) sy1 = ys;
+  }
+  if (zmax < 0.05) return false;
+  if (zmin < 0.05) { sx0 = -1e3; sx1 = 1e3; sy0 = -1e3; sy1 = 1e3; }   // reaches behind the eye: the whole screen
+  const { RW, RH, rayW, rayH } = grid, f = vF;
+  let x0 = Math.floor((grid.w * 0.5 + sx0 * f) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + sx1 * f) / rayW - 0.5);
+  let y0 = Math.floor((vHor - sy1 * f) / rayH - 0.5), y1 = Math.ceil((vHor - sy0 * f) / rayH - 0.5);
+  if (x0 < grid.xr0) x0 = grid.xr0; if (x1 > grid.xr1 - 1) x1 = grid.xr1 - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
+  if (x0 > x1 || y0 > y1) return false;
+  primBox[0] = x0; primBox[1] = x1; primBox[2] = y0; primBox[3] = y1;
+  primNear = zmin > 0.05 ? zmin : 0.05;
+  return true;
+}
+function rasterPrim(p) {
+  if (!primScreenBox(p)) return;
+  const x0 = primBox[0], x1 = primBox[1], y0 = primBox[2], y1 = primBox[3], zN = primNear;
+  const RH = grid.RH, P = rayP, Q = rayQ;
+  const fx = vFx, fz = vFz, rx = vRx, rz = vRz, cX = vCamX, cY = vCamY, cZ = vCamZ;
+  const { kind, seg, ramp, pos, depth, lit, u, v, w, flags } = rays;
+  const type = p.type, look = p.look, Lx = light.lx, Ly = light.ly, Lz = light.lz;
+  const pk = p.kind, ps = p.seg, pr = p.ramp, pl = p.lit, pf = p.flags, pa = p.posAdd, marks = p.marks, tn1 = RAMP_LEN[p.ramp] - 1;
+  // shade = base + k·(n·L) + ky·n.y (+ a darker underside on canopies); clouds and glows differ
+  const glow = look === LOOK_GLOW, cloud = look === LOOK_CLOUD, canopy = look === LOOK_CANOPY;
+  const cx = p.ax, cy = p.ay, cz = p.az;
+  // The rows a column can hit: the discriminant, as a quadratic in the row's slope q, is
+  // A·q² + 2B·q + C; when A < 0 it is non-negative between two roots, and only those rows are
+  // tested. (A ≥ 0 means the eye is inside the solid's vertical shadow: test the whole column.)
+  const f = vF, hor = vHor, rayH = grid.rayH;
+  let ya = 0, yb = 0;
+  const rowsOf = (A, B, C) => {
+    ya = y0; yb = y1;
+    if (A >= 0) return true;
+    const disc = B * B - A * C;
+    if (disc < 0) return false;
+    const sq = Math.sqrt(disc), qLo = (-B + sq) / A, qHi = (-B - sq) / A;
+    const top = Math.floor((hor - qHi * f) / rayH - 0.5), bot = Math.ceil((hor - qLo * f) / rayH - 0.5);
+    if (top > ya) ya = top; if (bot < yb) yb = bot;
+    return ya <= yb;
+  };
+  if (type === P_SPHERE) {
+    const r = p.r, ir = 1 / r, cc = cx * cx + cy * cy + cz * cz - r * r, zcS = cx * fx + cz * fz, xcS = cx * rx + cz * rz;
+    const A = cy * cy - cc;
+    for (let x = x0; x <= x1; x++) {
+      const pp = P[x], a0 = 1 + pp * pp, b0 = zcS + pp * xcS, dwx = fx + rx * pp, dwz = fz + rz * pp;
+      if (!rowsOf(A, b0 * cy, b0 * b0 - a0 * cc)) continue;
+      for (let y = ya, i = x * RH + ya; y <= yb; y++, i++) {
+        const di = depth[i];
+        if (di <= zN) continue;
+        const q = Q[y], a = a0 + q * q, b = b0 + q * cy, h = b * b - a * cc;
+        if (h < 0) continue;
+        const t = (b - Math.sqrt(h)) / a;
+        if (t <= 0 || t >= di) continue;
+        const nx = (t * dwx - cx) * ir, ny = (t * q - cy) * ir, nz = (t * dwz - cz) * ir, nl = nx * Lx + ny * Ly + nz * Lz;
+        let s = glow ? pa : cloud ? 0.3 + 0.45 * ny + (nl > 0 ? 0.3 * nl : 0) : 0.5 + 0.4 * nl + 0.12 * ny + pa;
+        if (canopy && ny < 0) s += 0.15 * ny;
+        const sc = !(s > 0) ? 0 : s > 1 ? 1 : s;
+        kind[i] = pk; seg[i] = ps | (((sc * tn1 + 0.5) | 0) << 20); ramp[i] = pr; pos[i] = sc; depth[i] = t; lit[i] = pl; flags[i] = pf;
+        if (marks) { u[i] = cX + t * dwx; v[i] = cY + t * q; w[i] = cZ + t * dwz; }
+      }
+    }
+    return;
+  }
+  if (type === P_ELLIPSOID) {
+    const ca = p.ca, sa = p.sa, iex = 1 / p.ex, iey = 1 / p.ey, iez = 1 / p.ez;
+    const clx = (cx * ca + cz * sa) * iex, cly = cy * iey, clz = (cz * ca - cx * sa) * iez, cc = clx * clx + cly * cly + clz * clz - 1;
+    const ax0 = (fx * ca + fz * sa) * iex, ax1 = (rx * ca + rz * sa) * iex, az0 = (fz * ca - fx * sa) * iez, az1 = (rz * ca - rx * sa) * iez;
+    const A = iey * iey * (cly * cly - cc);
+    for (let x = x0; x <= x1; x++) {
+      const pp = P[x], dlx = ax0 + ax1 * pp, dlz = az0 + az1 * pp;
+      const aP = dlx * dlx + dlz * dlz, bP = dlx * clx + dlz * clz, dwx = fx + rx * pp, dwz = fz + rz * pp;
+      if (!rowsOf(A, bP * iey * cly, bP * bP - aP * cc)) continue;
+      for (let y = ya, i = x * RH + ya; y <= yb; y++, i++) {
+        const di = depth[i];
+        if (di <= zN) continue;
+        const q = Q[y], dly = q * iey, a = aP + dly * dly, b = bP + dly * cly, h = b * b - a * cc;
+        if (h < 0) continue;
+        const t = (b - Math.sqrt(h)) / a;
+        if (t <= 0 || t >= di) continue;
+        const lx = (dlx * t - clx) * iex, ly = (dly * t - cly) * iey, lz = (dlz * t - clz) * iez;
+        const il = 1 / Math.sqrt(lx * lx + ly * ly + lz * lz);
+        const nx = (lx * ca - lz * sa) * il, ny = ly * il, nz = (lx * sa + lz * ca) * il, nl = nx * Lx + ny * Ly + nz * Lz;
+        let s = glow ? pa : cloud ? 0.3 + 0.45 * ny + (nl > 0 ? 0.3 * nl : 0) : 0.5 + 0.4 * nl + 0.12 * ny + pa;
+        if (canopy && ny < 0) s += 0.15 * ny;
+        const sc = !(s > 0) ? 0 : s > 1 ? 1 : s;
+        kind[i] = pk; seg[i] = ps | (((sc * tn1 + 0.5) | 0) << 20); ramp[i] = pr; pos[i] = sc; depth[i] = t; lit[i] = pl; flags[i] = pf;
+        if (marks) { u[i] = cX + t * dwx; v[i] = cY + t * q; w[i] = cZ + t * dwz; }
+      }
+    }
+    return;
+  }
+  if (type === P_VCONE) {
+    // A vertical cone or cylinder: base (cx, cy, cz) of radius ra, top at height yt of radius rb.
+    // At depth t the ray is at height t·q and the cone's radius there is m(t) = M0 − M1·t; the
+    // ray is on its surface where its distance from the axis equals m(t), a quadratic in t.
+    const ra = p.r, rb = p.r2, yb = cy, yt = p.by, k = (ra - rb) / (yt - yb), M0 = ra + k * yb, g0 = cx * cx + cz * cz;
+    const sk = 1 / Math.sqrt(1 + k * k), ra2 = ra * ra, rb2 = rb * rb;
+    for (let x = x0; x <= x1; x++) {
+      const pp = P[x], dwx = fx + rx * pp, dwz = fz + rz * pp, g2 = 1 + pp * pp, g1 = dwx * cx + dwz * cz;
+      // the stretch of this column's ray that passes within the base radius of the axis
+      const tc = g1 / g2, dmin2 = g0 - g1 * tc;
+      if (dmin2 > ra2) continue;
+      const dl = Math.sqrt((ra2 - dmin2) / g2), t1 = tc - dl, t2 = tc + dl;
+      if (t2 <= 0.05) continue;
+      let ya = y0, yb2 = y1;
+      if (t1 > 0.05) {
+        const qMax = yt > 0 ? yt / t1 : yt / t2, qMin = yb < 0 ? yb / t1 : yb / t2;
+        const top = Math.floor((hor - qMax * f) / rayH - 0.5), bot = Math.ceil((hor - qMin * f) / rayH - 0.5);
+        if (top > ya) ya = top; if (bot < yb2) yb2 = bot;
+      }
+      for (let y = ya, i = x * RH + ya; y <= yb2; y++, i++) {
+        const di = depth[i];
+        if (di <= zN) continue;
+        const q = Q[y], M1 = k * q, a = g2 - M1 * M1, b = g1 - M0 * M1, c = g0 - M0 * M0;
+        let tHit = di, nx = 0, ny = 0, nz = 0;
+        const disc = b * b - a * c;
+        if (disc >= 0 && (a > 1e-12 || a < -1e-12)) {
+          const sq = Math.sqrt(disc);
+          let r1 = (b - sq) / a, r2 = (b + sq) / a;
+          if (r1 > r2) { const tmp = r1; r1 = r2; r2 = tmp; }
+          for (let n = 0; n < 2; n++) {
+            const r = n === 0 ? r1 : r2, hy = r * q, m = M0 - M1 * r;
+            if (r > 0 && r < tHit && hy >= yb && hy <= yt && m > 0) {
+              tHit = r; const im = sk / m; nx = (r * dwx - cx) * im; ny = k * sk; nz = (r * dwz - cz) * im;
+              break;
+            }
+          }
+        }
+        if (q < 0 || q > 0) {   // the flat ends: the base seen from below, the top seen from above
+          const tb = yb / q;
+          if (tb > 0 && tb < tHit) { const ox = tb * dwx - cx, oz = tb * dwz - cz; if (ox * ox + oz * oz <= ra2) { tHit = tb; nx = 0; ny = -1; nz = 0; } }
+          const tt = yt / q;
+          if (tt > 0 && tt < tHit && rb > 0) { const ox = tt * dwx - cx, oz = tt * dwz - cz; if (ox * ox + oz * oz <= rb2) { tHit = tt; nx = 0; ny = 1; nz = 0; } }
+        }
+        if (tHit >= di) continue;
+        const nl = nx * Lx + ny * Ly + nz * Lz;
+        let s = glow ? pa : cloud ? 0.3 + 0.45 * ny + (nl > 0 ? 0.3 * nl : 0) : 0.5 + 0.4 * nl + 0.12 * ny + pa;
+        if (canopy && ny < 0) s += 0.15 * ny;
+        const sc = !(s > 0) ? 0 : s > 1 ? 1 : s;
+        kind[i] = pk; seg[i] = ps | (((sc * tn1 + 0.5) | 0) << 20); ramp[i] = pr; pos[i] = sc; depth[i] = tHit; lit[i] = pl; flags[i] = pf;
+        if (marks) { u[i] = cX + tHit * dwx; v[i] = cY + tHit * q; w[i] = cZ + tHit * dwz; }
+      }
+    }
+    return;
+  }
+  // capsules, and cylinders and cones at an angle
+  for (let x = x0; x <= x1; x++) {
+    const pp = P[x], p2 = 1 + pp * pp, dwx = fx + rx * pp, dwz = fz + rz * pp;
+    rdx = dwx; rdz = dwz;
+    for (let y = y0, i = x * RH + y0; y <= y1; y++, i++) {
+      const di = depth[i];
+      if (di <= zN) continue;
+      const q = Q[y];
+      rdy = q; rr2 = p2 + q * q;
+      const d = type === P_CAPSULE ? hitCapsule(p) : type === P_CYLINDER ? hitCylinder(p) : hitCone(p);
+      if (d < 0 || d >= di) continue;
+      const nx = hnx, ny = hny, nl = nx * Lx + ny * Ly + hnz * Lz;
+      let s = glow ? pa : cloud ? 0.3 + 0.45 * ny + (nl > 0 ? 0.3 * nl : 0) : 0.5 + 0.4 * nl + 0.12 * ny + pa;
+      if (canopy && ny < 0) s += 0.15 * ny;
+      const sc = !(s > 0) ? 0 : s > 1 ? 1 : s;
+      kind[i] = pk; seg[i] = ps | (((sc * tn1 + 0.5) | 0) << 20); ramp[i] = pr; pos[i] = sc; depth[i] = d; lit[i] = pl; flags[i] = pf;
+      if (marks) { u[i] = cX + dwx * d; v[i] = cY + q * d; w[i] = cZ + dwz * d; }
+    }
+  }
+}
+
+// Flames are light, not solids: a flickering teardrop on a camera-facing plane, pale core to red rim.
+function rasterFlame(L, cx, cy, cz, t, li) {
+  const { RW, RH, rayW, rayH } = grid;
+  const zc = cx * vFx + cz * vFz;
+  if (zc < 0.3) return;
+  const xc = cx * vRx + cz * vRz;
+  const flick = 1 + 0.12 * Math.sin(t * 11 + L.phase) + 0.06 * Math.sin(t * 17.3 + L.phase * 3);
+  const sway = 0.12 * Math.sin(t * 6.1 + L.phase * 2);
+  const fh = L.size * flick, fw = L.size * 0.55, base = cy - 0.15 * L.size;
+  const k = vF / zc;
+  let x0 = Math.floor((grid.w * 0.5 + (xc - fw * 1.2) * k) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + (xc + fw * 1.2) * k) / rayW - 0.5);
+  let y0 = Math.floor((vHor - (base + fh) * k) / rayH - 0.5), y1 = Math.ceil((vHor - base * k) / rayH - 0.5);
+  if (x0 < grid.xr0) x0 = grid.xr0; if (x1 > grid.xr1 - 1) x1 = grid.xr1 - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
+  const { kind, seg, ramp, pos, depth, lit, flags } = rays;
+  for (let y = y0; y <= y1; y++) {
+    const vv = (rayQ[y] * zc - base) / fh;                   // 0 at the base, 1 at the tip
+    if (vv < 0 || vv > 1) continue;
+    const hw = fw * 1.9 * Math.sqrt(vv) * Math.pow(1 - vv, 1.3) + 0.02, uOff = sway * vv * vv;
+    for (let x = x0, i = x0 * RH + y; x <= x1; x++, i += RH) {
+      if (depth[i] <= zc) continue;
+      const qq = Math.abs(rayP[x] * zc - xc - uOff) / hw;
+      if (qq > 1) continue;
+      const zone = qq < 0.45 && vv < 0.75 ? 0 : qq < 0.8 ? 1 : 2;
+      kind[i] = K.FLAME; seg[i] = (K.FLAME << 24) | (li << 2) | zone; ramp[i] = R.fire; pos[i] = zone === 0 ? 1 : zone === 1 ? 0.72 : 0.38;
+      depth[i] = zc; lit[i] = 0; flags[i] = 0;
+    }
+  }
+  glows.push({ x: grid.w * 0.5 + xc * k, y: vHor - (base + fh * 0.5) * k, hPx: fh * k, zc, fire: L.kind === 'fire', li });
+}
+
+// ---- what the sprites are made of ---------------------------------------------------------------
+const glows = [], birdsOnScreen = [], shadowDiscs = [];
+let primOrder = new Float64Array(0);
+const pose = { head: 0, look: 0, moving: false };
+function drawSprites(t, poses) {
+  primCount = 0; glows.length = 0; birdsOnScreen.length = 0; shadowDiscs.length = 0;
+  const camX = vCamX, camY = vCamY, camZ = vCamZ, fx = vFx, fz = vFz, rx = vRx, rz = vRz;
+  const vd = vVd, zoneC = vd * 0.66;
+  // this stripe's slice of the view, as lateral slopes (x/z) of its first and last ray columns
+  const pL = rayP[grid.xr0] - 0.02, pR = rayP[grid.xr1 - 1] + 0.02;
+  const inView = (zc, lat, rad) => { const z = zc > 0 ? zc : 0; return zc + rad > 0.3 && lat + rad > pL * z - 1 && lat - rad < pR * z + 1; };
+
+  // Trees, bushes and boulders from the buckets within range.
+  const trees = world.trees, buckets = world.treeBuckets;
+  if (trees) {
+    const bx0 = Math.floor((camX - zoneC) / TREE_BUCKET), bx1 = Math.floor((camX + zoneC) / TREE_BUCKET);
+    const bz0 = Math.floor((camZ - zoneC) / TREE_BUCKET), bz1 = Math.floor((camZ + zoneC) / TREE_BUCKET);
+    for (let bz = bz0; bz <= bz1; bz++) for (let bx = bx0; bx <= bx1; bx++) {
+      const list = buckets[((bz % TREE_BUCKETS + TREE_BUCKETS) % TREE_BUCKETS) * TREE_BUCKETS + ((bx % TREE_BUCKETS + TREE_BUCKETS) % TREE_BUCKETS)];
+      for (let k = 0; k < list.length; k++) {
+        const i = list[k];
+        const dxw = wrapDelta(trees.x[i] - camX), dzw = wrapDelta(trees.z[i] - camZ);
+        const zc = dxw * fx + dzw * fz;
+        if (zc > zoneC) continue;
+        const size = trees.size[i], lat = dxw * rx + dzw * rz;
+        if (!inView(zc, lat, 4 * size) || !(trees.y[i] === trees.y[i])) continue;
+        buildPlant(i, trees.kind[i], dxw, trees.y[i] - camY, dzw, size, zc);
+      }
+    }
+  }
+  // Merchants.
+  for (let mi = 0; mi < world.merchants.length; mi++) {
+    const m = world.merchants[mi];
+    const dxw = wrapDelta(m.x - camX), dzw = wrapDelta(m.z - camZ);
+    const zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
+    if (zc > zoneC || !inView(zc, lat, 2.2) || !(m.y === m.y)) continue;
+    pose.head = poses[mi * 3]; pose.look = poses[mi * 3 + 1]; pose.moving = poses[mi * 3 + 2] > 0;
+    buildMerchant(m, mi, pose, dxw, m.y - camY, dzw, zc, t);
+  }
+  // Clouds: three soft lobes each, lit above and grey below.
+  const wind = world.wind;
+  for (let ci = 0; ci < world.clouds.length; ci++) {
+    const c = world.clouds[ci];
+    const dxw = wrapDelta(c.x + wind[0] * t - camX), dzw = wrapDelta(c.z + wind[1] * t - camZ);
+    const zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
+    if (zc < 5 || zc > vd || !inView(zc, lat, c.w)) continue;
+    const seg = (K.CLOUD << 24) | ci;
+    for (let k = 0; k < c.lobes.length; k++) {
+      const [ox, oy, sc] = c.lobes[k];
+      const hz = (hash2(ci, k, 71) - 0.5) * c.w * 0.3;
+      pEllipsoid(dxw + ox * c.w * 0.5, c.y - camY - oy * c.h * 0.5, dzw + hz, sc * c.w * 0.5, sc * c.h * 0.6, sc * c.w * 0.38, hash2(ci, 3, 5) * 3, K.CLOUD, seg, R.cloud, LOOK_CLOUD);
+    }
+  }
+  // Campfires and torches: logs or a bracket as solids; the flame itself after the solids.
+  const flames = [];
+  for (let li = 0; li < world.lights.length; li++) {
+    const L = world.lights[li];
+    if (L.kind === 'torch' && light.darkness < 0.05) continue;
+    const dxw = wrapDelta(L.x - camX), dzw = wrapDelta(L.z - camZ);
+    const zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
+    if (zc > zoneC || !inView(zc, lat, 2)) continue;
+    const y = L.y - camY, seg = (K.LOGS << 24) | li;
+    if (L.kind === 'fire') {
+      const a = hash2(li, 1, 3) * Math.PI;
+      for (let k = 0; k < 3; k++) {
+        const b = a + k * Math.PI / 3, ca = Math.cos(b) * 0.65, sa = Math.sin(b) * 0.65;
+        const p = pCapsule(dxw - ca, y - 0.05 + k * 0.07, dzw - sa, dxw + ca, y + 0.1 + k * 0.07, dzw + sa, 0.09, K.LOGS, seg, R.wood, LOOK_SOLID);
+        p.posAdd = -0.25; p.lit = 1;
+      }
+    } else {
+      const p = pCapsule(dxw, y - 0.55, dzw, dxw, y - 0.05, dzw, 0.06, K.LOGS, seg, R.dark, LOOK_SOLID);
+      p.lit = 0.8;
+    }
+    flames.push([L, dxw, y, dzw, li]);
+  }
+  if (primOrder.length < primCount) primOrder = new Float64Array(primCount * 2);
+  const order = primOrder.subarray(0, primCount);
+  for (let k = 0; k < primCount; k++) { const pr = prims[k], key = pr.cx * fx + pr.cz * fz - pr.rad; order[k] = Math.floor((key + 4096) * 64) * 65536 + k; }
+  order.sort();
+  for (let k = 0; k < primCount; k++) rasterPrim(prims[order[k] % 65536]);
+  for (const [L, x, y, z, li] of flames) rasterFlame(L, x, y, z, t, li);
+
+  // Birds are marks in the sky, drawn by the cell stage.
+  for (const b of world.birds) {
+    const a = b.speed * t + b.phase;
+    const wx = b.cx + b.r * Math.cos(a), wz = b.cz + b.r * Math.sin(a), wy = b.alt + 1.5 * Math.sin(t * 0.7 + b.phase * 3);
+    const dxw = wrapDelta(wx - camX), dzw = wrapDelta(wz - camZ);
+    const zc = dxw * fx + dzw * fz;
+    if (zc < 1 || zc > zoneC) continue;
+    const lat = dxw * rx + dzw * rz, k = vF / zc;
+    birdsOnScreen.push({ x: grid.w * 0.5 + lat * k, y: vHor + (camY - wy) * k, zc, frame: Math.floor(t * 4 + b.flap) % 3 });
+  }
+}
+
+// A tree, bush or boulder. Canopies are a main ellipsoid with lumps around it (a lumpy crown
+// gives the edge glyphs something to trace); conifers are three stacked cones.
+function buildPlant(i, kind, x, y, z, s, zc) {
+  const far = zc > 140, lumps = zc < 70 ? 4 : zc < 140 ? 2 : 0;
+  const lit = lightsOn ? warmAt(world.trees.x[i], world.trees.y[i] + 1.5, world.trees.z[i]) : 0;
+  const jit = (hash2(i, 3, 11) - 0.5) * 0.12;
+  if (kind === SPRITE.BOULDER) {
+    const seg = (K.BOULDER << 24) | i, a = hash2(i, 5, 7) * Math.PI;
+    const p = pEllipsoid(x, y + 0.12 * s, z, 0.8 * s, 0.5 * s, 0.66 * s, a, K.BOULDER, seg, R.rock, LOOK_SOLID); p.lit = lit; p.posAdd = jit;
+    if (!far) { const q = pEllipsoid(x + Math.cos(a) * 0.45 * s, y + 0.05 * s, z + Math.sin(a) * 0.45 * s, 0.45 * s, 0.34 * s, 0.4 * s, a + 1, K.BOULDER, seg, R.rock, LOOK_SOLID); q.lit = lit; q.posAdd = jit; }
+    if (zc < 60) shadowDiscs.push([x, z, y, 0.9 * s, zc]);
+    return;
+  }
+  const leafSeg = ((kind === SPRITE.CONIFER ? K.CONIFER : kind === SPRITE.BUSH ? K.BUSH : K.TREE) << 24) | i;
+  if (kind === SPRITE.BUSH) {
+    const p = pEllipsoid(x, y + 0.42 * s, z, 1.0 * s, 0.62 * s, 1.0 * s, 0, K.BUSH, leafSeg, R.leaf, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit;
+    for (let k = 0; k < (lumps ? 2 : 0); k++) {
+      const a = (k + hash2(i, k, 21)) * Math.PI;
+      const q = pSphere(x + Math.cos(a) * 0.6 * s, y + 0.55 * s, z + Math.sin(a) * 0.6 * s, 0.5 * s, K.BUSH, leafSeg, R.leaf, LOOK_CANOPY); q.lit = lit * 0.6; q.posAdd = jit;
+    }
+    return;
+  }
+  if (kind === SPRITE.CONIFER) {
+    if (!far) { const tr = pVCone(x, y - 0.3, z, y + 1.0 * s, 0.09 * s, 0.09 * s, K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
+    const tiers = far ? 2 : 3;
+    for (let k = 0; k < tiers; k++) {
+      const b = far ? [0.7, 1.9][k] : [0.7, 1.66, 2.56][k], top = far ? [2.6, 3.9][k] : [2.3, 3.1, 3.9][k], r = far ? [0.95, 0.62][k] : [0.95, 0.72, 0.5][k];
+      const p = pVCone(x, y + b * s, z, y + top * s, r * s, 0.03 * s, K.CONIFER, leafSeg, R.conifer, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit + 0.1 * k;
+    }
+    if (zc < 90) shadowDiscs.push([x, z, y, 0.9 * s, zc]);
+    return;
+  }
+  if (!far) { const tr = pVCone(x, y - 0.3, z, y + 1.9 * s, 0.13 * s, 0.07 * s, K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
+  const p = pEllipsoid(x, y + 2.45 * s, z, 1.02 * s, 0.95 * s, 1.02 * s, 0, K.TREE, leafSeg, R.leaf, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit;
+  for (let k = 0; k < lumps; k++) {
+    const a = (k + hash2(i, k, 23) * 0.8) * Math.PI * 2 / lumps, rr = (0.62 + 0.16 * hash2(i, k, 29)) * s, off = 0.72 * s;
+    const q = pSphere(x + Math.cos(a) * off, y + (2.3 + (hash2(i, k, 31) - 0.35) * 0.9) * s, z + Math.sin(a) * off, rr, K.TREE, leafSeg, R.leaf, LOOK_CANOPY);
+    q.lit = lit * 0.6; q.posAdd = jit;
+  }
+  if (zc < 90) shadowDiscs.push([x, z, y, 1.15 * s, zc]);
+}
+
+function buildMerchant(m, mi, st, x, y, z, zc, t) {
+  const h = st.head, ch = Math.cos(h), sh = Math.sin(h);
+  // local (right, up, forward) → camera-relative world
+  const Rx = -sh, Rz = ch, Fx = ch, Fz = sh;
+  const P = (r, f) => [x + Rx * r + Fx * f, z + Rz * r + Fz * f];
+  const phase = m.walked * (Math.PI * 2 / 1.5), sw = st.moving ? Math.sin(phase) : 0, bob = st.moving ? 0.03 * Math.abs(Math.cos(phase)) : 0;
+  const lit = lightsOn ? warmAt(m.x, m.y + 1, m.z) * 0.8 : 0;
+  const base = (K.MERCHANT << 24) | (mi << 8);
+  const robe = R['robe' + m.robe];
+  const add = (p, part, posAdd) => { p.seg = base | part; p.lit = lit; p.posAdd = posAdd || 0; return p; };
+  const cap = (r0, y0, f0, r1, y1, f1, rad, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCapsule(ax, y + y0, az, bx, y + y1, bz, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const ell = (r0, y0, f0, ex, ey, ez, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pEllipsoid(ax, y + y0, az, ex, ey, ez, h + Math.PI / 2, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const sph = (r0, y0, f0, rad, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pSphere(ax, y + y0, az, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  // legs and boots (the robe hides the legs above the knee)
+  for (const side of [-1, 1]) {
+    const step = sw * side * 0.2, lift = st.moving ? Math.max(0, Math.sin(phase + (side > 0 ? 0 : Math.PI))) * 0.06 : 0;
+    cap(side * 0.1, 0.78 + bob, 0, side * 0.1, 0.12 + lift, step, 0.072, PART.LEG, R.dark, 0.15);
+    ell(side * 0.1, 0.07 + lift, step + 0.05, 0.075, 0.07, 0.13, PART.BOOT, R.dark, -0.1);
+  }
+  // robe skirt, belt, body, backpack with a bedroll on top
+  const [cx, cz] = P(0, 0);
+  add(pVCone(cx, y + 0.3 + bob, cz, y + 1.0 + bob, 0.29, 0.2, K.MERCHANT, 0, robe, LOOK_SOLID), PART.ROBE);
+  add(pVCone(cx, y + 0.96 + bob, cz, y + 1.03 + bob, 0.215, 0.215, K.MERCHANT, 0, R.pack, LOOK_SOLID), PART.BELT, -0.2);
+  ell(0, 1.19 + bob, 0, 0.21, 0.27, 0.15, PART.ROBE, robe);
+  ell(0, 1.2 + bob, -0.21, 0.19, 0.24, 0.11, PART.PACK, R.pack);
+  cap(-0.2, 1.47 + bob, -0.2, 0.2, 1.47 + bob, -0.2, 0.065, PART.PACK, R.robe3 === robe ? R.robe1 : R.robe3, -0.05);
+  // arms: the right hand holds the staff, the left swings (or holds the lantern after dark)
+  const lantern = light.darkness > 0.05;
+  const lsw = st.moving && !lantern ? -sw * 0.16 : 0;
+  cap(-0.23, 1.36 + bob, 0, -0.27, 1.1 + bob, lsw * 0.5, 0.062, PART.SLEEVE, robe);
+  const lh = lantern ? [-0.27, 0.92 + bob, 0.16] : [-0.26, 0.88 + bob, lsw];
+  cap(-0.27, 1.1 + bob, lsw * 0.5, lh[0], lh[1], lh[2], 0.058, PART.SLEEVE, robe);
+  sph(lh[0], lh[1] - 0.03, lh[2], 0.05, PART.HAND, R.skin);
+  cap(0.23, 1.36 + bob, 0, 0.29, 1.15 + bob, 0.08, 0.062, PART.SLEEVE, robe);
+  cap(0.29, 1.15 + bob, 0.08, 0.3, 1.02 + bob, 0.2, 0.058, PART.SLEEVE, robe);
+  sph(0.3, 0.99 + bob, 0.21, 0.05, PART.HAND, R.skin);
+  const staffLean = st.moving ? sw * 0.08 : 0;
+  cap(0.31, 0.02, 0.2 + staffLean, 0.3, 1.82 + bob, 0.2 - staffLean * 0.3, 0.026, PART.STAFF, R.wood, 0.1);
+  if (lantern) {
+    const lp = sph(lh[0], lh[1] - 0.2, lh[2] + 0.02, 0.065, PART.LANTERN, R.fire, 0); lp.look = LOOK_GLOW; lp.posAdd = 0.85; lp.lit = 0;
+    cap(lh[0], lh[1] - 0.03, lh[2], lh[0], lh[1] - 0.14, lh[2] + 0.02, 0.012, PART.STAFF, R.dark);
+  }
+  // head: face, nose and eyes turn toward you when you are near; hat with a brim and crown
+  const hl = h + st.look, hc = Math.cos(hl), hs = Math.sin(hl);
+  const Hp = (r, yy, f) => [x + (-hs) * r + hc * f, y + yy + bob, z + hc * r + hs * f];
+  const hsph = (r, yy, f, rad, part, rp, pa) => { const [ax, ay, az] = Hp(r, yy, f); return add(pSphere(ax, ay, az, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const [nx0, ny0, nz0] = Hp(0, 1.42, 0), [nx1, ny1, nz1] = Hp(0, 1.5, 0.01);
+  add(pCapsule(nx0, ny0, nz0, nx1, ny1, nz1, 0.055, K.MERCHANT, 0, R.skin, LOOK_SOLID), PART.SKIN, -0.1);
+  hsph(0, 1.56, 0.01, 0.125, PART.SKIN, R.skin);
+  hsph(0, 1.585, -0.035, 0.123, PART.CROWN, mi % 2 ? R.wood : R.dark, 0.05);   // hair, seen from behind and the sides
+  hsph(0, 1.535, 0.13, 0.026, PART.SKIN, R.skin, 0.05);
+  if (zc < 14) { hsph(-0.045, 1.575, 0.112, 0.019, PART.EYE, R.ink); hsph(0.045, 1.575, 0.112, 0.019, PART.EYE, R.ink); }
+  if (mi % 2 === 0) { const [bx, by, bz] = Hp(0, 1.46, 0.07); add(pEllipsoid(bx, by, bz, 0.1, 0.1, 0.07, hl + Math.PI / 2, K.MERCHANT, 0, R.dark, LOOK_SOLID), PART.CROWN, 0.25); }
+  const [hx, hy, hz] = Hp(0, 1.655, 0.01), [tx, ty, tz] = Hp(0, 1.675, 0.01), [kx, ky, kz] = Hp(0, 1.87, -0.01);
+  add(pCylinder(hx, hy, hz, tx, ty, tz, 0.25, K.MERCHANT, 0, R.dark, LOOK_SOLID), PART.BRIM, 0.05);
+  add(pCone(hx, hy, hz, kx, ky, kz, 0.14, 0.09, K.MERCHANT, 0, R.dark, LOOK_SOLID), PART.CROWN, 0.1);
+  if (zc < 50) shadowDiscs.push([x, z, y, 0.45, zc]);
+}
+
+// Ground shadows: under every tree and figure, a soft disc on the ground away from the light.
+function castShadows() {
+  const { RW, RH, rayW, rayH } = grid;
+  const { kind, depth, flags } = rays;
+  const hl = Math.hypot(light.lx, light.lz) || 1, ox = -light.lx / hl, oz = -light.lz / hl;
+  for (const [x, z, y, rad, zc0] of shadowDiscs) {
+    const sx = x + ox * rad * 0.45, sz = z + oz * rad * 0.45;
+    const zc = sx * vFx + sz * vFz, xc = sx * vRx + sz * vRz;
+    if (zc - rad < 0.3) continue;
+    const zN = zc - rad, zF = zc + rad, k0 = vF / zN, k1 = vF / zF;
+    let x0 = Math.floor((grid.w * 0.5 + Math.min((xc - rad) * k0, (xc - rad) * k1)) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + Math.max((xc + rad) * k0, (xc + rad) * k1)) / rayW - 0.5);
+    const yT = y + rad * 0.7, yB = y - rad * 0.7;
+    let y0 = Math.floor((vHor - Math.max(yT * k0, yT * k1)) / rayH - 0.5), y1 = Math.ceil((vHor - Math.min(yB * k0, yB * k1)) / rayH - 0.5);
+    if (x0 < grid.xr0) x0 = grid.xr0; if (x1 > grid.xr1 - 1) x1 = grid.xr1 - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
+    const r2 = rad * rad;
+    for (let xx = x0; xx <= x1; xx++) for (let yy = y0, i = xx * RH + y0; yy <= y1; yy++, i++) {
+      if (kind[i] !== K.TERRAIN) continue;
+      const d = depth[i];
+      if (d < zN - 1 || d > zF + 1) continue;
+      const p = rayP[xx], wx = (vFx + vRx * p) * d - sx, wz = (vFz + vRz * p) * d - sz;
+      if (wx * wx + wz * wz < r2) flags[i] |= F_SHADOW;
+    }
+  }
+}
+
+// =====================================================================
+//  RENDER 1c: GROUND MARKS  (small world objects, splatted into cells)
+// =====================================================================
+// Tufts, pebbles, flakes and ripples are points scattered over the terrain, denser near you and
+// sparser with distance, each drawn in the cell it projects to, at the pixel it projects to.
+// Because they belong to the world and not to the screen, they flow with the ground as you walk
+// instead of shimmering in place. Each band of distance has its own scatter; a point's band
+// edges are jittered so the bands never show as lines.
+const MARK_BAND0 = 1.2, MARK_BANDS = 8, MARK_FAR = 160, MARK_PER_CELL = 0.9, MARK_BUDGET = 10000;
+// hash2's integer form: 32 bits to split into several small fields.
+function hashInt(x, y, s) {
+  let h = Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(y | 0, 0x165667b1) ^ Math.imul(s | 0, 0x9e3779b1);
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+const MARK_SET = [];   // per terrain material: [keep fraction, mark names]
+MARK_SET[MAT.GRASS] = [0.5, ['tick', 'pair', 'three', 'tufts', 'pair']];
+MARK_SET[MAT.GRASS2] = [0.5, ['tick', 'three', 'pair', 'three']];
+MARK_SET[MAT.ROAD] = [0.45, ['grit', 'pebbles', 'pebble', 'grit']];
+MARK_SET[MAT.ROCK] = [0.5, ['pebbles', 'crag', 'pebble', 'crag']];
+MARK_SET[MAT.SNOW] = [0.4, ['dot', 'flake', 'dot']];
+MARK_SET[MAT.WATER] = [0.2, ['wave', 'ripple', 'wave', 'waves']];
+const MARK_IDS = MARK_SET.map(s => s && s[1].map(n => MK[n]));
+function splatGroundMarks(t) {
+  const { cols, rows, cellW, cellH, RW, RH, rayW, rayH } = grid;
+  const { kind, seg, depth } = rays;
+  const T = cellMark.type, HS = cellMark.hash, PX = cellMark.px, PY = cellMark.py, UP = cellMark.up;
+  T.fill(-1);
+  const camX = vCamX, camY = vCamY, camZ = vCamZ, fx = vFx, fz = vFz, rx = vRx, rz = vRz, f = vF, tanH = vTanX * 1.05;
+  const { H, mat } = world;
+  const w2 = grid.w * 0.5, seed = world.seed, xPix0 = grid.c0 * cellW, xPix1 = Math.min(grid.w, grid.c1 * cellW);
+  const sL = (xPix0 - w2) / f, sR = (xPix1 - w2) / f;   // this stripe's slice of the view, as lateral slopes
+  // Points per unit of ground for a cell to see MARK_PER_CELL of them at distance z: a cell covers
+  // about (cw·ch/f²)·z·(z² + h²)/h of ground, h being the eye's height above the ground below it.
+  const hgt = Math.max(EYE, camY - terrainHeight(camX, camZ));
+  const perArea = MARK_PER_CELL * f * f / (cellW * cellH);
+  const bands = [];
+  let total = 0;
+  for (let b = 0; b < MARK_BANDS; b++) {
+    const z0 = MARK_BAND0 * Math.pow(2, b), z1 = Math.min(z0 * 2, MARK_FAR), zm = Math.sqrt(z0 * z1);
+    if (z0 >= MARK_FAR) break;
+    const rho = perArea * hgt / (zm * (zm * zm + hgt * hgt));
+    // lattice cells of a power-of-two size holding 4 to 16 points, so the scatter only changes
+    // wholesale when the density needed changes fourfold
+    const S = Math.pow(2, Math.ceil(Math.log2(Math.sqrt(4 / rho))));
+    const M = Math.max(1, Math.min(16, Math.round(rho * S * S)));
+    bands.push([z0, z1, S, M, b]);
+    total += tanH * (z1 * z1 - z0 * z0) * rho;
+  }
+  const thin = total > MARK_BUDGET ? MARK_BUDGET / total : 1;
+  for (const [z0, z1, S, M0, b] of bands) {
+    const M = Math.max(1, Math.round(M0 * thin));
+    const zlo = z0 * 0.8, zhi = z1 * 1.2;
+    // the wedge of ground in view between zlo and zhi, as a box of lattice cells
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const zz of [zlo, zhi]) for (const sl of [sL, sR]) {
+      const wx = fx * zz + rx * sl * zz, wz = fz * zz + rz * sl * zz;
+      if (wx < minX) minX = wx; if (wx > maxX) maxX = wx; if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz;
+    }
+    const cx0 = Math.floor((camX + minX) / S) - 1, cx1 = Math.floor((camX + maxX) / S) + 1;
+    const cz0 = Math.floor((camZ + minZ) / S) - 1, cz1 = Math.floor((camZ + maxZ) / S) + 1;
+    for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) {
+      const ccx = (cx + 0.5) * S - camX, ccz = (cz + 0.5) * S - camZ;
+      const czc = ccx * fx + ccz * fz;
+      if (czc < zlo - S || czc > zhi + S) continue;
+      const clat = ccx * rx + ccz * rz;
+      if (clat < czc * sL - S * 1.5 || clat > czc * sR + S * 1.5) continue;
+      // the lattice cell's identity wraps with the world, so a point is the same point on every lap
+      const period = W / S | 0, key = (((cx % period) + period) % period) * 7919 + (((cz % period) + period) % period);
+      for (let k = 0; k < M; k++) {
+        // one hash places the point, a second decides its band edge, whether it is kept, its mark and its tone
+        const hA = hashInt(key, k, seed + b * 131), hB = hashInt(key, k, seed + 29 + b * 131);
+        const px = (cx + (hA & 0xffff) / 65536) * S, pz = (cz + (hA >>> 16) / 65536) * S;
+        const dxw = px - camX, dzw = pz - camZ, zc = dxw * fx + dzw * fz;
+        const jit = 0.8 + 0.4 * (hB & 255) / 256;
+        if (zc < z0 * jit || zc >= z1 * jit) continue;
+        const ci = (Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK), m = mat[ci];
+        const set = MARK_SET[m];
+        if (!set) continue;
+        const hk = ((hB >>> 8) & 255) / 256;
+        if (hk > set[0]) continue;
+        const xPix = w2 + (dxw * rx + dzw * rz) * f / zc;
+        if (xPix < xPix0 || xPix >= xPix1) continue;
+        const hgt = zc < NEAR_SMOOTH ? terrainHeight(px, pz) : H[ci];
+        const yPix = vHor + (camY - hgt) * f / zc;
+        if (yPix < 0 || yPix >= grid.h) continue;
+        const ri = Math.min(RW - 1, (xPix / rayW) | 0) * RH + Math.min(RH - 1, (yPix / rayH) | 0);
+        if (kind[ri] !== K.TERRAIN || seg[ri] !== (TERRAIN_SEG | m)) continue;
+        const dd = depth[ri] - zc;
+        if (dd > 0.8 + zc * 0.04 || dd < -(0.8 + zc * 0.04)) continue;
+        const c = (xPix / cellW) | 0, r = (yPix / cellH) | 0, i = r * cols + c;
+        if (c >= cols || r >= rows) continue;
+        if (T[i] >= 0 && HS[i] <= hk) continue;
+        const ids = MARK_IDS[m];
+        T[i] = ids[(((hB >>> 16) & 255) * ids.length) >> 8]; HS[i] = hk;
+        PX[i] = xPix - c * cellW; PY[i] = yPix - r * cellH; UP[i] = hB >>> 31;
+      }
+    }
+  }
+}
+
+// Screen-space water reflections (as v1): below every stretch of water in a column, mirror what is
+// above its far shore into the water, fading with distance from the shore. Ripples reflect less.
+function reflectWater() {
+  const { RW, RH } = grid;
+  const { kind, flags, refl, reflAmt } = rays;
+  refl.fill(-1, grid.xr0 * RH, grid.xr1 * RH);
+  const fadeLen = RH * 0.55;
+  for (let x = grid.xr0; x < grid.xr1; x++) {
+    let shore = -1, inWater = false;
+    for (let r = 0, i = x * RH; r < RH; r++, i++) {
+      if (kind[i] === K.TERRAIN && (flags[i] & F_WATER)) {
+        if (!inWater) { inWater = true; shore = r; }
+        const d = r - shore + 1, rr = shore - d, fade = 1 - d / fadeLen;
+        if (rr < 0 || fade <= 0) continue;
+        const j = x * RH + rr;
+        if (kind[j] === K.TERRAIN && (flags[j] & F_WATER)) continue;
+        refl[i] = j; reflAmt[i] = fade * (flags[i] & F_RIPPLE ? 0.45 : 1);
+      } else inWater = false;
+    }
+  }
+}
+
+// =====================================================================
+//  RENDER 2: THE CELL STAGE  (rays → one glyph and two colours per cell)
+// =====================================================================
+// How often a sprite surface shows a mark, and which (drawn on a lattice fixed to the object).
+const SPRITE_MARKS = [];
+SPRITE_MARKS[K.TREE] = [0.3, ['club', 'leafo', 'club', 'leafpct'].map(n => MK[n])];
+SPRITE_MARKS[K.BUSH] = [0.3, ['club', 'leafo'].map(n => MK[n])];
+SPRITE_MARKS[K.CONIFER] = [0.35, [MK.needles]];
+SPRITE_MARKS[K.BOULDER] = [0.35, ['crag', 'pebbles'].map(n => MK[n])];
+const cIdx = new Int32Array(RAYS_X * RAYS_Y), cellOff = new Int32Array(RAYS_X * RAYS_Y);
+// Per cell, between the two passes: the list and position its colour comes from (−1 when the
+// cell is already drawn), and what it needs for marks.
+const plan = { list: new Int16Array(0), X: new Float32Array(0), kind: new Uint8Array(0), ramp: new Uint8Array(0), P: new Float32Array(0), mid: new Int32Array(0) };
+function shadeCells(t) {
+  const { cols, rows, RW, RH, cellW, cellH, f } = grid;
+  const { kind, seg, ramp, pos, depth, lit, u, v, w, flags, refl, reflAmt } = rays;
+  const GL = grid.glyph, FG = grid.fg, BG = grid.bg;
+  const SPACE = atlas.SPACE, FULL = atlas.FULL, SHADE = atlas.SHADE, shapeGlyph = atlas.shapeGlyph, shapeInv = atlas.shapeInv;
+  const NS = RAYS_X * RAYS_Y, idx = cIdx, n = cols * rows;
+  if (plan.list.length !== n) {
+    plan.list = new Int16Array(n); plan.X = new Float32Array(n); plan.kind = new Uint8Array(n); plan.ramp = new Uint8Array(n); plan.P = new Float32Array(n); plan.mid = new Int32Array(n);
+  }
+  const pList = plan.list, pX = plan.X, pKind = plan.kind, pRampId = plan.ramp, pP = plan.P, pMid = plan.mid;
+  const starAmt = cur.stars, yawCols = Math.round(cam.yaw / (FOV / cols)), pitchRows = Math.round(cam.pitch / cellH);
+  const glowC = COL.glow, starC = COL.near[R.star][0], starB = COL.near[R.star][1];
+  const sky = COL.near[R.sky], skyN = sky.length;
+  const shimmer = Math.floor(t * 1.5);
+  const fogOf = i => { const k = kind[i]; return k === K.SKY || k === K.SUN || k === K.MOON || k === K.FLAME ? 0 : fogAt(depth[i]); };
+  // Two rays belong together when they hit the same thing (on solids, in the same step of light:
+  // rasterPrim folds that into the segment), and on the ground at much the same distance.
+  const same = (i, j) => seg[i] === seg[j] && (kind[i] !== K.TERRAIN || (depth[i] < depth[j] * 1.22 && depth[j] < depth[i] * 1.22));
+  let sunCol = -99, sunRow = -99, sunRX = 1, sunRY = 1;
+  if (sunScreen) { sunCol = sunScreen.x / cellW; sunRow = sunScreen.y / cellH; sunRX = sunScreen.r / cellW; sunRY = sunScreen.r / cellH; }
+  let edges = 0;
+
+  // ---- pass 1: edges are drawn now; every other cell is planned ----
+  const OFF = cellOff;   // ray k of a cell, relative to its first ray (column-major)
+  for (let k = 0; k < NS; k++) OFF[k] = (k % RAYS_X) * RH + ((k / RAYS_X) | 0);
+  const cm0 = grid.cm0, cm1 = grid.cm1, c0 = grid.c0, c1 = grid.c1;
+  for (let r = 0; r < rows; r++) for (let c = cm0; c < cm1; c++) {
+    const ci = r * cols + c, base = c * RAYS_X * RH + r * RAYS_Y, i0 = base, s0 = seg[i0];
+    pList[ci] = -1;
+    for (let k = 0; k < NS; k++) idx[k] = base + OFF[k];
+    // Seed the second group with the ray least like the first (another object, or a ridge).
+    // Most cells are one thing throughout, which one pass over the segments shows.
+    let seedB = -1, uniform = true;
+    for (let k = 1; k < NS; k++) if (seg[idx[k]] !== s0) { uniform = false; break; }
+    if (!uniform) { for (let k = 1; k < NS; k++) if (!same(idx[k], i0)) { seedB = idx[k]; break; } }
+    else if (kind[i0] === K.TERRAIN) {
+      const d0 = depth[i0];
+      for (let k = 1; k < NS; k++) { const d = depth[idx[k]]; if (d > d0 * 1.22 || d0 > d * 1.22) { seedB = idx[k]; break; } }
+    }
+    if (seedB >= 0) {
+      const f0 = fogOf(i0), fB = fogOf(seedB);
+      let pat = 0, nB = 0, aP = 0, aF = 0, aL = 0, bP = 0, bF = 0, bL = 0;
+      for (let k = 0; k < NS; k++) {
+        const i = idx[k], fi = fogOf(i);
+        const b = same(i, i0) ? 0 : same(i, seedB) ? 1 : (Math.abs(pos[i] - pos[seedB]) + Math.abs(fi - fB) < Math.abs(pos[i] - pos[i0]) + Math.abs(fi - f0) ? 1 : 0);
+        if (b) { pat |= 1 << k; nB++; bP += pos[i]; bF += fi; bL += lit[i]; } else { aP += pos[i]; aF += fi; aL += lit[i]; }
+      }
+      const nA = NS - nB;
+      const ca = solidColor(ramp[i0], aP / nA, aF / nA, aL / nA, kind[i0]);
+      const cb = solidColor(ramp[seedB], bP / nB, bF / nB, bL / nB, kind[seedB]);
+      if (ca !== cb) {
+        edges++;
+        const fl = kind[seedB] === K.FLAME ? seedB : kind[i0] === K.FLAME ? i0 : -1;
+        if (fl >= 0 && depth[fl] > 70) { GL[ci] = markAnywhere(MK.spark, 0.5); FG[ci] = solidColor(R.fire, 0.8, 0, 0, K.FLAME); BG[ci] = fl === seedB ? ca : cb; continue; }
+        GL[ci] = shapeGlyph[pat];
+        if (shapeInv[pat]) { FG[ci] = ca; BG[ci] = cb; } else { FG[ci] = cb; BG[ci] = ca; }
+        continue;
+      }
+    }
+    let P = 0, L = 0;
+    for (let k = 0; k < NS; k++) { const i = idx[k]; P += pos[i]; L += lit[i]; }
+    P /= NS; L /= NS;
+    const kd = kind[i0];
+    if (kd === K.SKY) {
+      const X = P * (skyN - 1), k = Math.min(skyN - 2, Math.floor(X)), a = X - k;
+      let bg = sky[k], fg = sky[k + 1], g = a < 0.25 ? SPACE : a < 0.5 ? SHADE[1] : a < 0.75 ? SHADE[2] : SHADE[3];
+      if (sunScreen) {   // the air around the sun glows
+        const ex = (c + 0.5 - sunCol) / sunRX, ey = (r + 0.5 - sunRow) / sunRY, d2 = ex * ex + ey * ey;
+        const glow = d2 > 1 && d2 < 49 ? Math.exp(-Math.sqrt(d2) * 0.5) * 0.75 : 0;
+        if (glow > 0.12) { fg = glowC; g = glow < 0.25 ? SHADE[1] : glow < 0.45 ? SHADE[2] : glow < 0.6 ? SHADE[3] : FULL; }
+      }
+      if (starAmt > 0.05 && P < 0.85) {
+        const h = hash2(c + yawCols, r - pitchRows, 77);
+        if (h < 0.05 * starAmt) { GL[ci] = markAnywhere(h < 0.006 ? MK.star3 : h < 0.018 ? MK.star2 : MK.star1, hash2(c + yawCols, r - pitchRows, 78)); FG[ci] = h < 0.012 ? starB : starC; BG[ci] = bg; continue; }
+      }
+      GL[ci] = g; FG[ci] = fg; BG[ci] = bg; continue;
+    }
+    const rp = ramp[i0], im = idx[(RAYS_Y >> 1) * RAYS_X];   // a ray near the middle of the cell
+    const Fg = fogOf(im);
+    if (kd === K.TERRAIN && (flags[im] & F_SHADOW)) P = P > 0.22 ? P - 0.22 : 0;
+    const X = planX(rp, P, Fg, L, kd);
+    if (kd === K.SUN || kd === K.MOON || kd === K.FLAME) { const bg = LISTS[planList][Math.round(X)]; GL[ci] = SPACE; FG[ci] = bg; BG[ci] = bg; continue; }
+    pList[ci] = planList; pX[ci] = X; pKind[ci] = kd; pRampId[ci] = rp; pP[ci] = P; pMid[ci] = im;
+  }
+  stats.edgeCells = edges;
+
+  // ---- pass 2: interior cells, now that every neighbour's tone is known ----
+  // Large even areas stay one flat tone. A ░ or ▒ band appears only where the tone really
+  // changes between neighbouring cells (a lighting step, a fog layer, the rim of firelight),
+  // on the side of the seam the cell's own tone leans toward.
+  const mT = cellMark.type, mPX = cellMark.px, mPY = cellMark.py, mUP = cellMark.up;
+  for (let r = 0; r < rows; r++) for (let c = c0; c < c1; c++) {
+    const ci = r * cols + c, list = pList[ci];
+    if (list < 0) continue;
+    const Lc = LISTS[list], nL = Lc.length, X = pX[ci];
+    let tn = Math.round(X);
+    if (tn > nL - 1) tn = nL - 1;
+    const frac = X - tn, bg = Lc[tn], kd = pKind[ci], rp = pRampId[ci], P = pP[ci], im = pMid[ci];
+    let level = 0, seamFg = 0;
+    if (kd < K.TREE) for (let q = 0; q < 4; q++) {
+      const nb = q === 0 ? (c > cm0 ? ci - 1 : -1) : q === 1 ? (c < cm1 - 1 ? ci + 1 : -1) : q === 2 ? (r > 0 ? ci - cols : -1) : (r < rows - 1 ? ci + cols : -1);
+      if (nb < 0) continue;
+      const ln = pList[nb];
+      if (ln < 0 || pRampId[nb] !== rp) continue;
+      if (ln === list) {
+        const tq = Math.round(pX[nb]);
+        if (tq > tn && frac > 0.12) { const lv = frac > 0.3 ? 2 : 1; if (lv > level) { level = lv; seamFg = Lc[Math.min(nL - 1, tn + 1)]; } }
+        else if (tq < tn && frac < -0.12) { const lv = frac < -0.3 ? 2 : 1; if (lv > level) { level = lv; seamFg = Lc[Math.max(0, tn - 1)]; } }
+      } else if (level === 0 && list !== LIST_WARM) {
+        // a fog layer or the edge of firelight: the nearer, unlit side draws the seam
+        const nearer = ln === LIST_WARM || (list < NR ? ln >= NR : list < 2 * NR && ln === LIST_HAZE);
+        if (!nearer) continue;
+        const cn = LISTS[ln][Math.min(LISTS[ln].length - 1, Math.round(pX[nb]))];
+        if (cn !== bg) { level = 1; seamFg = cn; }
+      }
+    }
+    pRamp = Lc; pTone = tn;
+    const near = list < NR || list === LIST_WARM;
+    // Stone walls keep their mortar through tone changes: the courses are the wall's character.
+    if (kd === K.WALL && rp === R.stone && near) {
+      const base = c * RAYS_X * RH + r * RAYS_Y;
+      for (let k = 0; k < NS; k++) idx[k] = base + (k % RAYS_X) * RH + ((k / RAYS_X) | 0);
+      const g = mortarFor(idx, cellH, cellW, f);
+      if (g !== SPACE) { GL[ci] = g; FG[ci] = darkerOf(bg); BG[ci] = bg; continue; }
+    }
+    if (level) { GL[ci] = SHADE[level]; FG[ci] = seamFg; BG[ci] = bg; continue; }
+    // Water keeps its own colour; what stands on the far shore shows in it as broken strokes.
+    if (rp === R.water && list !== LIST_HAZE) {
+      const base = c * RAYS_X * RH + r * RAYS_Y;
+      let rf = 0, rk = -1;
+      for (let k = 0; k < NS; k++) { const i = base + (k % RAYS_X) * RH + ((k / RAYS_X) | 0); if (refl[i] >= 0 && reflAmt[i] > rf) { rf = reflAmt[i]; rk = refl[i]; } }
+      if (rk >= 0 && rf > 0.12) {
+        const sk = kind[rk], sp = pos[rk] - 0.2;
+        const rc = solidColor(ramp[rk], sp < 0 ? 0 : sp, fogOf(rk), 0, sk === K.SKY ? K.SKY : K.TERRAIN);
+        const h = hash2(c + yawCols, r, 41 + shimmer), h2 = hash2(c + yawCols + 3, r, 43 + shimmer);
+        if (h2 < rf * 0.55 && rc !== bg) { GL[ci] = markAnywhere(h < 0.4 ? MK.waves : h < 0.75 ? MK.wave : MK.ripple, h); FG[ci] = rc; BG[ci] = bg; continue; }
+      }
+    }
+    if (!near) { GL[ci] = SPACE; FG[ci] = bg; BG[ci] = bg; continue; }
+    if (kd === K.TRUNK) { GL[ci] = markAnywhere(MK.bark, 0); FG[ci] = darkerOf(bg); BG[ci] = bg; continue; }
+    if (kd === K.TERRAIN) {
+      const mk = mT[ci];
+      if (mk >= 0) {
+        const up = list === LIST_WARM || (P > 0.55 ? mUP[ci] || P > 0.75 : mUP[ci] && P > 0.35);
+        GL[ci] = markAt(mk, mPX[ci], mPY[ci]); FG[ci] = up ? lighterOf(bg) : darkerOf(bg); BG[ci] = bg; continue;
+      }
+      GL[ci] = SPACE; FG[ci] = bg; BG[ci] = bg; continue;
+    }
+    const sm = SPRITE_MARKS[kd];
+    if (sm) {
+      // a lattice fixed to the object's surface in 3D, no finer than about a cell and a half
+      const d = depth[im], Ls = Math.pow(2, Math.ceil(Math.log2(Math.max(0.05, 1.6 * d * cellW / f))));
+      const obj = seg[im] & 0xfffff, gx = Math.floor(u[im] / Ls), gy = Math.floor(v[im] / Ls), gz = Math.floor(w[im] / Ls);
+      const h1 = hash2(gx * 31 + gz * 977 + obj, gy, kd * 7 + 3);
+      if (h1 < sm[0]) {
+        const h2 = hash2(gx + gz * 13, gy + obj * 13, kd * 11 + 5);
+        GL[ci] = markAnywhere(sm[1][(h2 * sm[1].length) | 0], hash2(gy, gx + gz, 9));
+        FG[ci] = (P > 0.5 ? h2 > 0.3 : h2 > 0.8) ? lighterOf(bg) : darkerOf(bg); BG[ci] = bg; continue;
+      }
+    }
+    GL[ci] = SPACE; FG[ci] = bg; BG[ci] = bg;
+  }
+}
+// Two steps away on the same ramp where the ramp allows, for marks that read at a glance.
+function lighterOf(bg) { const L = pRamp, n = L.length, t = pTone; const a = L[Math.min(n - 1, t + 2)]; return a !== bg ? a : L[Math.max(0, t - 1)]; }
+function darkerOf(bg) { const L = pRamp, n = L.length, t = pTone; const a = L[Math.max(0, t - 2)]; return a !== bg ? a : L[Math.min(n - 1, t + 1)]; }
+
+// Stone walls: mortar where the voxel courses and the running-bond joints fall inside this cell,
+// computed from the height up the wall that every ray recorded.
+function mortarFor(idx, cellH, cellW, f) {
+  const { v, u, depth, seg } = rays;
+  const i0 = idx[0];
+  if (seg[idx[RAYS_X * RAYS_Y - RAYS_X]] !== seg[i0]) return atlas.SPACE;
+  const slope = depth[i0] / f;                       // wall units per pixel down the screen
+  if (slope > 0.25) return atlas.SPACE;              // courses closer together than 4 px: leave the wall plain
+  const vTop = v[i0] + slope * (grid.rayH * 0.5);    // height at the top edge of the cell
+  let lines = 0;
+  for (let y = 1; y < cellH; y++) if (Math.floor(vTop - (y - 0.5) * slope) !== Math.floor(vTop - (y + 0.5) * slope)) lines |= 1 << y;
+  const parity0 = Math.floor(vTop - 0.5 * slope) & 1;
+  let jE = -1, jO = -1;
+  if (slope <= 1 / 7) {                              // near enough for the joints between stones
+    const ua = u[i0], ub = u[idx[1]], du = (ub - ua) / grid.rayW, u0 = ua - du * grid.rayW * 0.5;
+    for (let x = 1; x < cellW; x++) {
+      const a = u0 + du * (x - 0.5), b = u0 + du * (x + 0.5);
+      if (jE < 0 && Math.floor(a) !== Math.floor(b)) jE = x;
+      if (jO < 0 && Math.floor(a + 0.5) !== Math.floor(b + 0.5)) jO = x;
+    }
+  }
+  if (!lines && jE < 0 && jO < 0) return atlas.SPACE;
+  return mortarMask(lines, parity0, jE, jO);
+}
+
+// ---- overlays: firelight in the air, sparks, birds ------------------------------------------
+function drawOverlays(t) {
+  const { cols, rows, cellW, cellH } = grid;
+  const GL = grid.glyph, FG = grid.fg;
+  const SHADE = atlas.SHADE, SPACE = atlas.SPACE;
+  const litP = COL.near[R.lit];
+  const { RW, RH, rayW, rayH } = grid, depth = rays.depth;
+  // the depth the scene has at a cell (its middle ray): glows and sparks only show in front of it
+  const cellDepth = (c, r) => c < grid.cm0 || c >= grid.cm1 ? Infinity : depth[Math.min(RW - 1, c * RAYS_X + (RAYS_X >> 1)) * RH + Math.min(RH - 1, r * RAYS_Y + (RAYS_Y >> 1))];
+  const c0 = grid.c0, c1 = grid.c1;
+  if (light.darkness > 0.3) for (const gw of glows) {
+    if (gw.zc > 150) continue;
+    const fc = gw.x / cellW, fr = gw.y / cellH;
+    if (fc < 0 || fc >= cols || fr < 0 || fr >= rows || cellDepth(fc | 0, fr | 0) < gw.zc - 1) continue;   // the flame itself is hidden
+    const R0 = clamp(gw.hPx / cellH * 2.4, 1.5, 9) * (gw.fire ? 1.3 : gw.li < 0 ? 0.55 : 0.8);
+    for (let r = Math.floor(fr - R0); r <= Math.ceil(fr + R0 * 0.6); r++) for (let c = Math.floor(fc - R0 * 2); c <= Math.ceil(fc + R0 * 2); c++) {
+      if (c < c0 || c >= c1 || r < 0 || r >= rows) continue;
+      const dx = (c + 0.5 - fc) / 2, dy = r + 0.5 - fr, q = Math.sqrt(dx * dx + dy * dy) / R0;
+      if (q >= 1) continue;
+      const i = r * cols + c;
+      if (GL[i] !== SPACE || cellDepth(c, r) < gw.zc - 2) continue;   // tint only plain cells, and nothing in front of the fire
+      const lv = q < 0.35 ? 2 : q < 0.7 ? 1 : 0;
+      if (lv === 0 && hash2(c, r, 5) > 0.5) continue;
+      GL[i] = SHADE[lv + 1]; FG[i] = litP[Math.min(litP.length - 1, q < 0.35 ? 3 : 2)];
+    }
+    if (gw.fire) for (let k = 0; k < 7; k++) {         // sparks rise off a campfire and wink out
+      const h = hash2(k, gw.li, 17), life = (t * (0.35 + 0.25 * h) + h) % 1;
+      const c = Math.round(fc + (h - 0.5) * 3 + Math.sin(life * 6 + k) * 0.8), r = Math.round(fr - gw.hPx / cellH * 0.5 - 1 - life * 8);
+      if (c < c0 || c >= c1 || r < 0 || r >= rows || life > 0.85 || cellDepth(c, r) < gw.zc - 2) continue;
+      const i = r * cols + c;
+      GL[i] = markAnywhere(life < 0.3 ? MK.spark : MK.ember, h); FG[i] = solidColor(R.fire, 0.95 - life * 0.5, 0, 0, K.FLAME);
+    }
+  }
+  for (const b of birdsOnScreen) {
+    const c = Math.floor(b.x / cellW), r = Math.floor(b.y / cellH);
+    if (c < c0 || c >= c1 || r < 0 || r >= rows) continue;
+    const ri = Math.min(grid.RW - 1, (b.x / grid.rayW) | 0) * grid.RH + Math.min(grid.RH - 1, (b.y / grid.rayH) | 0);
+    if (rays.depth[ri] < b.zc) continue;             // behind a hill or a tree
+    const i = r * cols + c;
+    GL[i] = markAt(b.frame === 0 ? MK.birdv : b.frame === 1 ? MK.birdm : MK.birdup, b.x - c * cellW, b.y - r * cellH + 1);
+    FG[i] = COL.bird;
+  }
+}
+
+// The whole frame, for this stripe: rays, cells, pixels. Returns how long each stage took.
+const stats = { marchMs: 0, spriteMs: 0, marksMs: 0, cellMs: 0, drawMs: 0, edgeCells: 0 };
+function renderFrame(t, poses) {
+  const f = grid.f;
+  vF = f; vVd = view.dist; vHor = grid.h * 0.5 + cam.pitch;
+  vFx = Math.cos(cam.yaw); vFz = Math.sin(cam.yaw); vRx = -vFz; vRz = vFx;
+  vCamX = cam.x; vCamY = cam.y; vCamZ = cam.z; vTanX = Math.tan(FOV / 2);
+  const s = skyState(clock.hours);
+  const strength = s.sunEl > 0.03 ? clamp(s.sunEl / 0.35, 0, 1) : clamp(Math.max(s.moonEl, 0) / 0.3, 0, 1) * 0.6;
+  shAmb = cur.ambient; shDiff = cur.diffuse * (0.4 + 0.6 * strength);
+  posLo = cur.ambient * 0.3; posInv = 1 / (cur.ambient + cur.diffuse * 0.95 - posLo);
+  const t0 = performance.now();
+  collectLights(t);
+  lightsOn = activeLights.length > 0;
+  for (let x = 0; x < grid.RW; x++) rayP[x] = ((x + 0.5) * grid.rayW - grid.w * 0.5) / f;
+  for (let y = 0; y < grid.RH; y++) { rayQ[y] = -((y + 0.5) * grid.rayH - vHor) / f; rayInvS[y] = rayQ[y] < -1e-6 ? -1 / rayQ[y] : Infinity; }
+  if (skyPosRow.length !== grid.RH) skyPosRow = new Float32Array(grid.RH);
+  for (let y = 0; y < grid.RH; y++) { const e = (vHor - (y + 0.5) * grid.rayH) / (0.55 * f); skyPosRow[y] = e <= 0 ? 1 : e >= 1 ? 0 : 1 - e; }
+  updateShadeMips();
+  sunScreen = projectBody(s.sunEl, s.sunAz);
+  moonScreen = s.sunEl < 0.15 ? projectBody(s.moonEl, s.moonAz) : null;
+  marchRays(t);
+  const t1 = performance.now();
+  drawSprites(t, poses);
+  castShadows();
+  const t2 = performance.now();
+  splatGroundMarks(t);
+  reflectWater();
+  const t3 = performance.now();
+  shadeCells(t);
+  drawOverlays(t);
+  const t4 = performance.now();
+  compose();
+  const t5 = performance.now();
+  stats.marchMs = t1 - t0; stats.spriteMs = t2 - t1; stats.marksMs = t3 - t2; stats.cellMs = t4 - t3; stats.drawMs = t5 - t4;
+  return stats;
+}
+
+
+// ---- the renderer's interface ------------------------------------------------------------------
+// On the main thread the camera, clock, palette and world are the live objects. In a worker
+// they are copies: the world arrives once per world, the lighting whenever it changes, and the
+// rest with every frame.
+function applyFrame(d) {
+  cam.x = d.cam[0]; cam.y = d.cam[1]; cam.z = d.cam[2]; cam.yaw = d.cam[3]; cam.pitch = d.cam[4];
+  clock.hours = d.hours; view.dist = d.viewDist;
+  light.lx = d.light[0]; light.ly = d.light[1]; light.lz = d.light[2]; light.darkness = d.light[3];
+  for (let k = 0; k < 6; k++) light.faceShade[k] = d.light[4 + k];
+  cur.ambient = d.cur[0]; cur.diffuse = d.cur[1]; cur.lights = d.cur[2]; cur.stars = d.cur[3];
+  let o = 0;
+  for (const L of COL.near) { L.set(d.col.subarray(o, o + L.length)); o += L.length; }
+  for (const L of COL.far) { L.set(d.col.subarray(o, o + L.length)); o += L.length; }
+  COL.glow = d.col[o]; COL.bird = d.col[o + 1];
+  const M = d.merchants;
+  for (let mi = 0; mi < world.merchants.length; mi++) { const m = world.merchants[mi]; m.x = M[mi * 4]; m.y = M[mi * 4 + 1]; m.z = M[mi * 4 + 2]; m.walked = M[mi * 4 + 3]; }
+}
+let viewGen = -1;
+function message(msg, reply) {
+  switch (msg.type) {
+    case 'world': Object.assign(world, msg.world); break;
+    case 'shade': world.shade = msg.shade; break;
+    case 'view': setView(msg.w, msg.h, msg.preset, msg.c0, msg.c1, null); viewGen = msg.gen; break;
+    case 'frame': {
+      if (msg.gen !== viewGen) { reply({ type: 'done', gen: msg.gen, stale: true, buf: msg.buf }, msg.buf ? [msg.buf] : []); break; }
+      applyFrame(msg);
+      // the pixels travel back and forth: the main thread returns last frame's buffer with each frame
+      const need = grid.cols * grid.cellW * grid.rows * grid.cellH;
+      if (msg.buf && msg.buf.byteLength === need * 4) grid.buf = new Uint32Array(msg.buf);
+      else if (!grid.buf || grid.buf.length !== need) grid.buf = new Uint32Array(need);
+      const st = renderFrame(msg.t, msg.poses);
+      const buf = grid.buf.buffer;
+      grid.buf = null;
+      reply({ type: 'done', gen: msg.gen, stats: { ...st }, buf, c0: grid.c0, c1: grid.c1 }, [buf]);
+      break;
+    }
+  }
+}
+return { setView, renderFrame, message, rays, atlas, cellMark, grid, stats };
+}
+
+// =====================================================================
+//  THE CANVAS
+// =====================================================================
+// The page's canvas and the screen's grid of cells (the renderer keeps its own copy of the grid).
+const canvas = document.getElementById('view');
+const ctx = canvas.getContext('2d', { alpha: false });
+const grid = { w: 0, h: 0, cols: 0, rows: 0, cellW: 6, cellH: 12, f: 800, preset: DEFAULT_CELL, RW: 0, RH: 0, rayW: 3, rayH: 3, img: null };
 
 // =====================================================================
 //  CAMERA + INPUT
@@ -1733,1410 +3178,6 @@ function update(dt) {
 }
 
 // =====================================================================
-//  RENDER  (rays → cells → pixels)
-// =====================================================================
-// Every frame runs three stages:
-//   1. Rays. RAYS_X × RAYS_Y rays per cell are marched through the heightmap and the structures,
-//      column by column, near to far, with a painted mask (as v1 did per cell). Then trees,
-//      merchants, clouds and flames are intersected analytically per ray as 3D solids and
-//      depth-tested against what the march found. Every ray records what it hit: its kind, its
-//      segment (which object and which face or part), the colour ramp it is drawn from, where on
-//      that ramp its lighting puts it, its depth and how much firelight reaches it.
-//   2. Cells. Each cell turns its rays into one glyph and two palette colours: where two things
-//      meet, the shape that best fits how the rays split; inside one thing, that material's own
-//      marks, or a narrow ░▒▓ band on a seam between two tones, fog layers or lit ground.
-//   3. Compose. The glyph masks are painted into one ImageData.
-const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2]);
-const RAMP_LEN = Uint8Array.from(RAMP_NAMES, n => KEYFRAMES.day.ramps[n].length);
-const TERRAIN_SEG = K.TERRAIN << 24;
-let sunScreen = null, moonScreen = null;
-
-// The frame's camera, lighting and fog, set at the start of render().
-let vHor = 0, vFx = 1, vFz = 0, vRx = 0, vRz = 1, vCamX = 0, vCamY = 0, vCamZ = 0, vF = 1, vVd = 500, vTanX = 1;
-let shAmb = 0.38, shDiff = 0.62, posLo = 0, posInv = 1, lightsOn = false;
-const FOG_LUT = new Float32Array(1025);
-for (let k = 0; k <= 1024; k++) { const u = (k / 1024 - 0.15) / 0.85; FOG_LUT[k] = u <= 0 ? 0 : Math.pow(u, 1.4) * 0.93; }
-const fogAt = d => { const k = d * 1024 / vVd; return k >= 1024 ? 0.93 : FOG_LUT[k | 0]; };
-
-function projectBody(el, az) {   // sun or moon, in pixels
-  const dAz = wrapAngle(az - cam.yaw);
-  if (el < -0.06 || Math.abs(dAz) > Math.PI / 2 - 0.05) return null;
-  return { x: grid.w / 2 + Math.tan(dAz) * vF, y: vHor - Math.tan(el) / Math.cos(dAz) * vF, r: 0.05 * vF };
-}
-
-// Structures close enough to matter this frame, positioned in the unwrapped frame nearest
-// the camera so the ray maths never has to think about the world wrapping.
-const active = [];
-function collectActive(vd) {
-  active.length = 0;
-  for (const s of world.structs) {
-    const dxw = wrapDelta(s.cx - cam.x), dzw = wrapDelta(s.cz - cam.z);
-    if (Math.hypot(dxw, dzw) - s.radius > vd) continue;
-    const shiftX = Math.round(cam.x + dxw - s.cx), shiftZ = Math.round(cam.z + dzw - s.cz);   // 0 or ±W
-    active.push({ s, si: world.structs.indexOf(s), ux0: s.x0 + shiftX, uz0: s.z0 + shiftZ, ux1: s.x0 + shiftX + s.tpl.sx, uz1: s.z0 + shiftZ + s.tpl.sz });
-  }
-}
-const MAX_INT = 32;
-const intT0 = new Float64Array(MAX_INT), intT1 = new Float64Array(MAX_INT), intRef = new Int32Array(MAX_INT);
-
-// ---- point lights (torches, campfires, lanterns) ---------------------------------------
-const activeLights = [];
-const lightBuckets = Array.from({ length: TREE_BUCKETS * TREE_BUCKETS }, () => []);   // per 32-cell bucket: the lights that reach it
-function collectLights(t) {
-  activeLights.length = 0;
-  for (const b of lightBuckets) b.length = 0;
-  const k = light.darkness, TB = TREE_BUCKETS;
-  const add = (x, y, z, r, c, i) => {
-    const L = { x, y, z, r, cr: c[0], cg: c[1], cb: c[2], i };
-    activeLights.push(L);
-    for (let bz = Math.floor((z - r) / TREE_BUCKET); bz <= Math.floor((z + r) / TREE_BUCKET); bz++)
-      for (let bx = Math.floor((x - r) / TREE_BUCKET); bx <= Math.floor((x + r) / TREE_BUCKET); bx++)
-        lightBuckets[((bz % TB + TB) % TB) * TB + ((bx % TB + TB) % TB)].push(L);
-  };
-  for (const L of world.lights) {
-    const flick = 0.85 + 0.15 * Math.sin(t * 9 + L.phase) * Math.sin(t * 5.3 + L.phase * 2);
-    const strength = L.kind === 'fire' ? Math.max(k, 0.3) : k;
-    if (strength < 0.05) continue;
-    add(L.x, L.y, L.z, L.r, L.color, L.i * flick * strength);
-  }
-  if (k > 0.05) for (const m of world.merchants) add(m.x, m.y + 1.1, m.z, 9, [1, 0.75, 0.4], 0.9 * k);
-}
-// How much firelight reaches a world position: 0 (none) to 1 (full warm ramp).
-function warmAt(x, y, z) {
-  const TB = TREE_BUCKETS;
-  const list = lightBuckets[((Math.floor(z / TREE_BUCKET) % TB + TB) % TB) * TB + ((Math.floor(x / TREE_BUCKET) % TB + TB) % TB)];
-  if (list.length === 0) return 0;
-  let s = 0;
-  for (let k = 0; k < list.length; k++) {
-    const L = list[k];
-    const dx = wrapDelta(x - L.x), dz = wrapDelta(z - L.z);
-    if (dx > L.r || dx < -L.r || dz > L.r || dz < -L.r) continue;
-    const dy = y - L.y, d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    if (d >= L.r) continue;
-    const a = 1 - d / L.r;
-    s += a * a * L.i;
-  }
-  s *= 1.105;
-  return s > 1 ? 1 : s;
-}
-const hasLightsAt = (x, z) => lightBuckets[((Math.floor(z / TREE_BUCKET) % TREE_BUCKETS + TREE_BUCKETS) % TREE_BUCKETS) * TREE_BUCKETS + ((Math.floor(x / TREE_BUCKET) % TREE_BUCKETS + TREE_BUCKETS) % TREE_BUCKETS)].length > 0;
-
-// Terrain lighting between cell centres (the near ground has no flat blocks at your feet).
-function smoothShade(x, z) {
-  const fx = x - 0.5, fz = z - 0.5;
-  const x0 = Math.floor(fx), z0 = Math.floor(fz);
-  const tx = fx - x0, tz = fz - z0;
-  const S = world.shade;
-  const r0 = (z0 & MASK) * W, r1 = ((z0 + 1) & MASK) * W, c0 = x0 & MASK, c1 = (x0 + 1) & MASK;
-  const a = S[r0 + c0] + (S[r0 + c1] - S[r0 + c0]) * tx;
-  const b = S[r1 + c0] + (S[r1 + c1] - S[r1 + c0]) * tx;
-  return a + (b - a) * tz;
-}
-
-// Distant slopes are lit from averaged light: far off, one sample stands for many cells, and
-// reading a single cell's light there stripes a mountainside column by column. Levels 1 to 3
-// average 2×2, 4×4 and 8×8 cells, rebuilt whenever the lighting changes.
-const shadeMip = [null, new Float32Array((W >> 1) * (W >> 1)), new Float32Array((W >> 2) * (W >> 2)), new Float32Array((W >> 3) * (W >> 3))];
-const mipKey = [NaN, NaN, NaN, NaN, NaN];
-function updateShadeMips() {
-  const S = world.shade;
-  if (mipKey[0] === light.lx && mipKey[1] === light.ly && mipKey[2] === light.lz && mipKey[3] === S[0] && mipKey[4] === S[N >> 1] && shadeMip[0] === S) return;
-  mipKey[0] = light.lx; mipKey[1] = light.ly; mipKey[2] = light.lz; mipKey[3] = S[0]; mipKey[4] = S[N >> 1];
-  shadeMip[0] = S;
-  for (let l = 1; l < 4; l++) {
-    const src = shadeMip[l - 1], sw = W >> (l - 1), dw = W >> l, dst = shadeMip[l];
-    for (let z = 0; z < dw; z++) for (let x = 0; x < dw; x++) {
-      const a = 2 * z * sw + 2 * x;
-      dst[z * dw + x] = (src[a] + src[a + 1] + src[a + sw] + src[a + sw + 1]) * 0.25;
-    }
-  }
-}
-function mipShade(x, z, l) {   // bilinear, from level l
-  const s = 1 << l, dw = W >> l, M = dw - 1, S = shadeMip[l];
-  const fx = x / s - 0.5, fz = z / s - 0.5;
-  const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
-  const r0 = (z0 & M) * dw, r1 = ((z0 + 1) & M) * dw, c0 = x0 & M, c1 = (x0 + 1) & M;
-  const a = S[r0 + c0] + (S[r0 + c1] - S[r0 + c0]) * tx, b = S[r1 + c0] + (S[r1 + c1] - S[r1 + c0]) * tx;
-  return a + (b - a) * tz;
-}
-
-// The highest ground in every 16×16 block (and its one-cell border). Past the near field the
-// march skips a whole block when even its highest point would stay hidden below what the column
-// has already painted, which is most of the ground most of the time.
-const BLOCK = 16, NB = W / BLOCK, BM = NB - 1;
-const blockMax = new Float32Array(NB * NB);
-let blockMaxOf = -1;
-function updateBlockMax() {
-  if (blockMaxOf === world.seed && world.H === blockMaxH) return;
-  blockMaxOf = world.seed; blockMaxH = world.H;
-  const H = world.H;
-  for (let bz = 0; bz < NB; bz++) for (let bx = 0; bx < NB; bx++) {
-    let m = -Infinity;
-    for (let z = bz * BLOCK - 1; z <= (bz + 1) * BLOCK; z++) for (let x = bx * BLOCK - 1; x <= (bx + 1) * BLOCK; x++) {
-      const h = H[(z & MASK) * W + (x & MASK)];
-      if (h > m) m = h;
-    }
-    blockMax[bz * NB + bx] = m;
-  }
-}
-let blockMaxH = null;
-
-// =====================================================================
-//  RENDER 1a: THE MARCH  (terrain and structures, per ray column)
-// =====================================================================
-function marchRays(t) {
-  const { RW, RH } = grid;
-  const f = vF, invRayH = 1 / grid.rayH, rayH = grid.rayH, horizonPix = vHor;
-  const fx = vFx, fz = vFz, rx = vRx, rz = vRz;
-  const camX = vCamX, camY = vCamY, camZ = vCamZ;
-  const { H, mat, shade } = world;
-  const vd = vVd;
-  const fb = light.faceShade;
-  const { kind, seg, ramp, pos, depth, lit, u, v, flags } = rays;
-  const NONE = K.NONE;
-  kind.fill(NONE);
-  collectActive(vd);
-  updateBlockMax();
-
-  // Per-column state shared by the helpers below.
-  let col = 0, ybuf = 0, left = 0, dx = 0, dz = 0, zPrev = 0, gaps = false, lastShZ = -1, lastSh = 0;
-  // Attributes of whatever paint() is about to claim.
-  let aKind = 0, aSeg = 0, aRamp = 0, aPos = 0, aLit = 0, aFlags = 0, aU = 0, aV = 0;
-
-  // Claim rays [r0, r1) of this column that nothing nearer has claimed. ybuf is the row from
-  // which everything below is known to be claimed; it only moves up when a paint reaches it,
-  // so gaps under a lintel or a ceiling stay open for whatever lies behind.
-  function paint(r0, r1, z) {
-    if (r0 < 0) r0 = 0;
-    if (r1 > RH) r1 = RH;
-    for (let r = r0, i = col * RH + r0; r < r1; r++, i++) {
-      if (kind[i] === NONE) { kind[i] = aKind; seg[i] = aSeg; ramp[i] = aRamp; pos[i] = aPos; depth[i] = z; lit[i] = aLit; flags[i] = aFlags; u[i] = aU; v[i] = aV; left--; }
-    }
-    if (r1 >= ybuf) { if (r0 < ybuf) ybuf = r0; } else if (r0 < r1) gaps = true;
-  }
-  const posOf = sh => { const p = (sh - posLo) * posInv; return !(p > 0) ? 0 : p > 1 ? 1 : p; };
-
-  function terrainAt(idx, z, px, pz) {
-    const near = z < NEAR_SMOOTH;
-    const h = near ? terrainHeight(px, pz) : H[idx];
-    let row = Math.ceil((horizonPix + (camY - h) * f / z) * invRayH - 0.5);
-    if (!(row < ybuf)) return;   // (also skips a NaN height: seed 42 has one, at 416, 390)
-    if (row < 0) row = 0;
-    const warm = lightsOn && z < 120 && hasLightsAt(px, pz);
-    if (near && ybuf - row > 2) {
-      // Close up one step spans many rows: find where each row's ray meets the ground (as a plane
-      // at this step's height, between the previous step and this one) and read material,
-      // lighting and firelight there, so the ground at your feet is as sharp as the ground ahead.
-      const lo = zPrev, hgt = camY - h;
-      // lighting varies smoothly along the ray: read it at both ends of the step and blend (the
-      // near end is usually the far end of the step before)
-      const sh1 = smoothShade(px, pz), sh0 = lastShZ === lo ? lastSh : smoothShade(camX + dx * lo, camZ + dz * lo), kSh = z > lo ? (sh1 - sh0) / (z - lo) : 0;
-      const w1 = warm ? warmAt(px, h, pz) : 0, w0 = warm ? warmAt(camX + dx * lo, h, camZ + dz * lo) : 0, kW = z > lo ? (w1 - w0) / (z - lo) : 0;
-      let lastCi = -1, m = 0, kR = 0, kS = 0;
-      for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
-        if (kind[i] !== NONE) continue;
-        let tt = hgt * rayInvS[r];
-        if (!(tt <= z)) tt = z; else if (tt < lo) tt = lo;
-        const wx = camX + dx * tt, wz = camZ + dz * tt;
-        const ci = (Math.floor(wz) & MASK) * W + (Math.floor(wx) & MASK);
-        if (ci !== lastCi) { lastCi = ci; m = mat[ci]; kR = MAT_RAMP[m]; kS = TERRAIN_SEG | m; }
-        let fl = 0, sh = sh0 + (tt - lo) * kSh;
-        if (m === MAT.WATER) { sh += 0.12; fl = F_WATER; if (Math.sin(wx * 0.31 + t * 1.7) + Math.sin(wz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE; }
-        const pp = (sh - posLo) * posInv;
-        kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = !(pp > 0) ? 0 : pp > 1 ? 1 : pp; depth[i] = tt;
-        lit[i] = w0 + (tt - lo) * kW; flags[i] = fl; left--;
-      }
-      lastShZ = z; lastSh = sh1;
-      ybuf = row;
-      return;
-    }
-    const m = mat[idx];
-    let sh = near ? smoothShade(px, pz) : z < 60 ? shade[idx] : mipShade(px, pz, z < 120 ? 1 : z < 240 ? 2 : 3), fl = 0;
-    if (m === MAT.WATER) {
-      sh += 0.12; fl = F_WATER;                       // water reflects the sky: a touch brighter than land
-      if (z < vd * 0.6 && Math.sin(px * 0.31 + t * 1.7) + Math.sin(pz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE;
-    }
-    const kS = TERRAIN_SEG | m, kR = MAT_RAMP[m], kP = posOf(sh), kL = warm ? warmAt(px, h, pz) : 0, end = col * RH + ybuf;
-    if (!gaps) {
-      for (let i = col * RH + row; i < end; i++) { kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = kP; depth[i] = z; lit[i] = kL; flags[i] = fl; }
-      left -= ybuf - row;
-    } else {
-      for (let i = col * RH + row; i < end; i++) if (kind[i] === NONE) { kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = kP; depth[i] = z; lit[i] = kL; flags[i] = fl; left--; }
-    }
-    ybuf = row;
-  }
-
-  // Walk the ray cell by cell through one structure's footprint (a 2D DDA), so a one-cell
-  // wall is never stepped over. Each voxel span is projected at the cell's entry depth and
-  // painted as a front face plus, when visible, its top face or underside.
-  function marchStructure(A, tIn, tOut) {
-    const s = A.s, tpl = s.tpl, sx = tpl.sx, sz = tpl.sz, baseY = s.baseY, sSeg = A.si << 4;
-    const spans = tpl.spans, topSolid = tpl.topSolid;
-    const eyeY = camY - baseY;
-    let tt = tIn;
-    const px0 = camX + dx * tt, pz0 = camZ + dz * tt;
-    let ix = Math.floor(px0), iz = Math.floor(pz0);
-    if (ix < A.ux0) ix = A.ux0; else if (ix >= A.ux1) ix = A.ux1 - 1;
-    if (iz < A.uz0) iz = A.uz0; else if (iz >= A.uz1) iz = A.uz1 - 1;
-    const stepX = dx >= 0 ? 1 : -1, stepZ = dz >= 0 ? 1 : -1;
-    const tdx = dx !== 0 ? Math.abs(1 / dx) : Infinity, tdz = dz !== 0 ? Math.abs(1 / dz) : Infinity;
-    let tmx = dx > 0 ? tt + (ix + 1 - px0) / dx : dx < 0 ? tt + (ix - px0) / dx : Infinity;
-    let tmz = dz > 0 ? tt + (iz + 1 - pz0) / dz : dz < 0 ? tt + (iz - pz0) / dz : Infinity;
-    const txIn = dx > 0 ? (A.ux0 - camX) / dx : dx < 0 ? (A.ux1 - camX) / dx : -1;
-    const tzIn = dz > 0 ? (A.uz0 - camZ) / dz : dz < 0 ? (A.uz1 - camZ) / dz : -1;
-    let face = Math.abs(txIn - tIn) < 1e-6 ? (stepX > 0 ? 1 : 0) : Math.abs(tzIn - tIn) < 1e-6 ? (stepZ > 0 ? 3 : 2) : -1;
-
-    while (tt < tOut && left > 0) {
-      let tn = tmx < tmz ? tmx : tmz;
-      if (tn > tOut) tn = tOut;
-      terrainAt((iz & MASK) * W + (ix & MASK), tt, camX + dx * tt, camZ + dz * tt);
-      zPrev = tt;
-
-      const lx = ix - A.ux0, lz = iz - A.uz0;
-      if (lx >= 0 && lx < sx && lz >= 0 && lz < sz) {
-        const sp = spans[lx * sz + lz];
-        if (sp !== null) {
-          const thisTop = topSolid[lx * sz + lz];
-          let prevTop = 0;   // topmost solid in the cell the ray came from: "is the air at eye level under a roof?"
-          if (face >= 0) {
-            const pxl = face < 2 ? lx - stepX : lx, pzl = face >= 2 ? lz - stepZ : lz;
-            if (pxl >= 0 && pxl < sx && pzl >= 0 && pzl < sz) prevTop = topSolid[pxl * sz + pzl];
-          }
-          const fc = face >= 0 ? face : 4, sideShade = fb[fc];
-          const kNear = f / tt, kFar = f / tn;
-          const wallU = face < 2 ? camZ + dz * tt : camX + dx * tt;   // where the ray meets this face, along the wall
-          const warm = lightsOn && tt < 120 && hasLightsAt(ix + 0.5, iz + 0.5);
-          for (let i = 0; i < sp.length; i += 3) {
-            const y0 = sp[i], y1 = sp[i + 1], m = VOX_MAT[sp[i + 2]];
-            const wTop = baseY + y1 + 1, wBot = baseY + y0;
-            const rT = Math.ceil((horizonPix + (camY - wTop) * kNear) * invRayH - 0.5);
-            let rB = Math.ceil((horizonPix + (camY - wBot) * kNear) * invRayH - 0.5);
-            if (rB <= rT) rB = rT + 1;   // a distant wall still gets one ray row
-            const inside = prevTop > eyeY && prevTop > y0 + 1;   // interior face: the air beside it, at eye level, is under something solid
-            aKind = K.WALL; aSeg = (K.WALL << 24) | sSeg | fc; aRamp = MAT_RAMP[m];
-            aPos = posOf(inside ? sideShade * 0.45 : sideShade); aFlags = inside ? F_INTERIOR : 0; aU = wallU;
-            const perRow = warm && tt < 60;
-            aLit = warm && !perRow ? warmAt(ix + 0.5, baseY + (y0 + y1 + 1) * 0.5, iz + 0.5) : 0;
-            // Per row, the height up the wall (courses of stone are drawn from it) and, near a
-            // light, the firelight at that height.
-            const r0 = rT < 0 ? 0 : rT, r1 = rB > RH ? RH : rB;
-            // near a light, the firelight at the top and bottom of the span, blended down it
-            const lTop = perRow ? warmAt(ix + 0.5, wTop, iz + 0.5) : aLit, lBot = perRow ? warmAt(ix + 0.5, wBot, iz + 0.5) : aLit, kL = (lBot - lTop) / (wBot - wTop);
-            for (let r = r0, i = col * RH + r0; r < r1; r++, i++) {
-              if (kind[i] !== NONE) continue;
-              const hy = camY + rayQ[r] * tt;
-              kind[i] = K.WALL; seg[i] = aSeg; ramp[i] = aRamp; pos[i] = aPos; depth[i] = tt; flags[i] = aFlags; u[i] = wallU; v[i] = hy - baseY;
-              lit[i] = lTop + (hy - wTop) * kL; left--;
-            }
-            if (r1 >= ybuf) { if (r0 < ybuf) ybuf = r0; } else if (r0 < r1) gaps = true;
-            if (camY > wTop) {           // top face, between this cell's far and near projection
-              const rF = Math.ceil((horizonPix + (camY - wTop) * kFar) * invRayH - 0.5);
-              if (rF < rT) {
-                let st = fb[4];
-                if (thisTop > y1 + 1) st *= 0.45;
-                if (m === MAT.WOOD && ((lx + lz) & 1)) st *= 0.85;   // planks: alternate cells a step darker
-                aKind = K.TOP; aSeg = (K.TOP << 24) | sSeg | 4; aPos = posOf(st); aFlags = thisTop > y1 + 1 ? F_INTERIOR : 0;
-                aLit = warm ? warmAt(ix + 0.5, wTop, iz + 0.5) : 0; aU = ix; aV = iz;
-                paint(rF, rT, tt);
-              }
-            } else if (camY < wBot) {    // underside: always in shadow
-              const rU = Math.ceil((horizonPix + (camY - wBot) * kFar) * invRayH - 0.5);
-              if (rU > rB) {
-                aKind = K.UNDER; aSeg = (K.UNDER << 24) | sSeg | 5; aPos = posOf(fb[5] * 0.7); aFlags = F_INTERIOR; aLit = 0; aU = ix; aV = iz;
-                paint(rB, rU, tt);
-              }
-            }
-          }
-        }
-      }
-      if (tmx < tmz) { ix += stepX; tt = tmx; tmx += tdx; face = stepX > 0 ? 1 : 0; }
-      else { iz += stepZ; tt = tmz; tmz += tdz; face = stepZ > 0 ? 3 : 2; }
-    }
-  }
-
-  const sunR2 = sunScreen ? sunScreen.r * sunScreen.r : 0, moonR2 = moonScreen ? moonScreen.r * moonScreen.r : 0;
-  const rayW = grid.rayW;
-  for (col = 0; col < RW; col++) {
-    const p = rayP[col];
-    dx = fx + rx * p; dz = fz + rz * p;
-    ybuf = RH; left = RH; gaps = false; lastShZ = -1;
-
-    // Which active structures does this column's ray cross, and where (nearest first)?
-    let nInt = 0;
-    for (let a = 0; a < active.length; a++) {
-      const A = active[a];
-      let t0 = 0.3, t1 = vd;
-      if (dx > 1e-9) { const uu = (A.ux0 - camX) / dx, vv = (A.ux1 - camX) / dx; if (uu > t0) t0 = uu; if (vv < t1) t1 = vv; }
-      else if (dx < -1e-9) { const uu = (A.ux1 - camX) / dx, vv = (A.ux0 - camX) / dx; if (uu > t0) t0 = uu; if (vv < t1) t1 = vv; }
-      else if (camX < A.ux0 || camX >= A.ux1) continue;
-      if (dz > 1e-9) { const uu = (A.uz0 - camZ) / dz, vv = (A.uz1 - camZ) / dz; if (uu > t0) t0 = uu; if (vv < t1) t1 = vv; }
-      else if (dz < -1e-9) { const uu = (A.uz1 - camZ) / dz, vv = (A.uz0 - camZ) / dz; if (uu > t0) t0 = uu; if (vv < t1) t1 = vv; }
-      else if (camZ < A.uz0 || camZ >= A.uz1) continue;
-      if (t0 >= t1) continue;
-      let k = nInt;
-      while (k > 0 && intT0[k - 1] > t0) { intT0[k] = intT0[k - 1]; intT1[k] = intT1[k - 1]; intRef[k] = intRef[k - 1]; k--; }
-      intT0[k] = t0; intT1[k] = t1; intRef[k] = a; nInt++;
-      if (nInt === MAX_INT) break;
-    }
-
-    // March near to far. Terrain is sampled with a growing step; when the next step would
-    // enter a structure's footprint the march stops there and the DDA takes over until the
-    // ray leaves it. Once the last footprint is behind us no structure work happens at all.
-    let k = 0, z = 1.0, blockExit = 0;
-    zPrev = 0.3;
-    while (z < vd && left > 0) {
-      if (k < nInt && intT0[k] <= z) {
-        marchStructure(active[intRef[k]], intT0[k], intT1[k]);
-        if (intT1[k] > z) { z = intT1[k]; zPrev = z; }
-        k++;
-        continue;
-      }
-      const px = camX + dx * z, pz = camZ + dz * z;
-      if (z >= NEAR_SMOOTH) {
-        if (z >= blockExit) {
-          // A new block: skip all of it if its highest point cannot rise above what is painted
-          // (the height needed changes linearly along the ray, so its ends bound it).
-          const bx = Math.floor(px / BLOCK), bz = Math.floor(pz / BLOCK);
-          const ex = dx > 0 ? ((bx + 1) * BLOCK - camX) / dx : dx < 0 ? (bx * BLOCK - camX) / dx : Infinity;
-          const ez = dz > 0 ? ((bz + 1) * BLOCK - camZ) / dz : dz < 0 ? (bz * BLOCK - camZ) / dz : Infinity;
-          blockExit = (ex < ez ? ex : ez) + 1e-4;
-          let zEnd = blockExit < vd ? blockExit : vd;
-          if (k < nInt && intT0[k] < zEnd) zEnd = intT0[k];
-          const D = ((ybuf - 0.5) * rayH - horizonPix) / f, need0 = camY - D * z, need1 = camY - D * zEnd;
-          if (blockMax[(bz & BM) * NB + (bx & BM)] < (need0 < need1 ? need0 : need1)) { zPrev = z; z = zEnd; continue; }
-        }
-        const idx = (Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK);
-        if ((horizonPix + (camY - H[idx]) * f / z) * invRayH - 0.5 <= ybuf - 1) terrainAt(idx, z, px, pz);
-      } else terrainAt((Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK), z, px, pz);
-      zPrev = z;
-      let nz = z + 0.5 + z * 0.008;
-      if (k < nInt && intT0[k] < nz) nz = intT0[k];
-      z = nz;
-    }
-
-    // Whatever is still unclaimed above the terrain is sky, or the sun or moon.
-    if (left > 0) {
-      const pxX = (col + 0.5) * rayW;
-      for (let r = 0, i = col * RH; r < ybuf; r++, i++) {
-        if (kind[i] !== NONE) continue;
-        let kd = K.SKY;
-        const pyY = (r + 0.5) * rayH;
-        if (sunScreen) { const ex = pxX - sunScreen.x, ey = pyY - sunScreen.y; if (ex * ex + ey * ey <= sunR2) kd = K.SUN; }
-        if (moonScreen && kd === K.SKY) { const ex = pxX - moonScreen.x, ey = pyY - moonScreen.y; if (ex * ex + ey * ey <= moonR2) kd = K.MOON; }
-        kind[i] = kd; seg[i] = kd === K.SKY ? 0 : kd << 24; ramp[i] = kd === K.SKY ? R.sky : kd === K.SUN ? R.sun : R.moon;
-        pos[i] = kd === K.SKY ? skyPosRow[r] : 1; depth[i] = Infinity; lit[i] = 0; flags[i] = 0;
-      }
-    }
-  }
-}
-let skyPosRow = new Float32Array(0);
-
-// =====================================================================
-//  RENDER 1b: 3D SPRITES  (analytic ray–solid intersection)
-// =====================================================================
-// Trees, bushes, boulders, clouds, campfire logs and the merchants are built from spheres,
-// ellipsoids, capsules, cylinders and cones (intersection formulas after Inigo Quilez). Each
-// primitive is rasterised over its own screen bounding box: every ray inside it is intersected
-// exactly, lit by its surface normal, and depth-tested against what is already there.
-const P_SPHERE = 0, P_ELLIPSOID = 1, P_CAPSULE = 2, P_CYLINDER = 3, P_CONE = 4, P_VCONE = 5;
-const LOOK_SOLID = 0, LOOK_CANOPY = 1, LOOK_CLOUD = 2, LOOK_GLOW = 3;
-const prims = [];
-let primCount = 0;
-function prim(type, kind, seg, ramp, look) {
-  let p = prims[primCount++];
-  if (!p) { p = { type: 0, ax: 0, ay: 0, az: 0, bx: 0, by: 0, bz: 0, r: 0, r2: 0, ex: 0, ey: 0, ez: 0, ca: 1, sa: 0, kind: 0, seg: 0, ramp: 0, look: 0, posAdd: 0, lit: 0, flags: 0, cx: 0, cy: 0, cz: 0, rad: 0, phase: 0 }; prims[primCount - 1] = p; }
-  p.type = type; p.kind = kind; p.seg = seg; p.ramp = ramp; p.look = look; p.posAdd = 0; p.lit = 0; p.flags = 0; p.ca = 1; p.sa = 0; p.marks = SPRITE_MARKS[kind] !== undefined;
-  return p;
-}
-// Constructors; positions are relative to the camera.
-function pSphere(x, y, z, r, kind, seg, ramp, look) { const p = prim(P_SPHERE, kind, seg, ramp, look); p.ax = x; p.ay = y; p.az = z; p.r = r; p.cx = x; p.cy = y; p.cz = z; p.rad = r; return p; }
-function pEllipsoid(x, y, z, ex, ey, ez, ang, kind, seg, ramp, look) {
-  const p = prim(P_ELLIPSOID, kind, seg, ramp, look); p.ax = x; p.ay = y; p.az = z; p.ex = ex; p.ey = ey; p.ez = ez; p.ca = Math.cos(ang); p.sa = Math.sin(ang);
-  p.cx = x; p.cy = y; p.cz = z; p.rad = Math.max(ex, ey, ez); return p;
-}
-function pSegment(type, ax, ay, az, bx, by, bz, r, r2, kind, seg, ramp, look) {
-  const p = prim(type, kind, seg, ramp, look); p.ax = ax; p.ay = ay; p.az = az; p.bx = bx; p.by = by; p.bz = bz; p.r = r; p.r2 = r2;
-  p.cx = (ax + bx) / 2; p.cy = (ay + by) / 2; p.cz = (az + bz) / 2; p.rad = Math.hypot(bx - ax, by - ay, bz - az) / 2 + Math.max(r, r2); return p;
-}
-const pCapsule = (ax, ay, az, bx, by, bz, r, kind, seg, ramp, look) => pSegment(P_CAPSULE, ax, ay, az, bx, by, bz, r, r, kind, seg, ramp, look);
-const pCylinder = (ax, ay, az, bx, by, bz, r, kind, seg, ramp, look) => pSegment(P_CYLINDER, ax, ay, az, bx, by, bz, r, r, kind, seg, ramp, look);
-const pCone = (ax, ay, az, bx, by, bz, ra, rb, kind, seg, ramp, look) => pSegment(P_CONE, ax, ay, az, bx, by, bz, ra, rb, kind, seg, ramp, look);
-// A vertical cone (rb < ra) or cylinder (rb = ra) standing on (x, y0, z), up to height y1.
-const pVCone = (x, y0, z, y1, ra, rb, kind, seg, ramp, look) => pSegment(P_VCONE, x, y0, z, x, y1, z, ra, rb, kind, seg, ramp, look);
-
-// The current ray from the camera, not normalised: (rdx, rdy, rdz) has a forward component of 1,
-// so a hit's parameter along it is the hit's depth. rr2 is its squared length. hn* is the unit
-// surface normal at the last hit.
-let rdx = 0, rdy = 0, rdz = 1, rr2 = 1, hnx = 0, hny = 1, hnz = 0;
-function hitSphere(cx, cy, cz, r) {   // centre relative to the camera
-  const b = rdx * cx + rdy * cy + rdz * cz, c = cx * cx + cy * cy + cz * cz - r * r, h = b * b - rr2 * c;
-  if (h < 0) return -1;
-  const t = (b - Math.sqrt(h)) / rr2;
-  if (t <= 0) return -1;
-  const ir = 1 / r;
-  hnx = (rdx * t - cx) * ir; hny = (rdy * t - cy) * ir; hnz = (rdz * t - cz) * ir;
-  return t;
-}
-function hitCapsule(p) {
-  const bax = p.bx - p.ax, bay = p.by - p.ay, baz = p.bz - p.az, r = p.r;
-  const oax = -p.ax, oay = -p.ay, oaz = -p.az;
-  const baba = bax * bax + bay * bay + baz * baz, bard = bax * rdx + bay * rdy + baz * rdz;
-  const baoa = bax * oax + bay * oay + baz * oaz, rdoa = rdx * oax + rdy * oay + rdz * oaz, oaoa = oax * oax + oay * oay + oaz * oaz;
-  const a = baba * rr2 - bard * bard, b = baba * rdoa - baoa * bard, c = baba * oaoa - baoa * baoa - r * r * baba, h = b * b - a * c;
-  if (h < 0) return -1;
-  if (a > 1e-12) {
-    const t = (-b - Math.sqrt(h)) / a, y = baoa + t * bard;
-    if (y > 0 && y < baba) {
-      if (t <= 0) return -1;
-      const k = y / baba, ir = 1 / r;
-      hnx = (rdx * t - p.ax - bax * k) * ir; hny = (rdy * t - p.ay - bay * k) * ir; hnz = (rdz * t - p.az - baz * k) * ir;
-      return t;
-    }
-    return y <= 0 ? hitSphere(p.ax, p.ay, p.az, r) : hitSphere(p.bx, p.by, p.bz, r);
-  }
-  return bard < 0 ? hitSphere(p.bx, p.by, p.bz, r) : hitSphere(p.ax, p.ay, p.az, r);
-}
-function hitCylinder(p) {
-  const bax = p.bx - p.ax, bay = p.by - p.ay, baz = p.bz - p.az, r = p.r;
-  const ocx = -p.ax, ocy = -p.ay, ocz = -p.az;
-  const baba = bax * bax + bay * bay + baz * baz, bard = bax * rdx + bay * rdy + baz * rdz, baoc = bax * ocx + bay * ocy + baz * ocz;
-  const k2 = baba * rr2 - bard * bard, k1 = baba * (ocx * rdx + ocy * rdy + ocz * rdz) - baoc * bard;
-  const k0 = baba * (ocx * ocx + ocy * ocy + ocz * ocz) - baoc * baoc - r * r * baba;
-  let h = k1 * k1 - k2 * k0;
-  if (h < 0) return -1;
-  h = Math.sqrt(h);
-  let t = -1, y = 0;
-  if (k2 > 1e-12) {
-    t = (-k1 - h) / k2; y = baoc + t * bard;
-    if (y > 0 && y < baba) {
-      if (t <= 0) return -1;
-      const k = y / baba, ir = 1 / r;
-      hnx = (ocx + t * rdx - bax * k) * ir; hny = (ocy + t * rdy - bay * k) * ir; hnz = (ocz + t * rdz - baz * k) * ir;
-      return t;
-    }
-  } else y = baoc < 0 ? -1 : baba + 1;
-  if (Math.abs(bard) < 1e-12) return -1;
-  t = ((y < 0 ? 0 : baba) - baoc) / bard;
-  if (Math.abs(k1 + k2 * t) < h && t > 0) {
-    const s = (y < 0 ? -1 : 1) / Math.sqrt(baba);
-    hnx = bax * s; hny = bay * s; hnz = baz * s;
-    return t;
-  }
-  return -1;
-}
-function hitCone(p) {
-  const bax = p.bx - p.ax, bay = p.by - p.ay, baz = p.bz - p.az, ra = p.r, rb = p.r2;
-  const oax = -p.ax, oay = -p.ay, oaz = -p.az, obx = -p.bx, oby = -p.by, obz = -p.bz;
-  const m0 = bax * bax + bay * bay + baz * baz, m1 = oax * bax + oay * bay + oaz * baz, m2 = rdx * bax + rdy * bay + rdz * baz;
-  const m3 = rdx * oax + rdy * oay + rdz * oaz, m5 = oax * oax + oay * oay + oaz * oaz, m9 = obx * bax + oby * bay + obz * baz;
-  // caps
-  if (m1 < 0) {
-    const qx = oax * m2 - rdx * m1, qy = oay * m2 - rdy * m1, qz = oaz * m2 - rdz * m1;
-    if (qx * qx + qy * qy + qz * qz < ra * ra * m2 * m2) {
-      const t = -m1 / m2;
-      if (t <= 0) return -1;
-      const s = -1 / Math.sqrt(m0); hnx = bax * s; hny = bay * s; hnz = baz * s;
-      return t;
-    }
-  } else if (m9 > 0) {
-    const t = -m9 / m2;
-    const qx = obx + rdx * t, qy = oby + rdy * t, qz = obz + rdz * t;
-    if (qx * qx + qy * qy + qz * qz < rb * rb) {
-      if (t <= 0) return -1;
-      const s = 1 / Math.sqrt(m0); hnx = bax * s; hny = bay * s; hnz = baz * s;
-      return t;
-    }
-  }
-  // body
-  const rr = ra - rb, hy = m0 + rr * rr;
-  const k2 = m0 * m0 * rr2 - m2 * m2 * hy;
-  const k1 = m0 * m0 * m3 - m1 * m2 * hy + m0 * ra * (rr * m2);
-  const k0 = m0 * m0 * m5 - m1 * m1 * hy + m0 * ra * (rr * m1 * 2 - m0 * ra);
-  const h = k1 * k1 - k2 * k0;
-  if (h < 0 || Math.abs(k2) < 1e-12) return -1;
-  const t = (-k1 - Math.sqrt(h)) / k2;
-  const y = m1 + t * m2;
-  if (y < 0 || y > m0 || t <= 0) return -1;
-  const nx = m0 * (m0 * (oax + t * rdx) + rr * bax * ra) - bax * hy * y;
-  const ny = m0 * (m0 * (oay + t * rdy) + rr * bay * ra) - bay * hy * y;
-  const nz = m0 * (m0 * (oaz + t * rdz) + rr * baz * ra) - baz * hy * y;
-  const il = 1 / Math.sqrt(nx * nx + ny * ny + nz * nz);
-  hnx = nx * il; hny = ny * il; hnz = nz * il;
-  return t;
-}
-
-// Rasterise one primitive: every ray in its screen box that nothing nearer already claims. In
-// camera space the ray for column x, row y is (p, q, 1) with p = rayP[x], q = rayQ[y]: its forward
-// component is 1, so a hit's parameter along it is its depth, and spheres and ellipsoids need no
-// normalising at all. Buffers are column-major, so each column of the box is one contiguous run.
-const primBox = new Float64Array(4);   // x0, x1, y0, y1 in rays, and the nearest depth
-let primNear = 0;
-function primScreenBox(p) {
-  const fx = vFx, fz = vFz, rx = vRx, rz = vRz;
-  // the primitive's box in the world (camera-relative), from its own shape
-  let hx, hy, hz, mx, my, mz;
-  if (p.type === P_SPHERE) { mx = p.ax; my = p.ay; mz = p.az; hx = hy = hz = p.r; }
-  else if (p.type === P_ELLIPSOID) {
-    mx = p.ax; my = p.ay; mz = p.az;
-    hx = Math.sqrt(p.ex * p.ex * p.ca * p.ca + p.ez * p.ez * p.sa * p.sa); hy = p.ey; hz = Math.sqrt(p.ex * p.ex * p.sa * p.sa + p.ez * p.ez * p.ca * p.ca);
-  } else {
-    const r = p.r > p.r2 ? p.r : p.r2;
-    mx = (p.ax + p.bx) / 2; my = (p.ay + p.by) / 2; mz = (p.az + p.bz) / 2;
-    hx = Math.abs(p.bx - p.ax) / 2 + r; hy = Math.abs(p.by - p.ay) / 2 + r; hz = Math.abs(p.bz - p.az) / 2 + r;
-  }
-  let sx0 = Infinity, sx1 = -Infinity, sy0 = Infinity, sy1 = -Infinity, zmin = Infinity, zmax = -Infinity;
-  for (let k = 0; k < 8; k++) {
-    const X = mx + (k & 1 ? hx : -hx), Y = my + (k & 2 ? hy : -hy), Z = mz + (k & 4 ? hz : -hz);
-    const zc = X * fx + Z * fz;
-    if (zc < zmin) zmin = zc; if (zc > zmax) zmax = zc;
-    if (zc < 0.05) continue;
-    const xs = (X * rx + Z * rz) / zc, ys = Y / zc;
-    if (xs < sx0) sx0 = xs; if (xs > sx1) sx1 = xs; if (ys < sy0) sy0 = ys; if (ys > sy1) sy1 = ys;
-  }
-  if (zmax < 0.05) return false;
-  if (zmin < 0.05) { sx0 = -1e3; sx1 = 1e3; sy0 = -1e3; sy1 = 1e3; }   // reaches behind the eye: the whole screen
-  const { RW, RH, rayW, rayH } = grid, f = vF;
-  let x0 = Math.floor((grid.w * 0.5 + sx0 * f) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + sx1 * f) / rayW - 0.5);
-  let y0 = Math.floor((vHor - sy1 * f) / rayH - 0.5), y1 = Math.ceil((vHor - sy0 * f) / rayH - 0.5);
-  if (x0 < 0) x0 = 0; if (x1 > RW - 1) x1 = RW - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
-  if (x0 > x1 || y0 > y1) return false;
-  primBox[0] = x0; primBox[1] = x1; primBox[2] = y0; primBox[3] = y1;
-  primNear = zmin > 0.05 ? zmin : 0.05;
-  return true;
-}
-function rasterPrim(p) {
-  if (!primScreenBox(p)) return;
-  const x0 = primBox[0], x1 = primBox[1], y0 = primBox[2], y1 = primBox[3], zN = primNear;
-  const RH = grid.RH, P = rayP, Q = rayQ;
-  const fx = vFx, fz = vFz, rx = vRx, rz = vRz, cX = vCamX, cY = vCamY, cZ = vCamZ;
-  const { kind, seg, ramp, pos, depth, lit, u, v, w, flags } = rays;
-  const type = p.type, look = p.look, Lx = light.lx, Ly = light.ly, Lz = light.lz;
-  const pk = p.kind, ps = p.seg, pr = p.ramp, pl = p.lit, pf = p.flags, pa = p.posAdd, marks = p.marks, tn1 = RAMP_LEN[p.ramp] - 1;
-  // shade = base + k·(n·L) + ky·n.y (+ a darker underside on canopies); clouds and glows differ
-  const glow = look === LOOK_GLOW, cloud = look === LOOK_CLOUD, canopy = look === LOOK_CANOPY;
-  const cx = p.ax, cy = p.ay, cz = p.az;
-  // The rows a column can hit: the discriminant, as a quadratic in the row's slope q, is
-  // A·q² + 2B·q + C; when A < 0 it is non-negative between two roots, and only those rows are
-  // tested. (A ≥ 0 means the eye is inside the solid's vertical shadow: test the whole column.)
-  const f = vF, hor = vHor, rayH = grid.rayH;
-  let ya = 0, yb = 0;
-  const rowsOf = (A, B, C) => {
-    ya = y0; yb = y1;
-    if (A >= 0) return true;
-    const disc = B * B - A * C;
-    if (disc < 0) return false;
-    const sq = Math.sqrt(disc), qLo = (-B + sq) / A, qHi = (-B - sq) / A;
-    const top = Math.floor((hor - qHi * f) / rayH - 0.5), bot = Math.ceil((hor - qLo * f) / rayH - 0.5);
-    if (top > ya) ya = top; if (bot < yb) yb = bot;
-    return ya <= yb;
-  };
-  if (type === P_SPHERE) {
-    const r = p.r, ir = 1 / r, cc = cx * cx + cy * cy + cz * cz - r * r, zcS = cx * fx + cz * fz, xcS = cx * rx + cz * rz;
-    const A = cy * cy - cc;
-    for (let x = x0; x <= x1; x++) {
-      const pp = P[x], a0 = 1 + pp * pp, b0 = zcS + pp * xcS, dwx = fx + rx * pp, dwz = fz + rz * pp;
-      if (!rowsOf(A, b0 * cy, b0 * b0 - a0 * cc)) continue;
-      for (let y = ya, i = x * RH + ya; y <= yb; y++, i++) {
-        const di = depth[i];
-        if (di <= zN) continue;
-        const q = Q[y], a = a0 + q * q, b = b0 + q * cy, h = b * b - a * cc;
-        if (h < 0) continue;
-        const t = (b - Math.sqrt(h)) / a;
-        if (t <= 0 || t >= di) continue;
-        const nx = (t * dwx - cx) * ir, ny = (t * q - cy) * ir, nz = (t * dwz - cz) * ir, nl = nx * Lx + ny * Ly + nz * Lz;
-        let s = glow ? pa : cloud ? 0.3 + 0.45 * ny + (nl > 0 ? 0.3 * nl : 0) : 0.5 + 0.4 * nl + 0.12 * ny + pa;
-        if (canopy && ny < 0) s += 0.15 * ny;
-        const sc = !(s > 0) ? 0 : s > 1 ? 1 : s;
-        kind[i] = pk; seg[i] = ps | (((sc * tn1 + 0.5) | 0) << 20); ramp[i] = pr; pos[i] = sc; depth[i] = t; lit[i] = pl; flags[i] = pf;
-        if (marks) { u[i] = cX + t * dwx; v[i] = cY + t * q; w[i] = cZ + t * dwz; }
-      }
-    }
-    return;
-  }
-  if (type === P_ELLIPSOID) {
-    const ca = p.ca, sa = p.sa, iex = 1 / p.ex, iey = 1 / p.ey, iez = 1 / p.ez;
-    const clx = (cx * ca + cz * sa) * iex, cly = cy * iey, clz = (cz * ca - cx * sa) * iez, cc = clx * clx + cly * cly + clz * clz - 1;
-    const ax0 = (fx * ca + fz * sa) * iex, ax1 = (rx * ca + rz * sa) * iex, az0 = (fz * ca - fx * sa) * iez, az1 = (rz * ca - rx * sa) * iez;
-    const A = iey * iey * (cly * cly - cc);
-    for (let x = x0; x <= x1; x++) {
-      const pp = P[x], dlx = ax0 + ax1 * pp, dlz = az0 + az1 * pp;
-      const aP = dlx * dlx + dlz * dlz, bP = dlx * clx + dlz * clz, dwx = fx + rx * pp, dwz = fz + rz * pp;
-      if (!rowsOf(A, bP * iey * cly, bP * bP - aP * cc)) continue;
-      for (let y = ya, i = x * RH + ya; y <= yb; y++, i++) {
-        const di = depth[i];
-        if (di <= zN) continue;
-        const q = Q[y], dly = q * iey, a = aP + dly * dly, b = bP + dly * cly, h = b * b - a * cc;
-        if (h < 0) continue;
-        const t = (b - Math.sqrt(h)) / a;
-        if (t <= 0 || t >= di) continue;
-        const lx = (dlx * t - clx) * iex, ly = (dly * t - cly) * iey, lz = (dlz * t - clz) * iez;
-        const il = 1 / Math.sqrt(lx * lx + ly * ly + lz * lz);
-        const nx = (lx * ca - lz * sa) * il, ny = ly * il, nz = (lx * sa + lz * ca) * il, nl = nx * Lx + ny * Ly + nz * Lz;
-        let s = glow ? pa : cloud ? 0.3 + 0.45 * ny + (nl > 0 ? 0.3 * nl : 0) : 0.5 + 0.4 * nl + 0.12 * ny + pa;
-        if (canopy && ny < 0) s += 0.15 * ny;
-        const sc = !(s > 0) ? 0 : s > 1 ? 1 : s;
-        kind[i] = pk; seg[i] = ps | (((sc * tn1 + 0.5) | 0) << 20); ramp[i] = pr; pos[i] = sc; depth[i] = t; lit[i] = pl; flags[i] = pf;
-        if (marks) { u[i] = cX + t * dwx; v[i] = cY + t * q; w[i] = cZ + t * dwz; }
-      }
-    }
-    return;
-  }
-  if (type === P_VCONE) {
-    // A vertical cone or cylinder: base (cx, cy, cz) of radius ra, top at height yt of radius rb.
-    // At depth t the ray is at height t·q and the cone's radius there is m(t) = M0 − M1·t; the
-    // ray is on its surface where its distance from the axis equals m(t), a quadratic in t.
-    const ra = p.r, rb = p.r2, yb = cy, yt = p.by, k = (ra - rb) / (yt - yb), M0 = ra + k * yb, g0 = cx * cx + cz * cz;
-    const sk = 1 / Math.sqrt(1 + k * k), ra2 = ra * ra, rb2 = rb * rb;
-    for (let x = x0; x <= x1; x++) {
-      const pp = P[x], dwx = fx + rx * pp, dwz = fz + rz * pp, g2 = 1 + pp * pp, g1 = dwx * cx + dwz * cz;
-      // the stretch of this column's ray that passes within the base radius of the axis
-      const tc = g1 / g2, dmin2 = g0 - g1 * tc;
-      if (dmin2 > ra2) continue;
-      const dl = Math.sqrt((ra2 - dmin2) / g2), t1 = tc - dl, t2 = tc + dl;
-      if (t2 <= 0.05) continue;
-      let ya = y0, yb2 = y1;
-      if (t1 > 0.05) {
-        const qMax = yt > 0 ? yt / t1 : yt / t2, qMin = yb < 0 ? yb / t1 : yb / t2;
-        const top = Math.floor((hor - qMax * f) / rayH - 0.5), bot = Math.ceil((hor - qMin * f) / rayH - 0.5);
-        if (top > ya) ya = top; if (bot < yb2) yb2 = bot;
-      }
-      for (let y = ya, i = x * RH + ya; y <= yb2; y++, i++) {
-        const di = depth[i];
-        if (di <= zN) continue;
-        const q = Q[y], M1 = k * q, a = g2 - M1 * M1, b = g1 - M0 * M1, c = g0 - M0 * M0;
-        let tHit = di, nx = 0, ny = 0, nz = 0;
-        const disc = b * b - a * c;
-        if (disc >= 0 && (a > 1e-12 || a < -1e-12)) {
-          const sq = Math.sqrt(disc);
-          let r1 = (b - sq) / a, r2 = (b + sq) / a;
-          if (r1 > r2) { const tmp = r1; r1 = r2; r2 = tmp; }
-          for (let n = 0; n < 2; n++) {
-            const r = n === 0 ? r1 : r2, hy = r * q, m = M0 - M1 * r;
-            if (r > 0 && r < tHit && hy >= yb && hy <= yt && m > 0) {
-              tHit = r; const im = sk / m; nx = (r * dwx - cx) * im; ny = k * sk; nz = (r * dwz - cz) * im;
-              break;
-            }
-          }
-        }
-        if (q < 0 || q > 0) {   // the flat ends: the base seen from below, the top seen from above
-          const tb = yb / q;
-          if (tb > 0 && tb < tHit) { const ox = tb * dwx - cx, oz = tb * dwz - cz; if (ox * ox + oz * oz <= ra2) { tHit = tb; nx = 0; ny = -1; nz = 0; } }
-          const tt = yt / q;
-          if (tt > 0 && tt < tHit && rb > 0) { const ox = tt * dwx - cx, oz = tt * dwz - cz; if (ox * ox + oz * oz <= rb2) { tHit = tt; nx = 0; ny = 1; nz = 0; } }
-        }
-        if (tHit >= di) continue;
-        const nl = nx * Lx + ny * Ly + nz * Lz;
-        let s = glow ? pa : cloud ? 0.3 + 0.45 * ny + (nl > 0 ? 0.3 * nl : 0) : 0.5 + 0.4 * nl + 0.12 * ny + pa;
-        if (canopy && ny < 0) s += 0.15 * ny;
-        const sc = !(s > 0) ? 0 : s > 1 ? 1 : s;
-        kind[i] = pk; seg[i] = ps | (((sc * tn1 + 0.5) | 0) << 20); ramp[i] = pr; pos[i] = sc; depth[i] = tHit; lit[i] = pl; flags[i] = pf;
-        if (marks) { u[i] = cX + tHit * dwx; v[i] = cY + tHit * q; w[i] = cZ + tHit * dwz; }
-      }
-    }
-    return;
-  }
-  // capsules, and cylinders and cones at an angle
-  for (let x = x0; x <= x1; x++) {
-    const pp = P[x], p2 = 1 + pp * pp, dwx = fx + rx * pp, dwz = fz + rz * pp;
-    rdx = dwx; rdz = dwz;
-    for (let y = y0, i = x * RH + y0; y <= y1; y++, i++) {
-      const di = depth[i];
-      if (di <= zN) continue;
-      const q = Q[y];
-      rdy = q; rr2 = p2 + q * q;
-      const d = type === P_CAPSULE ? hitCapsule(p) : type === P_CYLINDER ? hitCylinder(p) : hitCone(p);
-      if (d < 0 || d >= di) continue;
-      const nx = hnx, ny = hny, nl = nx * Lx + ny * Ly + hnz * Lz;
-      let s = glow ? pa : cloud ? 0.3 + 0.45 * ny + (nl > 0 ? 0.3 * nl : 0) : 0.5 + 0.4 * nl + 0.12 * ny + pa;
-      if (canopy && ny < 0) s += 0.15 * ny;
-      const sc = !(s > 0) ? 0 : s > 1 ? 1 : s;
-      kind[i] = pk; seg[i] = ps | (((sc * tn1 + 0.5) | 0) << 20); ramp[i] = pr; pos[i] = sc; depth[i] = d; lit[i] = pl; flags[i] = pf;
-      if (marks) { u[i] = cX + dwx * d; v[i] = cY + q * d; w[i] = cZ + dwz * d; }
-    }
-  }
-}
-
-// Flames are light, not solids: a flickering teardrop on a camera-facing plane, pale core to red rim.
-function rasterFlame(L, cx, cy, cz, t, li) {
-  const { RW, RH, rayW, rayH } = grid;
-  const zc = cx * vFx + cz * vFz;
-  if (zc < 0.3) return;
-  const xc = cx * vRx + cz * vRz;
-  const flick = 1 + 0.12 * Math.sin(t * 11 + L.phase) + 0.06 * Math.sin(t * 17.3 + L.phase * 3);
-  const sway = 0.12 * Math.sin(t * 6.1 + L.phase * 2);
-  const fh = L.size * flick, fw = L.size * 0.55, base = cy - 0.15 * L.size;
-  const k = vF / zc;
-  let x0 = Math.floor((grid.w * 0.5 + (xc - fw * 1.2) * k) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + (xc + fw * 1.2) * k) / rayW - 0.5);
-  let y0 = Math.floor((vHor - (base + fh) * k) / rayH - 0.5), y1 = Math.ceil((vHor - base * k) / rayH - 0.5);
-  if (x0 < 0) x0 = 0; if (x1 > RW - 1) x1 = RW - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
-  const { kind, seg, ramp, pos, depth, lit, flags } = rays;
-  for (let y = y0; y <= y1; y++) {
-    const vv = (rayQ[y] * zc - base) / fh;                   // 0 at the base, 1 at the tip
-    if (vv < 0 || vv > 1) continue;
-    const hw = fw * 1.9 * Math.sqrt(vv) * Math.pow(1 - vv, 1.3) + 0.02, uOff = sway * vv * vv;
-    for (let x = x0, i = x0 * RH + y; x <= x1; x++, i += RH) {
-      if (depth[i] <= zc) continue;
-      const qq = Math.abs(rayP[x] * zc - xc - uOff) / hw;
-      if (qq > 1) continue;
-      const zone = qq < 0.45 && vv < 0.75 ? 0 : qq < 0.8 ? 1 : 2;
-      kind[i] = K.FLAME; seg[i] = (K.FLAME << 24) | (li << 2) | zone; ramp[i] = R.fire; pos[i] = zone === 0 ? 1 : zone === 1 ? 0.72 : 0.38;
-      depth[i] = zc; lit[i] = 0; flags[i] = 0;
-    }
-  }
-  glows.push({ x: grid.w * 0.5 + xc * k, y: vHor - (base + fh * 0.5) * k, hPx: fh * k, zc, fire: L.kind === 'fire', li });
-}
-
-// ---- what the sprites are made of ---------------------------------------------------------------
-const glows = [], birdsOnScreen = [], shadowDiscs = [];
-let primOrder = new Float64Array(0);
-const mRender = new Map();   // per merchant, render-only state: smoothed heading, head turn
-function roadPoint(m, s) {   // where on its road a merchant would be at distance s (as placeMerchant, without moving it)
-  const cum = m.cum, cells = m.cells;
-  s = clamp(s, 0, m.total);
-  let lo = 0, hi = cells.length - 1;
-  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= s) lo = mid; else hi = mid; }
-  const a = cells[lo], b = cells[hi];
-  const t = cum[hi] > cum[lo] ? clamp((s - cum[lo]) / (cum[hi] - cum[lo]), 0, 1) : 0;
-  return [(a & MASK) + 0.5 + wrapDelta((b & MASK) - (a & MASK)) * t, ((a / W) | 0) + 0.5 + wrapDelta(((b / W) | 0) - ((a / W) | 0)) * t];
-}
-
-function drawSprites(t, dt) {
-  primCount = 0; glows.length = 0; birdsOnScreen.length = 0; shadowDiscs.length = 0;
-  const camX = vCamX, camY = vCamY, camZ = vCamZ, fx = vFx, fz = vFz, rx = vRx, rz = vRz;
-  const vd = vVd, zoneC = vd * 0.66, tanH = vTanX * 1.1;
-  const inView = (zc, lat, rad) => zc + rad > 0.3 && Math.abs(lat) < (zc > 0 ? zc : 0) * tanH + rad + 1;
-
-  // Trees, bushes and boulders from the buckets within range.
-  const trees = world.trees, buckets = world.treeBuckets;
-  if (trees) {
-    const bx0 = Math.floor((camX - zoneC) / TREE_BUCKET), bx1 = Math.floor((camX + zoneC) / TREE_BUCKET);
-    const bz0 = Math.floor((camZ - zoneC) / TREE_BUCKET), bz1 = Math.floor((camZ + zoneC) / TREE_BUCKET);
-    for (let bz = bz0; bz <= bz1; bz++) for (let bx = bx0; bx <= bx1; bx++) {
-      const list = buckets[((bz % TREE_BUCKETS + TREE_BUCKETS) % TREE_BUCKETS) * TREE_BUCKETS + ((bx % TREE_BUCKETS + TREE_BUCKETS) % TREE_BUCKETS)];
-      for (let k = 0; k < list.length; k++) {
-        const i = list[k];
-        const dxw = wrapDelta(trees.x[i] - camX), dzw = wrapDelta(trees.z[i] - camZ);
-        const zc = dxw * fx + dzw * fz;
-        if (zc > zoneC) continue;
-        const size = trees.size[i], lat = dxw * rx + dzw * rz;
-        if (!inView(zc, lat, 4 * size) || !(trees.y[i] === trees.y[i])) continue;
-        buildPlant(i, trees.kind[i], dxw, trees.y[i] - camY, dzw, size, zc);
-      }
-    }
-  }
-  // Merchants.
-  for (let mi = 0; mi < world.merchants.length; mi++) {
-    const m = world.merchants[mi];
-    const dxw = wrapDelta(m.x - camX), dzw = wrapDelta(m.z - camZ);
-    const zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
-    const st = merchantPose(m, dt);
-    if (zc > zoneC || !inView(zc, lat, 2.2) || !(m.y === m.y)) continue;
-    buildMerchant(m, mi, st, dxw, m.y - camY, dzw, zc, t);
-  }
-  // Clouds: three soft lobes each, lit above and grey below.
-  const wind = world.wind;
-  for (let ci = 0; ci < world.clouds.length; ci++) {
-    const c = world.clouds[ci];
-    const dxw = wrapDelta(c.x + wind[0] * t - camX), dzw = wrapDelta(c.z + wind[1] * t - camZ);
-    const zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
-    if (zc < 5 || zc > vd || !inView(zc, lat, c.w)) continue;
-    const seg = (K.CLOUD << 24) | ci;
-    for (let k = 0; k < c.lobes.length; k++) {
-      const [ox, oy, sc] = c.lobes[k];
-      const hz = (hash2(ci, k, 71) - 0.5) * c.w * 0.3;
-      pEllipsoid(dxw + ox * c.w * 0.5, c.y - camY - oy * c.h * 0.5, dzw + hz, sc * c.w * 0.5, sc * c.h * 0.6, sc * c.w * 0.38, hash2(ci, 3, 5) * 3, K.CLOUD, seg, R.cloud, LOOK_CLOUD);
-    }
-  }
-  // Campfires and torches: logs or a bracket as solids; the flame itself after the solids.
-  const flames = [];
-  for (let li = 0; li < world.lights.length; li++) {
-    const L = world.lights[li];
-    if (L.kind === 'torch' && light.darkness < 0.05) continue;
-    const dxw = wrapDelta(L.x - camX), dzw = wrapDelta(L.z - camZ);
-    const zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
-    if (zc > zoneC || !inView(zc, lat, 2)) continue;
-    const y = L.y - camY, seg = (K.LOGS << 24) | li;
-    if (L.kind === 'fire') {
-      const a = hash2(li, 1, 3) * Math.PI;
-      for (let k = 0; k < 3; k++) {
-        const b = a + k * Math.PI / 3, ca = Math.cos(b) * 0.65, sa = Math.sin(b) * 0.65;
-        const p = pCapsule(dxw - ca, y - 0.05 + k * 0.07, dzw - sa, dxw + ca, y + 0.1 + k * 0.07, dzw + sa, 0.09, K.LOGS, seg, R.wood, LOOK_SOLID);
-        p.posAdd = -0.25; p.lit = 1;
-      }
-    } else {
-      const p = pCapsule(dxw, y - 0.55, dzw, dxw, y - 0.05, dzw, 0.06, K.LOGS, seg, R.dark, LOOK_SOLID);
-      p.lit = 0.8;
-    }
-    flames.push([L, dxw, y, dzw, li]);
-  }
-  if (primOrder.length < primCount) primOrder = new Float64Array(primCount * 2);
-  const order = primOrder.subarray(0, primCount);
-  for (let k = 0; k < primCount; k++) { const pr = prims[k], key = pr.cx * fx + pr.cz * fz - pr.rad; order[k] = Math.floor((key + 4096) * 64) * 65536 + k; }
-  order.sort();
-  for (let k = 0; k < primCount; k++) rasterPrim(prims[order[k] % 65536]);
-  for (const [L, x, y, z, li] of flames) rasterFlame(L, x, y, z, t, li);
-
-  // Birds are marks in the sky, drawn by the cell stage.
-  for (const b of world.birds) {
-    const a = b.speed * t + b.phase;
-    const wx = b.cx + b.r * Math.cos(a), wz = b.cz + b.r * Math.sin(a), wy = b.alt + 1.5 * Math.sin(t * 0.7 + b.phase * 3);
-    const dxw = wrapDelta(wx - camX), dzw = wrapDelta(wz - camZ);
-    const zc = dxw * fx + dzw * fz;
-    if (zc < 1 || zc > zoneC) continue;
-    const lat = dxw * rx + dzw * rz, k = vF / zc;
-    birdsOnScreen.push({ x: grid.w * 0.5 + lat * k, y: vHor + (camY - wy) * k, zc, frame: Math.floor(t * 4 + b.flap) % 3 });
-  }
-}
-
-// A tree, bush or boulder. Canopies are a main ellipsoid with lumps around it (a lumpy crown
-// gives the edge glyphs something to trace); conifers are three stacked cones.
-function buildPlant(i, kind, x, y, z, s, zc) {
-  const far = zc > 140, lumps = zc < 70 ? 4 : zc < 140 ? 2 : 0;
-  const lit = lightsOn ? warmAt(world.trees.x[i], world.trees.y[i] + 1.5, world.trees.z[i]) : 0;
-  const jit = (hash2(i, 3, 11) - 0.5) * 0.12;
-  if (kind === SPRITE.BOULDER) {
-    const seg = (K.BOULDER << 24) | i, a = hash2(i, 5, 7) * Math.PI;
-    const p = pEllipsoid(x, y + 0.12 * s, z, 0.8 * s, 0.5 * s, 0.66 * s, a, K.BOULDER, seg, R.rock, LOOK_SOLID); p.lit = lit; p.posAdd = jit;
-    if (!far) { const q = pEllipsoid(x + Math.cos(a) * 0.45 * s, y + 0.05 * s, z + Math.sin(a) * 0.45 * s, 0.45 * s, 0.34 * s, 0.4 * s, a + 1, K.BOULDER, seg, R.rock, LOOK_SOLID); q.lit = lit; q.posAdd = jit; }
-    if (zc < 60) shadowDiscs.push([x, z, y, 0.9 * s, zc]);
-    return;
-  }
-  const leafSeg = ((kind === SPRITE.CONIFER ? K.CONIFER : kind === SPRITE.BUSH ? K.BUSH : K.TREE) << 24) | i;
-  if (kind === SPRITE.BUSH) {
-    const p = pEllipsoid(x, y + 0.42 * s, z, 1.0 * s, 0.62 * s, 1.0 * s, 0, K.BUSH, leafSeg, R.leaf, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit;
-    for (let k = 0; k < (lumps ? 2 : 0); k++) {
-      const a = (k + hash2(i, k, 21)) * Math.PI;
-      const q = pSphere(x + Math.cos(a) * 0.6 * s, y + 0.55 * s, z + Math.sin(a) * 0.6 * s, 0.5 * s, K.BUSH, leafSeg, R.leaf, LOOK_CANOPY); q.lit = lit * 0.6; q.posAdd = jit;
-    }
-    return;
-  }
-  if (kind === SPRITE.CONIFER) {
-    if (!far) { const tr = pVCone(x, y - 0.3, z, y + 1.0 * s, 0.09 * s, 0.09 * s, K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
-    const tiers = far ? 2 : 3;
-    for (let k = 0; k < tiers; k++) {
-      const b = far ? [0.7, 1.9][k] : [0.7, 1.66, 2.56][k], top = far ? [2.6, 3.9][k] : [2.3, 3.1, 3.9][k], r = far ? [0.95, 0.62][k] : [0.95, 0.72, 0.5][k];
-      const p = pVCone(x, y + b * s, z, y + top * s, r * s, 0.03 * s, K.CONIFER, leafSeg, R.conifer, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit + 0.1 * k;
-    }
-    if (zc < 90) shadowDiscs.push([x, z, y, 0.9 * s, zc]);
-    return;
-  }
-  if (!far) { const tr = pVCone(x, y - 0.3, z, y + 1.9 * s, 0.13 * s, 0.07 * s, K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
-  const p = pEllipsoid(x, y + 2.45 * s, z, 1.02 * s, 0.95 * s, 1.02 * s, 0, K.TREE, leafSeg, R.leaf, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit;
-  for (let k = 0; k < lumps; k++) {
-    const a = (k + hash2(i, k, 23) * 0.8) * Math.PI * 2 / lumps, rr = (0.62 + 0.16 * hash2(i, k, 29)) * s, off = 0.72 * s;
-    const q = pSphere(x + Math.cos(a) * off, y + (2.3 + (hash2(i, k, 31) - 0.35) * 0.9) * s, z + Math.sin(a) * off, rr, K.TREE, leafSeg, R.leaf, LOOK_CANOPY);
-    q.lit = lit * 0.6; q.posAdd = jit;
-  }
-  if (zc < 90) shadowDiscs.push([x, z, y, 1.15 * s, zc]);
-}
-
-// The merchant's pose this frame: which way the body faces, which way the head turns, and how
-// far through the stride the legs are. Walking merchants face along their road; the one you are
-// talking to turns to face you; anyone nearby glances your way.
-function merchantPose(m, dt) {
-  let st = mRender.get(m);
-  if (!st) { st = { head: 0, look: 0, init: false }; mRender.set(m, st); }
-  const talking = ui.open && ui.merchant === m;
-  const toX = wrapDelta(cam.x - m.x), toZ = wrapDelta(cam.z - m.z), dist = Math.hypot(toX, toZ), toYou = Math.atan2(toZ, toX);
-  let target;
-  if (talking) target = toYou;
-  else {
-    const [ax, az] = roadPoint(m, m.s - m.dir * 1.2), [bx, bz] = roadPoint(m, m.s + m.dir * 1.2);
-    target = Math.atan2(wrapDelta(bz - az), wrapDelta(bx - ax));
-  }
-  if (!st.init) { st.head = target; st.init = true; }
-  const turn = Math.min(1, dt * 6);
-  st.head += wrapAngle(target - st.head) * turn;
-  const lookT = dist < 9 ? clamp(wrapAngle(toYou - st.head), -1.1, 1.1) : 0;
-  st.look += (lookT - st.look) * turn;
-  st.moving = !talking;
-  return st;
-}
-
-function buildMerchant(m, mi, st, x, y, z, zc, t) {
-  const h = st.head, ch = Math.cos(h), sh = Math.sin(h);
-  // local (right, up, forward) → camera-relative world
-  const Rx = -sh, Rz = ch, Fx = ch, Fz = sh;
-  const P = (r, f) => [x + Rx * r + Fx * f, z + Rz * r + Fz * f];
-  const phase = m.walked * (Math.PI * 2 / 1.5), sw = st.moving ? Math.sin(phase) : 0, bob = st.moving ? 0.03 * Math.abs(Math.cos(phase)) : 0;
-  const lit = lightsOn ? warmAt(m.x, m.y + 1, m.z) * 0.8 : 0;
-  const base = (K.MERCHANT << 24) | (mi << 8);
-  const robe = R['robe' + m.robe];
-  const add = (p, part, posAdd) => { p.seg = base | part; p.lit = lit; p.posAdd = posAdd || 0; return p; };
-  const cap = (r0, y0, f0, r1, y1, f1, rad, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCapsule(ax, y + y0, az, bx, y + y1, bz, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
-  const ell = (r0, y0, f0, ex, ey, ez, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pEllipsoid(ax, y + y0, az, ex, ey, ez, h + Math.PI / 2, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
-  const sph = (r0, y0, f0, rad, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pSphere(ax, y + y0, az, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
-  // legs and boots (the robe hides the legs above the knee)
-  for (const side of [-1, 1]) {
-    const step = sw * side * 0.2, lift = st.moving ? Math.max(0, Math.sin(phase + (side > 0 ? 0 : Math.PI))) * 0.06 : 0;
-    cap(side * 0.1, 0.78 + bob, 0, side * 0.1, 0.12 + lift, step, 0.072, PART.LEG, R.dark, 0.15);
-    ell(side * 0.1, 0.07 + lift, step + 0.05, 0.075, 0.07, 0.13, PART.BOOT, R.dark, -0.1);
-  }
-  // robe skirt, belt, body, backpack with a bedroll on top
-  const [cx, cz] = P(0, 0);
-  add(pVCone(cx, y + 0.3 + bob, cz, y + 1.0 + bob, 0.29, 0.2, K.MERCHANT, 0, robe, LOOK_SOLID), PART.ROBE);
-  add(pVCone(cx, y + 0.96 + bob, cz, y + 1.03 + bob, 0.215, 0.215, K.MERCHANT, 0, R.pack, LOOK_SOLID), PART.BELT, -0.2);
-  ell(0, 1.19 + bob, 0, 0.21, 0.27, 0.15, PART.ROBE, robe);
-  ell(0, 1.2 + bob, -0.21, 0.19, 0.24, 0.11, PART.PACK, R.pack);
-  cap(-0.2, 1.47 + bob, -0.2, 0.2, 1.47 + bob, -0.2, 0.065, PART.PACK, R.robe3 === robe ? R.robe1 : R.robe3, -0.05);
-  // arms: the right hand holds the staff, the left swings (or holds the lantern after dark)
-  const lantern = light.darkness > 0.05;
-  const lsw = st.moving && !lantern ? -sw * 0.16 : 0;
-  cap(-0.23, 1.36 + bob, 0, -0.27, 1.1 + bob, lsw * 0.5, 0.062, PART.SLEEVE, robe);
-  const lh = lantern ? [-0.27, 0.92 + bob, 0.16] : [-0.26, 0.88 + bob, lsw];
-  cap(-0.27, 1.1 + bob, lsw * 0.5, lh[0], lh[1], lh[2], 0.058, PART.SLEEVE, robe);
-  sph(lh[0], lh[1] - 0.03, lh[2], 0.05, PART.HAND, R.skin);
-  cap(0.23, 1.36 + bob, 0, 0.29, 1.15 + bob, 0.08, 0.062, PART.SLEEVE, robe);
-  cap(0.29, 1.15 + bob, 0.08, 0.3, 1.02 + bob, 0.2, 0.058, PART.SLEEVE, robe);
-  sph(0.3, 0.99 + bob, 0.21, 0.05, PART.HAND, R.skin);
-  const staffLean = st.moving ? sw * 0.08 : 0;
-  cap(0.31, 0.02, 0.2 + staffLean, 0.3, 1.82 + bob, 0.2 - staffLean * 0.3, 0.026, PART.STAFF, R.wood, 0.1);
-  if (lantern) {
-    const lp = sph(lh[0], lh[1] - 0.2, lh[2] + 0.02, 0.065, PART.LANTERN, R.fire, 0); lp.look = LOOK_GLOW; lp.posAdd = 0.85; lp.lit = 0;
-    cap(lh[0], lh[1] - 0.03, lh[2], lh[0], lh[1] - 0.14, lh[2] + 0.02, 0.012, PART.STAFF, R.dark);
-  }
-  // head: face, nose and eyes turn toward you when you are near; hat with a brim and crown
-  const hl = h + st.look, hc = Math.cos(hl), hs = Math.sin(hl);
-  const Hp = (r, yy, f) => [x + (-hs) * r + hc * f, y + yy + bob, z + hc * r + hs * f];
-  const hsph = (r, yy, f, rad, part, rp, pa) => { const [ax, ay, az] = Hp(r, yy, f); return add(pSphere(ax, ay, az, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
-  const [nx0, ny0, nz0] = Hp(0, 1.42, 0), [nx1, ny1, nz1] = Hp(0, 1.5, 0.01);
-  add(pCapsule(nx0, ny0, nz0, nx1, ny1, nz1, 0.055, K.MERCHANT, 0, R.skin, LOOK_SOLID), PART.SKIN, -0.1);
-  hsph(0, 1.56, 0.01, 0.125, PART.SKIN, R.skin);
-  hsph(0, 1.585, -0.035, 0.123, PART.CROWN, mi % 2 ? R.wood : R.dark, 0.05);   // hair, seen from behind and the sides
-  hsph(0, 1.535, 0.13, 0.026, PART.SKIN, R.skin, 0.05);
-  if (zc < 14) { hsph(-0.045, 1.575, 0.112, 0.019, PART.EYE, R.ink); hsph(0.045, 1.575, 0.112, 0.019, PART.EYE, R.ink); }
-  if (mi % 2 === 0) { const [bx, by, bz] = Hp(0, 1.46, 0.07); add(pEllipsoid(bx, by, bz, 0.1, 0.1, 0.07, hl + Math.PI / 2, K.MERCHANT, 0, R.dark, LOOK_SOLID), PART.CROWN, 0.25); }
-  const [hx, hy, hz] = Hp(0, 1.655, 0.01), [tx, ty, tz] = Hp(0, 1.675, 0.01), [kx, ky, kz] = Hp(0, 1.87, -0.01);
-  add(pCylinder(hx, hy, hz, tx, ty, tz, 0.25, K.MERCHANT, 0, R.dark, LOOK_SOLID), PART.BRIM, 0.05);
-  add(pCone(hx, hy, hz, kx, ky, kz, 0.14, 0.09, K.MERCHANT, 0, R.dark, LOOK_SOLID), PART.CROWN, 0.1);
-  if (zc < 50) shadowDiscs.push([x, z, y, 0.45, zc]);
-}
-
-// Ground shadows: under every tree and figure, a soft disc on the ground away from the light.
-function castShadows() {
-  const { RW, RH, rayW, rayH } = grid;
-  const { kind, depth, flags } = rays;
-  const hl = Math.hypot(light.lx, light.lz) || 1, ox = -light.lx / hl, oz = -light.lz / hl;
-  for (const [x, z, y, rad, zc0] of shadowDiscs) {
-    const sx = x + ox * rad * 0.45, sz = z + oz * rad * 0.45;
-    const zc = sx * vFx + sz * vFz, xc = sx * vRx + sz * vRz;
-    if (zc - rad < 0.3) continue;
-    const zN = zc - rad, zF = zc + rad, k0 = vF / zN, k1 = vF / zF;
-    let x0 = Math.floor((grid.w * 0.5 + Math.min((xc - rad) * k0, (xc - rad) * k1)) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + Math.max((xc + rad) * k0, (xc + rad) * k1)) / rayW - 0.5);
-    const yT = y + rad * 0.7, yB = y - rad * 0.7;
-    let y0 = Math.floor((vHor - Math.max(yT * k0, yT * k1)) / rayH - 0.5), y1 = Math.ceil((vHor - Math.min(yB * k0, yB * k1)) / rayH - 0.5);
-    if (x0 < 0) x0 = 0; if (x1 > RW - 1) x1 = RW - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
-    const r2 = rad * rad;
-    for (let xx = x0; xx <= x1; xx++) for (let yy = y0, i = xx * RH + y0; yy <= y1; yy++, i++) {
-      if (kind[i] !== K.TERRAIN) continue;
-      const d = depth[i];
-      if (d < zN - 1 || d > zF + 1) continue;
-      const p = rayP[xx], wx = (vFx + vRx * p) * d - sx, wz = (vFz + vRz * p) * d - sz;
-      if (wx * wx + wz * wz < r2) flags[i] |= F_SHADOW;
-    }
-  }
-}
-
-// =====================================================================
-//  RENDER 1c: GROUND MARKS  (small world objects, splatted into cells)
-// =====================================================================
-// Tufts, pebbles, flakes and ripples are points scattered over the terrain, denser near you and
-// sparser with distance, each drawn in the cell it projects to, at the pixel it projects to.
-// Because they belong to the world and not to the screen, they flow with the ground as you walk
-// instead of shimmering in place. Each band of distance has its own scatter; a point's band
-// edges are jittered so the bands never show as lines.
-const MARK_BAND0 = 1.2, MARK_BANDS = 8, MARK_FAR = 160, MARK_PER_CELL = 0.9, MARK_BUDGET = 10000;
-// hash2's integer form: 32 bits to split into several small fields.
-function hashInt(x, y, s) {
-  let h = Math.imul(x | 0, 0x27d4eb2d) ^ Math.imul(y | 0, 0x165667b1) ^ Math.imul(s | 0, 0x9e3779b1);
-  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b);
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-  return (h ^ (h >>> 16)) >>> 0;
-}
-const MARK_SET = [];   // per terrain material: [keep fraction, mark names]
-MARK_SET[MAT.GRASS] = [0.5, ['tick', 'pair', 'three', 'tufts', 'pair']];
-MARK_SET[MAT.GRASS2] = [0.5, ['tick', 'three', 'pair', 'three']];
-MARK_SET[MAT.ROAD] = [0.45, ['grit', 'pebbles', 'pebble', 'grit']];
-MARK_SET[MAT.ROCK] = [0.5, ['pebbles', 'crag', 'pebble', 'crag']];
-MARK_SET[MAT.SNOW] = [0.4, ['dot', 'flake', 'dot']];
-MARK_SET[MAT.WATER] = [0.2, ['wave', 'ripple', 'wave', 'waves']];
-const MARK_IDS = MARK_SET.map(s => s && s[1].map(n => MK[n]));
-function splatGroundMarks(t) {
-  const { cols, rows, cellW, cellH, RW, RH, rayW, rayH } = grid;
-  const { kind, seg, depth } = rays;
-  const T = cellMark.type, HS = cellMark.hash, PX = cellMark.px, PY = cellMark.py, UP = cellMark.up;
-  T.fill(-1);
-  const camX = vCamX, camY = vCamY, camZ = vCamZ, fx = vFx, fz = vFz, rx = vRx, rz = vRz, f = vF, tanH = vTanX * 1.05;
-  const { H, mat } = world;
-  const w2 = grid.w * 0.5, seed = world.seed;
-  // Points per unit of ground for a cell to see MARK_PER_CELL of them at distance z: a cell covers
-  // about (cw·ch/f²)·z·(z² + h²)/h of ground, h being the eye's height above the ground below it.
-  const hgt = Math.max(EYE, camY - terrainHeight(camX, camZ));
-  const perArea = MARK_PER_CELL * f * f / (cellW * cellH);
-  const bands = [];
-  let total = 0;
-  for (let b = 0; b < MARK_BANDS; b++) {
-    const z0 = MARK_BAND0 * Math.pow(2, b), z1 = Math.min(z0 * 2, MARK_FAR), zm = Math.sqrt(z0 * z1);
-    if (z0 >= MARK_FAR) break;
-    const rho = perArea * hgt / (zm * (zm * zm + hgt * hgt));
-    // lattice cells of a power-of-two size holding 4 to 16 points, so the scatter only changes
-    // wholesale when the density needed changes fourfold
-    const S = Math.pow(2, Math.ceil(Math.log2(Math.sqrt(4 / rho))));
-    const M = Math.max(1, Math.min(16, Math.round(rho * S * S)));
-    bands.push([z0, z1, S, M, b]);
-    total += tanH * (z1 * z1 - z0 * z0) * rho;
-  }
-  const thin = total > MARK_BUDGET ? MARK_BUDGET / total : 1;
-  for (const [z0, z1, S, M0, b] of bands) {
-    const M = Math.max(1, Math.round(M0 * thin));
-    const zlo = z0 * 0.8, zhi = z1 * 1.2;
-    // the wedge of ground in view between zlo and zhi, as a box of lattice cells
-    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-    for (const zz of [zlo, zhi]) for (const s of [-1, 1]) {
-      const wx = fx * zz + rx * s * zz * tanH, wz = fz * zz + rz * s * zz * tanH;
-      if (wx < minX) minX = wx; if (wx > maxX) maxX = wx; if (wz < minZ) minZ = wz; if (wz > maxZ) maxZ = wz;
-    }
-    const cx0 = Math.floor((camX + minX) / S) - 1, cx1 = Math.floor((camX + maxX) / S) + 1;
-    const cz0 = Math.floor((camZ + minZ) / S) - 1, cz1 = Math.floor((camZ + maxZ) / S) + 1;
-    for (let cz = cz0; cz <= cz1; cz++) for (let cx = cx0; cx <= cx1; cx++) {
-      const ccx = (cx + 0.5) * S - camX, ccz = (cz + 0.5) * S - camZ;
-      const czc = ccx * fx + ccz * fz;
-      if (czc < zlo - S || czc > zhi + S) continue;
-      if (Math.abs(ccx * rx + ccz * rz) > czc * tanH + S) continue;
-      // the lattice cell's identity wraps with the world, so a point is the same point on every lap
-      const period = W / S | 0, key = (((cx % period) + period) % period) * 7919 + (((cz % period) + period) % period);
-      for (let k = 0; k < M; k++) {
-        // one hash places the point, a second decides its band edge, whether it is kept, its mark and its tone
-        const hA = hashInt(key, k, seed + b * 131), hB = hashInt(key, k, seed + 29 + b * 131);
-        const px = (cx + (hA & 0xffff) / 65536) * S, pz = (cz + (hA >>> 16) / 65536) * S;
-        const dxw = px - camX, dzw = pz - camZ, zc = dxw * fx + dzw * fz;
-        const jit = 0.8 + 0.4 * (hB & 255) / 256;
-        if (zc < z0 * jit || zc >= z1 * jit) continue;
-        const ci = (Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK), m = mat[ci];
-        const set = MARK_SET[m];
-        if (!set) continue;
-        const hk = ((hB >>> 8) & 255) / 256;
-        if (hk > set[0]) continue;
-        const xPix = w2 + (dxw * rx + dzw * rz) * f / zc;
-        if (xPix < 0 || xPix >= grid.w) continue;
-        const hgt = zc < NEAR_SMOOTH ? terrainHeight(px, pz) : H[ci];
-        const yPix = vHor + (camY - hgt) * f / zc;
-        if (yPix < 0 || yPix >= grid.h) continue;
-        const ri = Math.min(RW - 1, (xPix / rayW) | 0) * RH + Math.min(RH - 1, (yPix / rayH) | 0);
-        if (kind[ri] !== K.TERRAIN || seg[ri] !== (TERRAIN_SEG | m)) continue;
-        const dd = depth[ri] - zc;
-        if (dd > 0.8 + zc * 0.04 || dd < -(0.8 + zc * 0.04)) continue;
-        const c = (xPix / cellW) | 0, r = (yPix / cellH) | 0, i = r * cols + c;
-        if (c >= cols || r >= rows) continue;
-        if (T[i] >= 0 && HS[i] <= hk) continue;
-        const ids = MARK_IDS[m];
-        T[i] = ids[(((hB >>> 16) & 255) * ids.length) >> 8]; HS[i] = hk;
-        PX[i] = xPix - c * cellW; PY[i] = yPix - r * cellH; UP[i] = hB >>> 31;
-      }
-    }
-  }
-}
-
-// Screen-space water reflections (as v1): below every stretch of water in a column, mirror what is
-// above its far shore into the water, fading with distance from the shore. Ripples reflect less.
-function reflectWater() {
-  const { RW, RH } = grid;
-  const { kind, flags, refl, reflAmt } = rays;
-  refl.fill(-1);
-  const fadeLen = RH * 0.55;
-  for (let x = 0; x < RW; x++) {
-    let shore = -1, inWater = false;
-    for (let r = 0, i = x * RH; r < RH; r++, i++) {
-      if (kind[i] === K.TERRAIN && (flags[i] & F_WATER)) {
-        if (!inWater) { inWater = true; shore = r; }
-        const d = r - shore + 1, rr = shore - d, fade = 1 - d / fadeLen;
-        if (rr < 0 || fade <= 0) continue;
-        const j = x * RH + rr;
-        if (kind[j] === K.TERRAIN && (flags[j] & F_WATER)) continue;
-        refl[i] = j; reflAmt[i] = fade * (flags[i] & F_RIPPLE ? 0.45 : 1);
-      } else inWater = false;
-    }
-  }
-}
-
-// =====================================================================
-//  RENDER 2: THE CELL STAGE  (rays → one glyph and two colours per cell)
-// =====================================================================
-// How often a sprite surface shows a mark, and which (drawn on a lattice fixed to the object).
-const SPRITE_MARKS = [];
-SPRITE_MARKS[K.TREE] = [0.3, ['club', 'leafo', 'club', 'leafpct'].map(n => MK[n])];
-SPRITE_MARKS[K.BUSH] = [0.3, ['club', 'leafo'].map(n => MK[n])];
-SPRITE_MARKS[K.CONIFER] = [0.35, [MK.needles]];
-SPRITE_MARKS[K.BOULDER] = [0.35, ['crag', 'pebbles'].map(n => MK[n])];
-const cIdx = new Int32Array(RAYS_X * RAYS_Y), cellOff = new Int32Array(RAYS_X * RAYS_Y);
-// Per cell, between the two passes: the list and position its colour comes from (−1 when the
-// cell is already drawn), and what it needs for marks.
-const plan = { list: new Int16Array(0), X: new Float32Array(0), kind: new Uint8Array(0), ramp: new Uint8Array(0), P: new Float32Array(0), mid: new Int32Array(0) };
-function shadeCells(t) {
-  const { cols, rows, RW, RH, cellW, cellH, f } = grid;
-  const { kind, seg, ramp, pos, depth, lit, u, v, w, flags, refl, reflAmt } = rays;
-  const GL = grid.glyph, FG = grid.fg, BG = grid.bg;
-  const SPACE = atlas.SPACE, FULL = atlas.FULL, SHADE = atlas.SHADE, shapeGlyph = atlas.shapeGlyph, shapeInv = atlas.shapeInv;
-  const NS = RAYS_X * RAYS_Y, idx = cIdx, n = cols * rows;
-  if (plan.list.length !== n) {
-    plan.list = new Int16Array(n); plan.X = new Float32Array(n); plan.kind = new Uint8Array(n); plan.ramp = new Uint8Array(n); plan.P = new Float32Array(n); plan.mid = new Int32Array(n);
-  }
-  const pList = plan.list, pX = plan.X, pKind = plan.kind, pRampId = plan.ramp, pP = plan.P, pMid = plan.mid;
-  const starAmt = cur.stars, yawCols = Math.round(cam.yaw / (FOV / cols)), pitchRows = Math.round(cam.pitch / cellH);
-  const glowC = COL.glow, starC = COL.near[R.star][0], starB = COL.near[R.star][1];
-  const sky = COL.near[R.sky], skyN = sky.length;
-  const shimmer = Math.floor(t * 1.5);
-  const fogOf = i => { const k = kind[i]; return k === K.SKY || k === K.SUN || k === K.MOON || k === K.FLAME ? 0 : fogAt(depth[i]); };
-  // Two rays belong together when they hit the same thing (on solids, in the same step of light:
-  // rasterPrim folds that into the segment), and on the ground at much the same distance.
-  const same = (i, j) => seg[i] === seg[j] && (kind[i] !== K.TERRAIN || (depth[i] < depth[j] * 1.22 && depth[j] < depth[i] * 1.22));
-  let sunCol = -99, sunRow = -99, sunRX = 1, sunRY = 1;
-  if (sunScreen) { sunCol = sunScreen.x / cellW; sunRow = sunScreen.y / cellH; sunRX = sunScreen.r / cellW; sunRY = sunScreen.r / cellH; }
-  let edges = 0;
-
-  // ---- pass 1: edges are drawn now; every other cell is planned ----
-  const OFF = cellOff;   // ray k of a cell, relative to its first ray (column-major)
-  for (let k = 0; k < NS; k++) OFF[k] = (k % RAYS_X) * RH + ((k / RAYS_X) | 0);
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    const ci = r * cols + c, base = c * RAYS_X * RH + r * RAYS_Y, i0 = base, s0 = seg[i0];
-    pList[ci] = -1;
-    for (let k = 0; k < NS; k++) idx[k] = base + OFF[k];
-    // Seed the second group with the ray least like the first (another object, or a ridge).
-    // Most cells are one thing throughout, which one pass over the segments shows.
-    let seedB = -1, uniform = true;
-    for (let k = 1; k < NS; k++) if (seg[idx[k]] !== s0) { uniform = false; break; }
-    if (!uniform) { for (let k = 1; k < NS; k++) if (!same(idx[k], i0)) { seedB = idx[k]; break; } }
-    else if (kind[i0] === K.TERRAIN) {
-      const d0 = depth[i0];
-      for (let k = 1; k < NS; k++) { const d = depth[idx[k]]; if (d > d0 * 1.22 || d0 > d * 1.22) { seedB = idx[k]; break; } }
-    }
-    if (seedB >= 0) {
-      const f0 = fogOf(i0), fB = fogOf(seedB);
-      let pat = 0, nB = 0, aP = 0, aF = 0, aL = 0, bP = 0, bF = 0, bL = 0;
-      for (let k = 0; k < NS; k++) {
-        const i = idx[k], fi = fogOf(i);
-        const b = same(i, i0) ? 0 : same(i, seedB) ? 1 : (Math.abs(pos[i] - pos[seedB]) + Math.abs(fi - fB) < Math.abs(pos[i] - pos[i0]) + Math.abs(fi - f0) ? 1 : 0);
-        if (b) { pat |= 1 << k; nB++; bP += pos[i]; bF += fi; bL += lit[i]; } else { aP += pos[i]; aF += fi; aL += lit[i]; }
-      }
-      const nA = NS - nB;
-      const ca = solidColor(ramp[i0], aP / nA, aF / nA, aL / nA, kind[i0]);
-      const cb = solidColor(ramp[seedB], bP / nB, bF / nB, bL / nB, kind[seedB]);
-      if (ca !== cb) {
-        edges++;
-        const fl = kind[seedB] === K.FLAME ? seedB : kind[i0] === K.FLAME ? i0 : -1;
-        if (fl >= 0 && depth[fl] > 70) { GL[ci] = markAnywhere(MK.spark, 0.5); FG[ci] = solidColor(R.fire, 0.8, 0, 0, K.FLAME); BG[ci] = fl === seedB ? ca : cb; continue; }
-        GL[ci] = shapeGlyph[pat];
-        if (shapeInv[pat]) { FG[ci] = ca; BG[ci] = cb; } else { FG[ci] = cb; BG[ci] = ca; }
-        continue;
-      }
-    }
-    let P = 0, L = 0;
-    for (let k = 0; k < NS; k++) { const i = idx[k]; P += pos[i]; L += lit[i]; }
-    P /= NS; L /= NS;
-    const kd = kind[i0];
-    if (kd === K.SKY) {
-      const X = P * (skyN - 1), k = Math.min(skyN - 2, Math.floor(X)), a = X - k;
-      let bg = sky[k], fg = sky[k + 1], g = a < 0.25 ? SPACE : a < 0.5 ? SHADE[1] : a < 0.75 ? SHADE[2] : SHADE[3];
-      if (sunScreen) {   // the air around the sun glows
-        const ex = (c + 0.5 - sunCol) / sunRX, ey = (r + 0.5 - sunRow) / sunRY, d2 = ex * ex + ey * ey;
-        const glow = d2 > 1 && d2 < 49 ? Math.exp(-Math.sqrt(d2) * 0.5) * 0.75 : 0;
-        if (glow > 0.12) { fg = glowC; g = glow < 0.25 ? SHADE[1] : glow < 0.45 ? SHADE[2] : glow < 0.6 ? SHADE[3] : FULL; }
-      }
-      if (starAmt > 0.05 && P < 0.85) {
-        const h = hash2(c + yawCols, r - pitchRows, 77);
-        if (h < 0.05 * starAmt) { GL[ci] = markAnywhere(h < 0.006 ? MK.star3 : h < 0.018 ? MK.star2 : MK.star1, hash2(c + yawCols, r - pitchRows, 78)); FG[ci] = h < 0.012 ? starB : starC; BG[ci] = bg; continue; }
-      }
-      GL[ci] = g; FG[ci] = fg; BG[ci] = bg; continue;
-    }
-    const rp = ramp[i0], im = idx[(RAYS_Y >> 1) * RAYS_X];   // a ray near the middle of the cell
-    const Fg = fogOf(im);
-    if (kd === K.TERRAIN && (flags[im] & F_SHADOW)) P = P > 0.22 ? P - 0.22 : 0;
-    const X = planX(rp, P, Fg, L, kd);
-    if (kd === K.SUN || kd === K.MOON || kd === K.FLAME) { const bg = LISTS[planList][Math.round(X)]; GL[ci] = SPACE; FG[ci] = bg; BG[ci] = bg; continue; }
-    pList[ci] = planList; pX[ci] = X; pKind[ci] = kd; pRampId[ci] = rp; pP[ci] = P; pMid[ci] = im;
-  }
-  stats.edgeCells = edges;
-
-  // ---- pass 2: interior cells, now that every neighbour's tone is known ----
-  // Large even areas stay one flat tone. A ░ or ▒ band appears only where the tone really
-  // changes between neighbouring cells (a lighting step, a fog layer, the rim of firelight),
-  // on the side of the seam the cell's own tone leans toward.
-  const mT = cellMark.type, mPX = cellMark.px, mPY = cellMark.py, mUP = cellMark.up;
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    const ci = r * cols + c, list = pList[ci];
-    if (list < 0) continue;
-    const Lc = LISTS[list], nL = Lc.length, X = pX[ci];
-    let tn = Math.round(X);
-    if (tn > nL - 1) tn = nL - 1;
-    const frac = X - tn, bg = Lc[tn], kd = pKind[ci], rp = pRampId[ci], P = pP[ci], im = pMid[ci];
-    let level = 0, seamFg = 0;
-    if (kd < K.TREE) for (let q = 0; q < 4; q++) {
-      const nb = q === 0 ? (c > 0 ? ci - 1 : -1) : q === 1 ? (c < cols - 1 ? ci + 1 : -1) : q === 2 ? (r > 0 ? ci - cols : -1) : (r < rows - 1 ? ci + cols : -1);
-      if (nb < 0) continue;
-      const ln = pList[nb];
-      if (ln < 0 || pRampId[nb] !== rp) continue;
-      if (ln === list) {
-        const tq = Math.round(pX[nb]);
-        if (tq > tn && frac > 0.12) { const lv = frac > 0.3 ? 2 : 1; if (lv > level) { level = lv; seamFg = Lc[Math.min(nL - 1, tn + 1)]; } }
-        else if (tq < tn && frac < -0.12) { const lv = frac < -0.3 ? 2 : 1; if (lv > level) { level = lv; seamFg = Lc[Math.max(0, tn - 1)]; } }
-      } else if (level === 0 && list !== LIST_WARM) {
-        // a fog layer or the edge of firelight: the nearer, unlit side draws the seam
-        const nearer = ln === LIST_WARM || (list < NR ? ln >= NR : list < 2 * NR && ln === LIST_HAZE);
-        if (!nearer) continue;
-        const cn = LISTS[ln][Math.min(LISTS[ln].length - 1, Math.round(pX[nb]))];
-        if (cn !== bg) { level = 1; seamFg = cn; }
-      }
-    }
-    pRamp = Lc; pTone = tn;
-    const near = list < NR || list === LIST_WARM;
-    // Stone walls keep their mortar through tone changes: the courses are the wall's character.
-    if (kd === K.WALL && rp === R.stone && near) {
-      const base = c * RAYS_X * RH + r * RAYS_Y;
-      for (let k = 0; k < NS; k++) idx[k] = base + (k % RAYS_X) * RH + ((k / RAYS_X) | 0);
-      const g = mortarFor(idx, cellH, cellW, f);
-      if (g !== SPACE) { GL[ci] = g; FG[ci] = darkerOf(bg); BG[ci] = bg; continue; }
-    }
-    if (level) { GL[ci] = SHADE[level]; FG[ci] = seamFg; BG[ci] = bg; continue; }
-    // Water keeps its own colour; what stands on the far shore shows in it as broken strokes.
-    if (rp === R.water && list !== LIST_HAZE) {
-      const base = c * RAYS_X * RH + r * RAYS_Y;
-      let rf = 0, rk = -1;
-      for (let k = 0; k < NS; k++) { const i = base + (k % RAYS_X) * RH + ((k / RAYS_X) | 0); if (refl[i] >= 0 && reflAmt[i] > rf) { rf = reflAmt[i]; rk = refl[i]; } }
-      if (rk >= 0 && rf > 0.12) {
-        const sk = kind[rk], sp = pos[rk] - 0.2;
-        const rc = solidColor(ramp[rk], sp < 0 ? 0 : sp, fogOf(rk), 0, sk === K.SKY ? K.SKY : K.TERRAIN);
-        const h = hash2(c + yawCols, r, 41 + shimmer), h2 = hash2(c + yawCols + 3, r, 43 + shimmer);
-        if (h2 < rf * 0.55 && rc !== bg) { GL[ci] = markAnywhere(h < 0.4 ? MK.waves : h < 0.75 ? MK.wave : MK.ripple, h); FG[ci] = rc; BG[ci] = bg; continue; }
-      }
-    }
-    if (!near) { GL[ci] = SPACE; FG[ci] = bg; BG[ci] = bg; continue; }
-    if (kd === K.TRUNK) { GL[ci] = markAnywhere(MK.bark, 0); FG[ci] = darkerOf(bg); BG[ci] = bg; continue; }
-    if (kd === K.TERRAIN) {
-      const mk = mT[ci];
-      if (mk >= 0) {
-        const up = list === LIST_WARM || (P > 0.55 ? mUP[ci] || P > 0.75 : mUP[ci] && P > 0.35);
-        GL[ci] = markAt(mk, mPX[ci], mPY[ci]); FG[ci] = up ? lighterOf(bg) : darkerOf(bg); BG[ci] = bg; continue;
-      }
-      GL[ci] = SPACE; FG[ci] = bg; BG[ci] = bg; continue;
-    }
-    const sm = SPRITE_MARKS[kd];
-    if (sm) {
-      // a lattice fixed to the object's surface in 3D, no finer than about a cell and a half
-      const d = depth[im], Ls = Math.pow(2, Math.ceil(Math.log2(Math.max(0.05, 1.6 * d * cellW / f))));
-      const obj = seg[im] & 0xfffff, gx = Math.floor(u[im] / Ls), gy = Math.floor(v[im] / Ls), gz = Math.floor(w[im] / Ls);
-      const h1 = hash2(gx * 31 + gz * 977 + obj, gy, kd * 7 + 3);
-      if (h1 < sm[0]) {
-        const h2 = hash2(gx + gz * 13, gy + obj * 13, kd * 11 + 5);
-        GL[ci] = markAnywhere(sm[1][(h2 * sm[1].length) | 0], hash2(gy, gx + gz, 9));
-        FG[ci] = (P > 0.5 ? h2 > 0.3 : h2 > 0.8) ? lighterOf(bg) : darkerOf(bg); BG[ci] = bg; continue;
-      }
-    }
-    GL[ci] = SPACE; FG[ci] = bg; BG[ci] = bg;
-  }
-}
-// Two steps away on the same ramp where the ramp allows, for marks that read at a glance.
-function lighterOf(bg) { const L = pRamp, n = L.length, t = pTone; const a = L[Math.min(n - 1, t + 2)]; return a !== bg ? a : L[Math.max(0, t - 1)]; }
-function darkerOf(bg) { const L = pRamp, n = L.length, t = pTone; const a = L[Math.max(0, t - 2)]; return a !== bg ? a : L[Math.min(n - 1, t + 1)]; }
-
-// Stone walls: mortar where the voxel courses and the running-bond joints fall inside this cell,
-// computed from the height up the wall that every ray recorded.
-function mortarFor(idx, cellH, cellW, f) {
-  const { v, u, depth, seg } = rays;
-  const i0 = idx[0];
-  if (seg[idx[RAYS_X * RAYS_Y - RAYS_X]] !== seg[i0]) return atlas.SPACE;
-  const slope = depth[i0] / f;                       // wall units per pixel down the screen
-  if (slope > 0.25) return atlas.SPACE;              // courses closer together than 4 px: leave the wall plain
-  const vTop = v[i0] + slope * (grid.rayH * 0.5);    // height at the top edge of the cell
-  let lines = 0;
-  for (let y = 1; y < cellH; y++) if (Math.floor(vTop - (y - 0.5) * slope) !== Math.floor(vTop - (y + 0.5) * slope)) lines |= 1 << y;
-  const parity0 = Math.floor(vTop - 0.5 * slope) & 1;
-  let jE = -1, jO = -1;
-  if (slope <= 1 / 7) {                              // near enough for the joints between stones
-    const ua = u[i0], ub = u[idx[1]], du = (ub - ua) / grid.rayW, u0 = ua - du * grid.rayW * 0.5;
-    for (let x = 1; x < cellW; x++) {
-      const a = u0 + du * (x - 0.5), b = u0 + du * (x + 0.5);
-      if (jE < 0 && Math.floor(a) !== Math.floor(b)) jE = x;
-      if (jO < 0 && Math.floor(a + 0.5) !== Math.floor(b + 0.5)) jO = x;
-    }
-  }
-  if (!lines && jE < 0 && jO < 0) return atlas.SPACE;
-  return mortarMask(lines, parity0, jE, jO);
-}
-
-// ---- overlays: firelight in the air, sparks, birds ------------------------------------------
-function drawOverlays(t) {
-  const { cols, rows, cellW, cellH } = grid;
-  const GL = grid.glyph, FG = grid.fg;
-  const SHADE = atlas.SHADE, SPACE = atlas.SPACE;
-  const litP = COL.near[R.lit];
-  const { RW, RH, rayW, rayH } = grid, depth = rays.depth;
-  // the depth the scene has at a cell (its middle ray): glows and sparks only show in front of it
-  const cellDepth = (c, r) => depth[Math.min(RW - 1, c * RAYS_X + (RAYS_X >> 1)) * RH + Math.min(RH - 1, r * RAYS_Y + (RAYS_Y >> 1))];
-  if (light.darkness > 0.3) for (const gw of glows) {
-    if (gw.zc > 150) continue;
-    const fc = gw.x / cellW, fr = gw.y / cellH;
-    if (fc < 0 || fc >= cols || fr < 0 || fr >= rows || cellDepth(fc | 0, fr | 0) < gw.zc - 1) continue;   // the flame itself is hidden
-    const R0 = clamp(gw.hPx / cellH * 2.4, 1.5, 9) * (gw.fire ? 1.3 : gw.li < 0 ? 0.55 : 0.8);
-    for (let r = Math.floor(fr - R0); r <= Math.ceil(fr + R0 * 0.6); r++) for (let c = Math.floor(fc - R0 * 2); c <= Math.ceil(fc + R0 * 2); c++) {
-      if (c < 0 || c >= cols || r < 0 || r >= rows) continue;
-      const dx = (c + 0.5 - fc) / 2, dy = r + 0.5 - fr, q = Math.sqrt(dx * dx + dy * dy) / R0;
-      if (q >= 1) continue;
-      const i = r * cols + c;
-      if (GL[i] !== SPACE || cellDepth(c, r) < gw.zc - 2) continue;   // tint only plain cells, and nothing in front of the fire
-      const lv = q < 0.35 ? 2 : q < 0.7 ? 1 : 0;
-      if (lv === 0 && hash2(c, r, 5) > 0.5) continue;
-      GL[i] = SHADE[lv + 1]; FG[i] = litP[Math.min(litP.length - 1, q < 0.35 ? 3 : 2)];
-    }
-    if (gw.fire) for (let k = 0; k < 7; k++) {         // sparks rise off a campfire and wink out
-      const h = hash2(k, gw.li, 17), life = (t * (0.35 + 0.25 * h) + h) % 1;
-      const c = Math.round(fc + (h - 0.5) * 3 + Math.sin(life * 6 + k) * 0.8), r = Math.round(fr - gw.hPx / cellH * 0.5 - 1 - life * 8);
-      if (c < 0 || c >= cols || r < 0 || r >= rows || life > 0.85 || cellDepth(c, r) < gw.zc - 2) continue;
-      const i = r * cols + c;
-      GL[i] = markAnywhere(life < 0.3 ? MK.spark : MK.ember, h); FG[i] = solidColor(R.fire, 0.95 - life * 0.5, 0, 0, K.FLAME);
-    }
-  }
-  for (const b of birdsOnScreen) {
-    const c = Math.floor(b.x / cellW), r = Math.floor(b.y / cellH);
-    if (c < 0 || c >= cols || r < 0 || r >= rows) continue;
-    const ri = Math.min(grid.RW - 1, (b.x / grid.rayW) | 0) * grid.RH + Math.min(grid.RH - 1, (b.y / grid.rayH) | 0);
-    if (rays.depth[ri] < b.zc) continue;             // behind a hill or a tree
-    const i = r * cols + c;
-    GL[i] = markAt(b.frame === 0 ? MK.birdv : b.frame === 1 ? MK.birdm : MK.birdup, b.x - c * cellW, b.y - r * cellH + 1);
-    FG[i] = COL.bird;
-  }
-}
-
-// The whole frame.
-function render(t, dt) {
-  const f = grid.f;
-  vF = f; vVd = view.dist; vHor = grid.h * 0.5 + cam.pitch;
-  vFx = Math.cos(cam.yaw); vFz = Math.sin(cam.yaw); vRx = -vFz; vRz = vFx;
-  vCamX = cam.x; vCamY = cam.y; vCamZ = cam.z; vTanX = Math.tan(FOV / 2);
-  const s = skyState(clock.hours);
-  const strength = s.sunEl > 0.03 ? clamp(s.sunEl / 0.35, 0, 1) : clamp(Math.max(s.moonEl, 0) / 0.3, 0, 1) * 0.6;
-  shAmb = cur.ambient; shDiff = cur.diffuse * (0.4 + 0.6 * strength);
-  posLo = cur.ambient * 0.3; posInv = 1 / (cur.ambient + cur.diffuse * 0.95 - posLo);
-  lightsOn = activeLights.length > 0;
-  for (let x = 0; x < grid.RW; x++) rayP[x] = ((x + 0.5) * grid.rayW - grid.w * 0.5) / f;
-  for (let y = 0; y < grid.RH; y++) { rayQ[y] = -((y + 0.5) * grid.rayH - vHor) / f; rayInvS[y] = rayQ[y] < -1e-6 ? -1 / rayQ[y] : Infinity; }
-  if (skyPosRow.length !== grid.RH) skyPosRow = new Float32Array(grid.RH);
-  for (let y = 0; y < grid.RH; y++) { const e = (vHor - (y + 0.5) * grid.rayH) / (0.55 * f); skyPosRow[y] = e <= 0 ? 1 : e >= 1 ? 0 : 1 - e; }
-  updateShadeMips();
-  sunScreen = projectBody(s.sunEl, s.sunAz);
-  moonScreen = s.sunEl < 0.15 ? projectBody(s.moonEl, s.moonAz) : null;
-  const t0 = performance.now();
-  marchRays(t);
-  const t1 = performance.now();
-  drawSprites(t, dt);
-  castShadows();
-  const t2 = performance.now();
-  splatGroundMarks(t);
-  reflectWater();
-  const t3 = performance.now();
-  stats.marchMs += t1 - t0; stats.spriteMs += t2 - t1; stats.marksMs += t3 - t2;
-}
-
-// =====================================================================
 //  TALKING + TRADE PANEL
 // =====================================================================
 const ui = { open: false, merchant: null, nearest: null, gold: START_GOLD };
@@ -3290,12 +3331,185 @@ function regenerate(seed) {
 }
 
 // =====================================================================
+//  PRESENTATION  (the canvas, the render workers, the main loop)
+// =====================================================================
+// The renderer runs in Web Workers when it can: the screen is split into vertical stripes of
+// cells and each worker marches, shades and composes its own stripe, then hands its pixels
+// back. The simulation stays here on the main thread, exactly as in v1. Without workers (or with
+// ?threads=0 in the URL) the same renderer runs here instead.
+const local = renderCore();
+const pool = { workers: [], busy: 0, gen: 0, bufs: [], parts: [], sentWorld: null, sentShade: null, shadeKey: [NaN, NaN, NaN, NaN, NaN], t0: 0, idle: [] };
+
+function setupGrid() {
+  grid.w = window.innerWidth; grid.h = window.innerHeight;
+  canvas.width = grid.w; canvas.height = grid.h;
+  const [cw, ch] = CELL_PRESETS[grid.preset];
+  grid.cellW = cw; grid.cellH = ch;
+  grid.cols = Math.ceil(grid.w / cw); grid.rows = Math.ceil(grid.h / ch);
+  grid.RW = grid.cols * RAYS_X; grid.RH = grid.rows * RAYS_Y;
+  grid.rayW = cw / RAYS_X; grid.rayH = ch / RAYS_Y;
+  grid.f = (grid.w / 2) / Math.tan(FOV / 2);   // focal length in pixels
+  grid.img = ctx.createImageData(grid.cols * cw, grid.rows * ch);
+  pool.gen++;
+  if (pool.workers.length) {
+    // stripes of whole cells, as even as possible
+    const K = pool.workers.length;
+    pool.bufs = []; pool.parts = [];
+    for (let k = 0; k < K; k++) {
+      const c0 = Math.floor(grid.cols * k / K), c1 = Math.floor(grid.cols * (k + 1) / K);
+      pool.parts[k] = { c0, c1 };
+      pool.workers[k].postMessage({ type: 'view', w: grid.w, h: grid.h, preset: grid.preset, c0, c1, gen: pool.gen });
+    }
+  } else local.setView(grid.w, grid.h, grid.preset, 0, grid.cols, new Uint32Array(grid.img.data.buffer));
+}
+
+function workerSource() {
+  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, RAMP_NAMES, R };
+  return [
+    "'use strict';",
+    ...Object.entries(consts).map(([k, v]) => `const ${k} = ${JSON.stringify(v)};`),
+    `const NO_FOG = Uint8Array.from(${JSON.stringify(Array.from(NO_FOG))});`,
+    `const KEYFRAMES = { day: { ramps: ${JSON.stringify(KEYFRAMES.day.ramps)} } };`,
+    `const clamp = ${clamp};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`,
+    `${hash2}`, `${terrainHeight}`, `${skyState}`,
+    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null };`,
+    `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
+    `const cur = { ambient: 0.38, diffuse: 0.62, lights: 0, stars: 0 }, light = { lx: 0, ly: 1, lz: 0, darkness: 0, faceShade: new Float32Array(6) };`,
+    `const COL = { near: RAMP_NAMES.map(n => new Uint32Array(KEYFRAMES.day.ramps[n].length)), far: RAMP_NAMES.map(() => new Uint32Array(3)), glow: 0, bird: 0 };`,
+    `${renderCore}`,
+    `const core = renderCore();`,
+    `self.onmessage = e => core.message(e.data, (m, tr) => self.postMessage(m, tr || []));`,
+  ].join('\n');
+}
+
+function startWorkers() {
+  const q = parseInt(new URLSearchParams(location.search).get('threads'), 10);
+  const want = Number.isFinite(q) ? clamp(q, 0, 8) : clamp((navigator.hardwareConcurrency || 4) - 1, 0, 6);
+  if (want < 2 || typeof Worker === 'undefined') return;
+  try {
+    const url = URL.createObjectURL(new Blob([workerSource()], { type: 'text/javascript' }));
+    for (let k = 0; k < want; k++) {
+      const wk = new Worker(url);
+      wk.onmessage = e => workerDone(k, e.data);
+      wk.onerror = e => { console.error('render worker failed, drawing on the main thread instead:', e.message); stopWorkers(); };
+      pool.workers.push(wk);
+    }
+  } catch (e) { stopWorkers(); }
+}
+function stopWorkers() {
+  for (const wk of pool.workers) wk.terminate();
+  pool.workers = []; pool.busy = 0; pool.sentWorld = null; pool.sentShade = null;
+  setupGrid();
+  for (const f of pool.idle.splice(0)) f();
+}
+
+// What the workers need to draw, sent when it changes: the world after a new seed, the lighting
+// after the sun moves.
+function syncWorkers() {
+  if (pool.sentWorld !== world.structs) {
+    pool.sentWorld = world.structs;
+    const pkg = {
+      seed: world.seed, H: world.H, mat: world.mat,
+      structs: world.structs.map(s => ({ cx: s.cx, cz: s.cz, x0: s.x0, z0: s.z0, baseY: s.baseY, radius: s.radius, half: s.half, type: s.type, tpl: { sx: s.tpl.sx, sy: s.tpl.sy, sz: s.tpl.sz, spans: s.tpl.spans, topSolid: s.tpl.topSolid } })),
+      trees: world.trees, treeBuckets: world.treeBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds,
+      merchants: world.merchants.map(m => ({ robe: m.robe, x: m.x, y: m.y, z: m.z, walked: m.walked })),
+    };
+    for (const wk of pool.workers) wk.postMessage({ type: 'world', world: pkg });
+    pool.shadeKey[0] = NaN;
+  }
+  const S = world.shade, k = pool.shadeKey;
+  if (k[0] !== light.lx || k[1] !== light.ly || k[2] !== light.lz || k[3] !== S[0] || k[4] !== S[N >> 1]) {
+    k[0] = light.lx; k[1] = light.ly; k[2] = light.lz; k[3] = S[0]; k[4] = S[N >> 1];
+    for (const wk of pool.workers) wk.postMessage({ type: 'shade', shade: S });
+  }
+}
+
+// The merchant's pose this frame: which way the body faces, which way the head turns, and whether
+// the legs are walking. Walking merchants face along their road; the one you are talking to
+// turns to face you; anyone nearby glances your way.
+const mRender = new Map();   // per merchant, render-only state: smoothed heading, head turn
+function roadPoint(m, s) {   // where on its road a merchant would be at distance s (as placeMerchant, without moving it)
+  const cum = m.cum, cells = m.cells;
+  s = clamp(s, 0, m.total);
+  let lo = 0, hi = cells.length - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= s) lo = mid; else hi = mid; }
+  const a = cells[lo], b = cells[hi];
+  const t = cum[hi] > cum[lo] ? clamp((s - cum[lo]) / (cum[hi] - cum[lo]), 0, 1) : 0;
+  return [(a & MASK) + 0.5 + wrapDelta((b & MASK) - (a & MASK)) * t, ((a / W) | 0) + 0.5 + wrapDelta(((b / W) | 0) - ((a / W) | 0)) * t];
+}
+function merchantPose(m, dt) {
+  let st = mRender.get(m);
+  if (!st) { st = { head: 0, look: 0, init: false }; mRender.set(m, st); }
+  const talking = ui.open && ui.merchant === m;
+  const toX = wrapDelta(cam.x - m.x), toZ = wrapDelta(cam.z - m.z), dist = Math.hypot(toX, toZ), toYou = Math.atan2(toZ, toX);
+  let target;
+  if (talking) target = toYou;
+  else {
+    const [ax, az] = roadPoint(m, m.s - m.dir * 1.2), [bx, bz] = roadPoint(m, m.s + m.dir * 1.2);
+    target = Math.atan2(wrapDelta(bz - az), wrapDelta(bx - ax));
+  }
+  if (!st.init) { st.head = target; st.init = true; }
+  const turn = Math.min(1, dt * 6);
+  st.head += wrapAngle(target - st.head) * turn;
+  const lookT = dist < 9 ? clamp(wrapAngle(toYou - st.head), -1.1, 1.1) : 0;
+  st.look += (lookT - st.look) * turn;
+  st.moving = !talking;
+  return st;
+}
+
+// Everything a frame needs that changes every frame, packed small.
+const nearLen = COL.near.reduce((a, L) => a + L.length, 0), farLen = COL.far.reduce((a, L) => a + L.length, 0);
+function frameDesc(t, dt) {
+  const ms = world.merchants, poses = new Float64Array(ms.length * 3), merch = new Float64Array(ms.length * 4);
+  ms.forEach((m, mi) => {
+    const st = merchantPose(m, dt);
+    poses[mi * 3] = st.head; poses[mi * 3 + 1] = st.look; poses[mi * 3 + 2] = st.moving ? 1 : 0;
+    merch[mi * 4] = m.x; merch[mi * 4 + 1] = m.y; merch[mi * 4 + 2] = m.z; merch[mi * 4 + 3] = m.walked;
+  });
+  if (!pool.workers.length) return { t, poses };
+  const col = new Uint32Array(nearLen + farLen + 2);
+  let o = 0;
+  for (const L of COL.near) { col.set(L, o); o += L.length; }
+  for (const L of COL.far) { col.set(L, o); o += L.length; }
+  col[o] = COL.glow; col[o + 1] = COL.bird;
+  return {
+    type: 'frame', gen: pool.gen, t, poses, merchants: merch, col,
+    cam: [cam.x, cam.y, cam.z, cam.yaw, cam.pitch], hours: clock.hours, viewDist: view.dist,
+    light: [light.lx, light.ly, light.lz, light.darkness, ...light.faceShade], cur: [cur.ambient, cur.diffuse, cur.lights, cur.stars],
+  };
+}
+
+function workerDone(k, msg) {
+  if (msg.buf) pool.bufs[k] = msg.buf;
+  if (!msg.stale && msg.gen === pool.gen) {
+    const s = msg.stats;
+    // the stripes run side by side: the slowest one is the cost of the frame
+    for (const key of ['marchMs', 'spriteMs', 'marksMs', 'cellMs', 'drawMs']) frameStats[key] = Math.max(frameStats[key], s[key]);
+    frameStats.edgeCells += s.edgeCells;
+    const W4 = grid.cols * grid.cellW;
+    if (msg.buf.byteLength === grid.img.data.length) {
+      const img = new ImageData(new Uint8ClampedArray(msg.buf), W4, grid.rows * grid.cellH);
+      ctx.putImageData(img, 0, 0, msg.c0 * grid.cellW, 0, (msg.c1 - msg.c0) * grid.cellW, grid.rows * grid.cellH);
+    }
+  }
+  if (--pool.busy === 0) { finishFrame(); for (const f of pool.idle.splice(0)) f(); }
+}
+
+// =====================================================================
 //  MAIN LOOP
 // =====================================================================
 let last = performance.now(), lightTimer = 0;
-const stats = { renderMs: 0, marchMs: 0, spriteMs: 0, marksMs: 0, cellMs: 0, drawMs: 0, frames: 0, edgeCells: 0 };
+const stats = { renderMs: 0, marchMs: 0, spriteMs: 0, marksMs: 0, cellMs: 0, drawMs: 0, frameMs: 0, frames: 0, edgeCells: 0, threads: 0 };
+const frameStats = { marchMs: 0, spriteMs: 0, marksMs: 0, cellMs: 0, drawMs: 0, edgeCells: 0 };
+function finishFrame() {
+  const f = frameStats;
+  stats.marchMs += f.marchMs; stats.spriteMs += f.spriteMs; stats.marksMs += f.marksMs;
+  stats.renderMs += f.marchMs + f.spriteMs + f.marksMs; stats.cellMs += f.cellMs; stats.drawMs += f.drawMs;
+  stats.frameMs += performance.now() - pool.t0; stats.frames++; stats.edgeCells = f.edgeCells;
+}
 
 function frame(now) {
+  if (pool.busy) { requestAnimationFrame(frame); return; }   // the workers are still drawing the last frame
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
 
@@ -3307,22 +3521,31 @@ function frame(now) {
   blendPalette(clock.hours);
   lightTimer += dt;
   if (lightTimer > 0.2) { updateLighting(); lightTimer = 0; }
-  collectLights(now / 1000);
 
-  const t0 = performance.now();
-  render(now / 1000, dt);
-  const t1 = performance.now();
-  shadeCells(now / 1000);
-  drawOverlays(now / 1000);
-  const t2 = performance.now();
-  compose();
-  const t3 = performance.now();
-  stats.renderMs += t1 - t0; stats.cellMs += t2 - t1; stats.drawMs += t3 - t2; stats.frames++;
+  const desc = frameDesc(now / 1000, dt);
+  for (const k in frameStats) frameStats[k] = 0;
+  pool.t0 = performance.now();
+  if (pool.workers.length) {
+    syncWorkers();
+    pool.busy = pool.workers.length;
+    pool.workers.forEach((wk, k) => {
+      const buf = pool.bufs[k];
+      pool.bufs[k] = null;
+      wk.postMessage({ ...desc, buf }, buf ? [buf] : []);
+    });
+  } else {
+    const s = local.renderFrame(desc.t, desc.poses);
+    ctx.putImageData(grid.img, 0, 0);
+    Object.assign(frameStats, s);
+    finishFrame();
+  }
+  stats.threads = pool.workers.length;
   updateHud(dt);
   requestAnimationFrame(frame);
 }
 
 // Boot
+startWorkers();
 setupGrid();
 blendPalette(clock.hours);
 const urlSeed = parseInt(new URLSearchParams(location.search).get('seed'), 10);
@@ -3331,10 +3554,12 @@ requestAnimationFrame(frame);
 
 // Debug handle (used while testing; harmless to leave in)
 window.TV = {
-  world, cam, clock, grid, stats, view, light, player, keys, ui, rays, atlas, cellMark,
+  world, cam, clock, grid, stats, view, light, player, keys, ui,
   regenerate, setMode, update, updateMerchants, updateNearest, openPanel, closePanel, groundAt,
   setHour: h => { clock.hours = h; updateLighting(); },
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
+  whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
+  renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0
 };
 })();
 </script>
