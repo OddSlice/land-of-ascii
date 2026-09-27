@@ -2020,11 +2020,13 @@ function marchRays(t) {
             // Per row, the height up the wall (courses of stone are drawn from it) and, near a
             // light, the firelight at that height.
             const r0 = rT < 0 ? 0 : rT, r1 = rB > RH ? RH : rB;
+            // near a light, the firelight at the top and bottom of the span, blended down it
+            const lTop = perRow ? warmAt(ix + 0.5, wTop, iz + 0.5) : aLit, lBot = perRow ? warmAt(ix + 0.5, wBot, iz + 0.5) : aLit, kL = (lBot - lTop) / (wBot - wTop);
             for (let r = r0, i = col * RH + r0; r < r1; r++, i++) {
               if (kind[i] !== NONE) continue;
               const hy = camY + rayQ[r] * tt;
               kind[i] = K.WALL; seg[i] = aSeg; ramp[i] = aRamp; pos[i] = aPos; depth[i] = tt; flags[i] = aFlags; u[i] = wallU; v[i] = hy - baseY;
-              lit[i] = perRow ? warmAt(ix + 0.5, hy, iz + 0.5) : aLit; left--;
+              lit[i] = lTop + (hy - wTop) * kL; left--;
             }
             if (r1 >= ybuf) { if (r0 < ybuf) ybuf = r0; } else if (r0 < r1) gaps = true;
             if (camY > wTop) {           // top face, between this cell's far and near projection
@@ -2866,7 +2868,7 @@ SPRITE_MARKS[K.TREE] = [0.3, ['club', 'leafo', 'club', 'leafpct'].map(n => MK[n]
 SPRITE_MARKS[K.BUSH] = [0.3, ['club', 'leafo'].map(n => MK[n])];
 SPRITE_MARKS[K.CONIFER] = [0.35, [MK.needles]];
 SPRITE_MARKS[K.BOULDER] = [0.35, ['crag', 'pebbles'].map(n => MK[n])];
-const cIdx = new Int32Array(RAYS_X * RAYS_Y);
+const cIdx = new Int32Array(RAYS_X * RAYS_Y), cellOff = new Int32Array(RAYS_X * RAYS_Y);
 // Per cell, between the two passes: the list and position its colour comes from (−1 when the
 // cell is already drawn), and what it needs for marks.
 const plan = { list: new Int16Array(0), X: new Float32Array(0), kind: new Uint8Array(0), ramp: new Uint8Array(0), P: new Float32Array(0), mid: new Int32Array(0) };
@@ -2893,14 +2895,21 @@ function shadeCells(t) {
   let edges = 0;
 
   // ---- pass 1: edges are drawn now; every other cell is planned ----
+  const OFF = cellOff;   // ray k of a cell, relative to its first ray (column-major)
+  for (let k = 0; k < NS; k++) OFF[k] = (k % RAYS_X) * RH + ((k / RAYS_X) | 0);
   for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-    const ci = r * cols + c, base = c * RAYS_X * RH + r * RAYS_Y;
+    const ci = r * cols + c, base = c * RAYS_X * RH + r * RAYS_Y, i0 = base, s0 = seg[i0];
     pList[ci] = -1;
-    for (let k = 0; k < NS; k++) idx[k] = base + (k % RAYS_X) * RH + ((k / RAYS_X) | 0);
-    const i0 = idx[0];
+    for (let k = 0; k < NS; k++) idx[k] = base + OFF[k];
     // Seed the second group with the ray least like the first (another object, or a ridge).
-    let seedB = -1;
-    for (let k = 1; k < NS && seedB < 0; k++) if (!same(idx[k], i0)) seedB = idx[k];
+    // Most cells are one thing throughout, which one pass over the segments shows.
+    let seedB = -1, uniform = true;
+    for (let k = 1; k < NS; k++) if (seg[idx[k]] !== s0) { uniform = false; break; }
+    if (!uniform) { for (let k = 1; k < NS; k++) if (!same(idx[k], i0)) { seedB = idx[k]; break; } }
+    else if (kind[i0] === K.TERRAIN) {
+      const d0 = depth[i0];
+      for (let k = 1; k < NS; k++) { const d = depth[idx[k]]; if (d > d0 * 1.22 || d0 > d * 1.22) { seedB = idx[k]; break; } }
+    }
     if (seedB >= 0) {
       const f0 = fogOf(i0), fB = fogOf(seedB);
       let pat = 0, nB = 0, aP = 0, aF = 0, aL = 0, bP = 0, bF = 0, bL = 0;

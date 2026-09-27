@@ -27,13 +27,13 @@ await page.goto(`http://127.0.0.1:${port}/index.html?seed=${camArg ? seed : cfg.
 await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
 if (!keepHud) await page.addStyleTag({ content: HIDE_OVERLAYS });
 if (cells != null) await page.evaluate(p => window.TV.setCells(p), +cells);
-fs.mkdirSync(path.join(ROOT, dir), { recursive: true });
+fs.mkdirSync(path.resolve(ROOT, dir), { recursive: true });
 for (const sc of scenes) {
   const c = sc.cam;
   const camv = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
   if (c.ground) camv.y = await page.evaluate(k => window.TV.groundAt(k.x, k.z, 1e9) + 1.55 + k.y, camv);
   await showScene(page, { seed: camArg ? seed : cfg.seed, hour: sc.hour, t: sc.t, cam: camv, merchants: sc.merchants });
-  const out = path.join(ROOT, sc.out || path.join(dir, `${sc.name}${browserName === 'chromium' ? '' : '-' + browserName}.png`));
+  const out = path.resolve(ROOT, sc.out || path.join(dir, `${sc.name}${browserName === 'chromium' ? '' : '-' + browserName}.png`));
   await page.screenshot({ path: out });
   const st = await page.evaluate(() => { const s = window.TV.stats; const r = { edges: s.edgeCells, masks: window.TV.atlas.masks.length, cols: window.TV.grid.cols, rows: window.TV.grid.rows }; return r; });
   console.log(path.relative(ROOT, out), JSON.stringify(st));
