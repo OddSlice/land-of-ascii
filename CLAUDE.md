@@ -60,6 +60,7 @@ node tools/find-views.mjs --write              # re-aim the region views and the
 node tools/map.mjs [seed...]     # region maps -> shots/phase2/map-<seed>.png
 node tools/palette.mjs           # the ground's ramps, day/dusk/night -> shots/phase2/palette.png
 node tools/sheet.mjs --out x.png --cols 2 --scale 0.5 a.png "Label" b.png "Label"   # contact sheets
+node tools/flicker.mjs road 60 0.117 0 painted   # blinking pixels per frame while the camera walks (time frozen)
 ```
 
 Test harness notes:

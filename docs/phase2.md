@@ -195,7 +195,7 @@ Studied frame by frame, at up to 4× zoom:
 
 ### Flicker, measured
 
-`tools/flicker` (a scratch tool; the method is simple enough to re-create):
+`tools/flicker.mjs`:
 
 - Walk the camera forward in small steps, with time frozen so only the camera moves.
 - Count the cells that **blink**: change and change back a frame later, by more than 24 in some colour channel or in their glyph.
