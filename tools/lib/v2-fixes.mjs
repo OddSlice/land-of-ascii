@@ -9,9 +9,9 @@ export const FIXES = [
   },
 ];
 FIXES.push({
-  why: 'the help line names the L key, which switches between the painted and the mosaic look',
+  why: 'the help line names the L key, which switches between the painted and the mosaic look, and V, which switches between your hero (third person) and your own eyes',
   from: "  helpEl.textContent = `${move} · ${look}\\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance`;",
-  to: "  helpEl.textContent = `${move} · ${look}\\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look`;",
+  to: "  helpEl.textContent = `${move} · ${look}\\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look · V hero or eyes`;",
 });
 FIXES.push({
   why: 'merchants cross bridges on the deck: where a road crosses water, phase 2 builds a bridge over it (v1 walked them through the ford)',

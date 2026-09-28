@@ -17,6 +17,10 @@
 //   5. Weather: each day's plan (rain or snow, dawn fog, aurora) is the same every time for a seed,
 //      day and hour, stays within 0..1, and over 60 days each kind comes about as often as meant; the
 //      day counts up as the clock passes midnight.
+//   6. Third person: walks from the start through the castle gate and back against its walls, down
+//      and up a steep hillside, and through a forest, stepping the camera behind the hero with every
+//      step. The camera is never inside the ground or a building; the hero faces the way they walk;
+//      V (setThird) and flying give back your own eyes.
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs [--record]
 import fs from 'node:fs';
@@ -326,6 +330,65 @@ for (const seed of SEEDS) {
   const ok = r.same && r.inRange && r.rainDays > 0.15 && r.rainDays < 0.6 && r.fogDays > 0.25 && r.fogDays < 0.75 && r.auroraNights > 0.15 && r.auroraNights < 0.65 && r.days[1] === r.days[0] + 1 && r.days[2] === r.days[0];
   if (!ok) fail(`seed ${seed}: weather ${JSON.stringify(r)}`);
   else console.log(`  seed ${seed}: over 60 days rain on ${Math.round(r.rainDays * 100)}%, dawn fog on ${Math.round(r.fogDays * 100)}%, an aurora on ${Math.round(r.auroraNights * 100)}% of nights; the same every time; the day turns at midnight`);
+}
+
+// ---- 6. third person ----
+console.log('6. third person, seed 42');
+{
+  await p2.evaluate(() => { const TV = window.TV; if (TV.world.seed !== 42) TV.regenerate(42); });
+  const WALKS = [   // start (x, z, yaw in degrees: null is where the game starts you), then [seconds, keys, yaw turn per second]
+    ['from the start, through the gate, turning and backing into the walls', null, [[5, ['KeyW'], 0], [1.5, [], Math.PI / 1.5], [2.5, ['KeyS'], 0], [2, ['KeyA'], 0.6], [2, ['KeyS', 'KeyD'], -0.4]]],
+    ['down and up a steep hillside', [564.5, 372.5, -135], [[2, ['KeyW'], 0], [1, [], Math.PI], [3, ['KeyW'], 0.3], [2, ['KeyS'], 0]]],
+    ['through a pine forest', [88.5, 24.5, 0], [[3, ['KeyW'], 0.2], [2, ['KeyD'], 0], [3, ['KeyW', 'ShiftLeft'], -0.3]]],
+    ['across the open field', [510.5, 276.5, 22], [[3, ['KeyW'], 0], [1, ['KeyD'], 0], [2, ['KeyS'], 0.5]]],
+  ];
+  for (const [what, at, script] of WALKS) {
+    const r = await p2.evaluate(({ at, script }) => {
+      const TV = window.TV, c = TV.cam, v = TV.viewCam, W = TV.defs.W;
+      TV.clock.scale = 0;
+      if (at) { TV.setMode('fly'); c.x = at[0]; c.z = at[1]; c.yaw = at[2] * Math.PI / 180; c.pitch = 0; c.y = TV.groundAt(c.x, c.z, 1e9) + 1.55; }
+      else TV.regenerate(42);   // (where the game starts you)
+      TV.setMode('walk'); TV.setThird(true);
+      let steps = 0, inGround = null, inWall = null, squeezed = 0, faceOff = 0, faceChecks = 0, clear = Infinity, steady = 0, lastDir = NaN;
+      const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+      for (const [secs, keys, turn] of script) {
+        for (const k of Object.keys(TV.keys)) TV.keys[k] = false;
+        for (const k of keys) TV.keys[k] = true;
+        for (let i = 0, n = Math.round(secs * 60); i < n; i++, steps++) {
+          const x0 = c.x, z0 = c.z;
+          c.yaw += turn / 60;
+          TV.update(1 / 60); TV.updateHero(1 / 60);
+          const above = v.y - TV.terrainHeight(v.x, v.z);
+          clear = Math.min(clear, above);
+          if (!(above > 0.05) && !inGround) inGround = { step: steps, above, x: v.x, z: v.z };
+          if (TV.solidAt(v.x, v.y, v.z) && !inWall) inWall = { step: steps, x: v.x, y: v.y, z: v.z };
+          if (!TV.hero.on) squeezed++;
+          // after a third of a second of walking one way, the hero faces the way they go (within 6°: they
+          // turn smoothly, so while you turn the mouse as you walk they lag a little behind)
+          const dx = c.x - x0, dz = c.z - z0, dir = Math.atan2(dz, dx), step = Math.hypot(dx, dz);
+          steady = step > 0.02 && step < 1 && Math.abs(wrap(dir - lastDir)) < 0.02 ? steady + 1 : 0; lastDir = dir;
+          if (steady >= 20) { faceChecks++; faceOff = Math.max(faceOff, Math.abs(wrap(TV.hero.face - dir))); }
+        }
+      }
+      for (const k of Object.keys(TV.keys)) TV.keys[k] = false;
+      return { steps, inGround, inWall, squeezed, faceOff, faceChecks, clear };
+    }, { at, script });
+    const bad = r.inGround ? `the camera went into the ground at step ${r.inGround.step} (${r.inGround.above.toFixed(2)} above it)` : r.inWall ? `the camera went into a building at step ${r.inWall.step}` : r.faceOff > 0.1 ? `the hero faced ${r.faceOff.toFixed(2)} rad off the way they walked` : '';
+    if (bad) fail(`${what}: ${bad}`);
+    else console.log(`  ${what}: ${r.steps} steps, the camera at least ${r.clear.toFixed(2)} above the ground and never in a building, squeezed into the eyes on ${r.squeezed}; the hero faced the way they walked (${r.faceChecks} checks)`);
+  }
+  // V and flying give back your own eyes; V again brings the hero back
+  const r = await p2.evaluate(() => {
+    const TV = window.TV, c = TV.cam, v = TV.viewCam, same = () => v.x === c.x && v.y === c.y && v.z === c.z && v.yaw === c.yaw && v.pitch === c.pitch;
+    c.x = 510.5; c.z = 276.5; c.yaw = 0; c.pitch = 0; TV.setMode('walk'); TV.setThird(true);
+    const third = TV.hero.on === 1 && !same();
+    TV.setThird(false); const eyes = TV.hero.on === 0 && same();
+    TV.setThird(true); TV.setMode('fly'); TV.updateHero(1 / 60); const fly = TV.hero.on === 0 && same();
+    TV.setMode('walk'); TV.updateHero(1 / 60); const back = TV.hero.on === 1 && !same();
+    return { third, eyes, fly, back };
+  });
+  if (!(r.third && r.eyes && r.fly && r.back)) fail(`switching views: ${JSON.stringify(r)}`);
+  else console.log('  V gives your own eyes and back; flying is always your own eyes');
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

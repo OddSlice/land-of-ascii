@@ -1,6 +1,6 @@
 # Land of Ascii
 
-A first-person explorer drawn as a mosaic of text characters: a seeded world of terrain, rivers, castles, roads, forests, travelling merchants, torches and campfires, which you can walk, fly and trade in. Every cell of the screen is one glyph in two colours from a hand-built palette; the trees and merchants are real 3D solids.
+An explorer drawn as a mosaic of text characters: a seeded world of terrain, rivers, castles, roads, forests, travelling merchants, torches and campfires, which you can walk, fly and trade in. You walk it as a hero seen from behind, as in Ocarina of Time, or through their eyes. Every cell of the screen is one glyph in two colours from a hand-built palette; the trees and merchants are real 3D solids.
 
 Land of Ascii started as v2 of [Text Voxel](https://github.com/OddSlice/text-voxel): phase 1 rebuilt the renderer and took over v1's simulation (fixes are listed in `tools/lib/v2-fixes.mjs`). Phase 2 gives it a world of its own: see [docs/phase2-world.md](docs/phase2-world.md).
 
@@ -15,7 +15,7 @@ Land of Ascii started as v2 of [Text Voxel](https://github.com/OddSlice/text-vox
 
 ## Controls
 
-As v1: click to capture the mouse (Esc releases it; where pointer lock is refused, drag to look).
+As v1: click to capture the mouse (Esc releases it; where pointer lock is refused, drag to look). The mouse turns you; with your hero in view, up and down raise and lower the camera.
 
 | Key | Action |
 |---|---|
@@ -28,6 +28,7 @@ As v1: click to capture the mouse (Esc releases it; where pointer lock is refuse
 | − / + | cell size: 5×10, 6×12, 7×14, 8×16 px |
 | [ / ] | view distance |
 | L | look: painted (default) or mosaic |
+| V | your hero (default) or your own eyes |
 
 In the address: `?seed=42` for a given world, `?look=mosaic`, and `?weather=rain`, `snow`, `fog`, `aurora` or `clear` to pin the weather. Otherwise each day brings its own weather.
 
@@ -35,7 +36,7 @@ In the address: `?seed=42` for a given world, `?look=mosaic`, and `?weather=rain
 
 - **[docs/phase2-world.md](docs/phase2-world.md)**: the phase 2 brief (in progress). Varied land, villages and towns, people and animals, and the tests that change with the world.
 - **[docs/phase2.md](docs/phase2.md)**: phase 2 as it is built. Step 1: eight regions, terrain shaped per region, new ground materials, rock strata ([pictures](shots/phase2/sheet-regions.png)). Then the painted look, shadows and water mirrors ([mosaic and painted side by side](shots/phase2/sheet-looks-1.png)). Step 2, the land: plants for every region, bridges, and weather with fireflies and auroras at night ([regions](shots/phase2/step2/sheet-regions.png), [bridges](shots/phase2/step2/sheet-bridges.png), [weather](shots/phase2/step2/sheet-weather.png)).
-- **[docs/phase3.md](docs/phase3.md)**: phase 3, your hero in a bigger world. Step 1: a steady picture (flicker cut 3–10 times). Step 2: a world four times the size, with open fields, landforms twice as big and bolder colours ([regions](shots/phase3/step2/sheet-regions.png), [aerials](shots/phase3/step2/sheet-aerials.png)).
+- **[docs/phase3.md](docs/phase3.md)**: phase 3, your hero in a bigger world. Step 1: a steady picture (flicker cut 3–10 times). Step 2: a world four times the size, with open fields, landforms twice as big and bolder colours ([regions](shots/phase3/step2/sheet-regions.png), [aerials](shots/phase3/step2/sheet-aerials.png)). Step 3: third person, your hero seen from behind ([your hero](shots/phase3/step3/sheet-hero.png), [how they move](shots/phase3/step3/sheet-moves.png), [eyes and hero side by side](shots/phase3/step3/sheet-first-third.png)).
 - **[docs/phase1.md](docs/phase1.md)** covers the build:
   - how a frame is drawn, and the 3D merchants and trees;
   - the render workers;
@@ -51,7 +52,7 @@ In the address: `?seed=42` for a given world, `?look=mosaic`, and `?weather=rain
 You need Node 18+ and Playwright's Chromium.
 
 ```sh
-node tools/test-sim.mjs          # worlds are deterministic and as recorded; v1's movement code agrees with v2's, exactly
+node tools/test-sim.mjs          # worlds are deterministic and as recorded; v1's movement code agrees with v2's, exactly; the third-person camera stays clear
 node tools/check-verbatim.mjs    # the v1 code still in use is unchanged except for listed fixes
 node tools/shoot.mjs             # screenshots of the scenes in tools/scenes.json -> shots/
 node tools/bench-v2.mjs          # frame timings per scene

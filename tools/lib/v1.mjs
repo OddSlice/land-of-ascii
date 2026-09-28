@@ -21,6 +21,7 @@ export async function showScene(page, scene) {
     if (TV.world.seed !== sc.seed) TV.regenerate(sc.seed);
     TV.view.dist = sc.view || 500;
     if (TV.setWeather) TV.setWeather(sc.weather || {});   // (v2: the scene's weather, or clear, so shots compare)
+    if (TV.setThird) TV.setThird(!!sc.third);                // (v2: the scene's camera is the eyes, unless it asks for the hero in the third person)
     TV.clock.scale = 0;
     TV.setMode('fly');
     Object.assign(TV.cam, sc.cam);
@@ -33,6 +34,7 @@ export async function showScene(page, scene) {
   await page.evaluate(sc => {
     const TV = window.TV;
     Object.assign(TV.cam, sc.cam);
+    if (sc.third) { TV.setMode('walk'); TV.setThird(true); }   // (v2: the hero stands where the eyes are, and the camera goes behind them)
     TV.setHour(sc.hour);   // again, now that the frame above blended the palette for this hour (lights, darkness)
     for (const m of sc.merchants || []) { const M = TV.world.merchants[m.i]; M.s = m.s; M.dir = m.dir ?? 1; if (m.walked != null) M.walked = m.walked; }
     TV.updateMerchants(0);

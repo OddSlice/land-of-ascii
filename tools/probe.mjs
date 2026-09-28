@@ -13,6 +13,6 @@ await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0
 if (await page.evaluate(s => window.TV.world.seed !== s, sc.seed ?? cfg.seed)) await page.evaluate(s => window.TV.regenerate(s), sc.seed ?? cfg.seed);
 const c = sc.cam, camv = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
 if (c.ground) camv.y = await page.evaluate(k => window.TV.groundAt(k.x, k.z, 1e9) + 1.55 + k.y, camv);
-await showScene(page, { seed: sc.seed ?? cfg.seed, hour: sc.hour, t: sc.t, cam: camv, merchants: sc.merchants, view: sc.view, weather: sc.weather });
+await showScene(page, { seed: sc.seed ?? cfg.seed, hour: sc.hour, t: sc.t, cam: camv, merchants: sc.merchants, view: sc.view, weather: sc.weather, third: sc.third });
 console.log(JSON.stringify(await page.evaluate(e => { const TV = window.TV; return eval(e); }, expr), null, 1));
 await browser.close(); server.close();

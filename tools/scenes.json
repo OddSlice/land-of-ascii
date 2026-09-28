@@ -509,6 +509,74 @@
         "pitch": 120,
         "ground": true
       }
+    },
+    {
+      "name": "hero",
+      "title": "Your hero in the open field, looking at a castle, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 510.5,
+        "y": 0,
+        "z": 276.5,
+        "yaw": 22,
+        "pitch": 0,
+        "ground": true
+      }
+    },
+    {
+      "name": "hero-start",
+      "title": "Where you start: in front of the biggest castle, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 825.5,
+        "y": 0,
+        "z": 150.5,
+        "yaw": -90,
+        "pitch": 0,
+        "ground": true
+      }
+    },
+    {
+      "name": "hero-forest",
+      "title": "Your hero among the birches; the trunk in front is see-through, 10:30",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 600.5,
+        "y": 0,
+        "z": 24.5,
+        "yaw": -60,
+        "pitch": 0,
+        "ground": true
+      }
+    },
+    {
+      "name": "hero-dusk",
+      "title": "Your hero in the open field at dusk, 19:00",
+      "seed": 42,
+      "hour": 19,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 510.5,
+        "y": 0,
+        "z": 276.5,
+        "yaw": 22,
+        "pitch": 0,
+        "ground": true
+      }
     }
   ]
 }

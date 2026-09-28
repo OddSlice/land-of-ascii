@@ -198,3 +198,85 @@ All pass, with the worlds re-recorded.
 - **A new world takes 2.3 s to generate** with nothing on screen. A "building the world" message would help.
 - **The golden tops of badland terraces meet the rock in a scalloped edge.**
 - **The sea-cliffs, bridge and weather scenes are placed by hand** for seed 42 (and 31337's boardwalk).
+
+## Step 3: third person
+
+Shots: `shots/phase3/step3/` (sheets: `sheet-hero`, `sheet-moves`, `sheet-first-third`, `sheet-looks`).
+
+### What changed
+
+- **You see your hero**, from behind and above as in Ocarina of Time (`buildHero`): golden hair, a green tunic with a belt, brown trousers and dark boots, built from the same spheres, capsules and cones as the merchants.
+  - They turn to face the way they walk, smoothly, over about a third of a second.
+  - Their legs and arms swing with the distance walked.
+  - In a jump the stride stops, the knees come up and the arms go out.
+  - A soft shadow lies on the ground under them, also in a jump.
+  - In water they wade, drawn up to their thighs in it: in v1, water is a floor you walk on, and that has not changed.
+- **The camera** sits 6.4 cells behind the hero, along the way you look. It looks at their head, so they stand in the lower middle of the picture with the land ahead above them.
+  - Mouse left and right swings it around the hero.
+  - Mouse up and down raises and lowers it: from just below head height to 49°, and 11° when you look level.
+  - **Rising ground behind lifts the camera over it**, as in Ocarina of Time: at once as the ground comes up, easing back down after.
+  - **Walls, and slopes too steep to rise over, bring it closer**, at once. It eases back out when the way is clear, and keeps a little room from walls to either side.
+  - **Squeezed right up behind the hero**, backed into a wall or at the foot of a cliff, it slides into their eyes.
+  - It follows the hero's height a little behind, so you see them jump and step up, and the picture does not jolt.
+- **Plants never hide your hero.**
+  - A plant between the camera and the hero, over them on screen, is drawn with every other ray, so it is see-through.
+  - Plants right at the lens are drawn with one ray in four, or not at all where they touch it.
+- **V** switches between your hero and your own eyes. Flying is always your own eyes. The help line says so (listed fix).
+- **The simulation is untouched.** `cam` is still your eyes, and v1's movement moves them. The renderer draws from `viewCam`, the camera behind the hero, and gets the hero's pose with every frame.
+
+### Why the camera stops at 49°
+
+The renderer tilts the view by sliding the picture up and down (a shear, as in the classic ray-casters), not by turning it. Every column of the picture stays one upright slice of the world, which is what makes the march fast.
+
+A shear looks right up to about 45°. Beyond that it stretches everything upright: at 60°, trees became tall bands. So:
+
+- the camera rises to 49°;
+- the view tilts at most 51° (v1's mouse allowed 44°);
+- past that, the camera comes closer instead.
+
+### Numbers
+
+- **Tests:** four scripted walks, 2,100 steps in all:
+  - from the start through the castle gate, then backing into its walls;
+  - down and up a steep hillside;
+  - through a pine forest;
+  - across the open field.
+
+  The camera was never inside the ground (at least 0.47 above it) or a building. The hero faced the way they walked, within 6° while you turn.
+- **Squeezed into the eyes:** only where the script backs the hero into the keep's walls, and on none of the 1,320 steps of the other three walks. A first try that allowed only v1's tilt went into the eyes on 177 of the 480 steps through the pine forest.
+- **Workers and the main thread give byte-identical frames in both looks,** across six scenes and four moves (walking, walking sideways, walking back, jumping).
+- **Speed:** third person costs about the same as first person, since the view from behind and above sees less far land. Measured side by side while Martin's Chrome was busy in the background:
+
+  | Scene | Your own eyes | Your hero |
+  |---|---|---|
+  | The road | 9.6 ms | 9.2 ms |
+  | A merchant | 8.8 ms | 9.1 ms |
+  | Grassland hill | 8.0 ms | 8.0 ms |
+  | Snowy peaks | 7.1 ms | 8.8 ms |
+  | Badlands | 9.3 ms | 11.0 ms |
+
+  On a quieter run, the same third-person views took 5.5–7.2 ms.
+
+### Tests and tools
+
+- **`test-sim.mjs` section 6** walks the hero with the third-person camera stepped every frame. It fails if:
+  - the camera goes into the ground or a building;
+  - the hero does not face the way they walk;
+  - V or flying does not give back your own eyes.
+- **`shoot.mjs`**:
+  - `--third` puts the hero where a custom camera stands. With scene names, it draws those scenes in the third person (`<name>-3rd.png`).
+  - `--walk KeyW+Space --frames 14` holds keys for some frames before the shot, for poses (`<name>-w+space-14.png`).
+- **`bench-v2.mjs --third`** times scenes in the third person.
+- **Scenes:** `hero`, `hero-start`, `hero-forest` and `hero-dusk` are third-person scenes (`third: true`). The scene helper switches them to walking once the camera is placed.
+- **`TV` exports** `setThird`, `updateHero`, `view3`, `viewCam`, `hero`, `terrainHeight` and `solidAt` for the tools.
+
+### Still open
+
+- **The hero's green tunic is close to the fields' green.** Tunics in colours come with step 4.
+- **The camera goes into your eyes** on slopes steeper than about 50° and with your back to a wall.
+- **Looking down steeply** (high over a slope), upright things stretch a little: the shear.
+- **Rivers in steep gorges** make busy pictures from above.
+- **Near the camera:**
+  - a flower right at the lens is a big flat blob;
+  - a wall beside the camera can fill a side of the picture (a standing stone by the road, in `sheet-first-third`).
+- **At night the hero is dark** until the lantern of step 4.

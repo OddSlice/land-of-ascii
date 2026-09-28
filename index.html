@@ -75,7 +75,7 @@
 </div>
 
 <div id="help">WASD walk · SPACE jump · SHIFT sprint · E talk · mouse look · ESC release
-F fly mode · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look</div>
+F fly mode · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look · V hero or eyes</div>
 
 <div id="hint">
   <h1>LAND OF ASCII</h1>
@@ -2839,13 +2839,14 @@ let skyPosRow = new Float32Array(0);
 // primitive is rasterised over its own screen bounding box: every ray inside it is intersected
 // exactly, lit by its surface normal, and depth-tested against what is already there.
 const P_SPHERE = 0, P_ELLIPSOID = 1, P_CAPSULE = 2, P_CYLINDER = 3, P_CONE = 4, P_VCONE = 5;
+const LENS_CUT = 0.6, LENS_SEE4 = 1.8, LENS_SEE = 3.2;   // (third person: plants nearer the camera than these are cut away, one ray in four, one in two)
 const LOOK_SOLID = 0, LOOK_CANOPY = 1, LOOK_CLOUD = 2, LOOK_GLOW = 3;
 const prims = [];
 let primCount = 0;
 function prim(type, kind, seg, ramp, look) {
   let p = prims[primCount++];
   if (!p) { p = { type: 0, ax: 0, ay: 0, az: 0, bx: 0, by: 0, bz: 0, r: 0, r2: 0, ex: 0, ey: 0, ez: 0, ca: 1, sa: 0, kind: 0, seg: 0, ramp: 0, look: 0, posAdd: 0, lit: 0, flags: 0, cx: 0, cy: 0, cz: 0, rad: 0, phase: 0 }; prims[primCount - 1] = p; }
-  p.type = type; p.kind = kind; p.seg = seg; p.ramp = ramp; p.look = look; p.posAdd = 0; p.lit = 0; p.flags = 0; p.ca = 1; p.sa = 0; p.marks = SPRITE_MARKS[kind] !== undefined;
+  p.type = type; p.kind = kind; p.seg = seg; p.ramp = ramp; p.look = look; p.posAdd = 0; p.lit = 0; p.flags = 0; p.ca = 1; p.sa = 0; p.marks = SPRITE_MARKS[kind] !== undefined; p.see = 0;
   return p;
 }
 // Constructors; positions are relative to the camera.
@@ -2969,7 +2970,7 @@ function hitCone(p) {
 // camera space the ray for column x, row y is (p, q, 1) with p = rayP[x], q = rayQ[y]: its forward
 // component is 1, so a hit's parameter along it is its depth, and spheres and ellipsoids need no
 // normalising at all. Buffers are column-major, so each column of the box is one contiguous run.
-const primBox = new Float64Array(4);   // x0, x1, y0, y1 in rays, and the nearest depth
+const primBox = new Float64Array(6);   // x0, x1, y0, y1 in rays (within this stripe), and x0, x1 over the whole picture
 let primNear = 0;
 function primScreenBox(p) {
   const fx = vFx, fz = vFz, rx = vRx, rz = vRz;
@@ -2998,6 +2999,7 @@ function primScreenBox(p) {
   const { RW, RH, rayW, rayH } = grid, f = vF;
   let x0 = Math.floor((grid.w * 0.5 + sx0 * f) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + sx1 * f) / rayW - 0.5);
   let y0 = Math.floor((vHor - sy1 * f) / rayH - 0.5), y1 = Math.ceil((vHor - sy0 * f) / rayH - 0.5);
+  primBox[4] = x0; primBox[5] = x1;   // (the same in every stripe, for choices that must agree across them)
   if (x0 < grid.xr0) x0 = grid.xr0; if (x1 > grid.xr1 - 1) x1 = grid.xr1 - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
   if (x0 > x1 || y0 > y1) return false;
   primBox[0] = x0; primBox[1] = x1; primBox[2] = y0; primBox[3] = y1;
@@ -3005,8 +3007,14 @@ function primScreenBox(p) {
   return true;
 }
 function rasterPrim(p) {
-  if (!primScreenBox(p)) return;
+  // In the third person, plants near the camera are see-through, drawn with one ray in four right at
+  // the lens and one in two a little further off (and cut away where they touch it), and so are plants
+  // between the camera and your hero (or around them), over the hero on screen.
+  const lens = p.see ? Math.sqrt(p.cx * p.cx + p.cy * p.cy + p.cz * p.cz) - p.rad : Infinity;
+  if (lens < LENS_CUT || !primScreenBox(p)) return;
   const x0 = primBox[0], x1 = primBox[1], y0 = primBox[2], y1 = primBox[3], zN = primNear;
+  const see = p.see && (lens < LENS_SEE || primBox[5] >= heroBox[0] && primBox[4] <= heroBox[1] && y1 >= heroBox[2] && y0 <= heroBox[3] && p.cx * vFx + p.cz * vFz - p.rad * 0.5 < heroBox[4]);
+  const see4 = see && lens < LENS_SEE4;   // (one ray in four: x and y both even)
   const RH = grid.RH, P = rayP, Q = rayQ;
   const fx = vFx, fz = vFz, rx = vRx, rz = vRz, cX = vCamX, cY = vCamY, cZ = vCamZ;
   const { kind, seg, ramp, pos, depth, lit, u, v, w, flags } = rays;
@@ -3038,7 +3046,7 @@ function rasterPrim(p) {
       if (!rowsOf(A, b0 * cy, b0 * b0 - a0 * cc)) continue;
       for (let y = ya, i = x * RH + ya; y <= yb; y++, i++) {
         const di = depth[i];
-        if (di <= zN) continue;
+        if (di <= zN || see && ((x + y) & 1 || see4 && (x & 1))) continue;
         const q = Q[y], a = a0 + q * q, b = b0 + q * cy, h = b * b - a * cc;
         if (h < 0) continue;
         const t = (b - Math.sqrt(h)) / a;
@@ -3064,7 +3072,7 @@ function rasterPrim(p) {
       if (!rowsOf(A, bP * iey * cly, bP * bP - aP * cc)) continue;
       for (let y = ya, i = x * RH + ya; y <= yb; y++, i++) {
         const di = depth[i];
-        if (di <= zN) continue;
+        if (di <= zN || see && ((x + y) & 1 || see4 && (x & 1))) continue;
         const q = Q[y], dly = q * iey, a = aP + dly * dly, b = bP + dly * cly, h = b * b - a * cc;
         if (h < 0) continue;
         const t = (b - Math.sqrt(h)) / a;
@@ -3102,7 +3110,7 @@ function rasterPrim(p) {
       }
       for (let y = ya, i = x * RH + ya; y <= yb2; y++, i++) {
         const di = depth[i];
-        if (di <= zN) continue;
+        if (di <= zN || see && ((x + y) & 1 || see4 && (x & 1))) continue;
         const q = Q[y], M1 = k * q, a = g2 - M1 * M1, b = g1 - M0 * M1, c = g0 - M0 * M0;
         let tHit = di, nx = 0, ny = 0, nz = 0;
         const disc = b * b - a * c;
@@ -3141,7 +3149,7 @@ function rasterPrim(p) {
     rdx = dwx; rdz = dwz;
     for (let y = y0, i = x * RH + y0; y <= y1; y++, i++) {
       const di = depth[i];
-      if (di <= zN) continue;
+      if (di <= zN || see && ((x + y) & 1 || see4 && (x & 1))) continue;
       const q = Q[y];
       rdy = q; rr2 = p2 + q * q;
       const d = type === P_CAPSULE ? hitCapsule(p) : type === P_CYLINDER ? hitCylinder(p) : hitCone(p);
@@ -3187,7 +3195,7 @@ function rasterFlame(L, cx, cy, cz, t, li) {
 }
 
 // ---- what the sprites are made of ---------------------------------------------------------------
-const glows = [], birdsOnScreen = [], shadowDiscs = [];
+const glows = [], birdsOnScreen = [], shadowDiscs = [], heroBox = new Float64Array(5);   // (heroBox: x0, x1, y0, y1 in rays, depth)
 let primOrder = new Float64Array(0);
 const pose = { head: 0, look: 0, moving: false };
 function drawSprites(t, poses) {
@@ -3198,6 +3206,16 @@ function drawSprites(t, poses) {
   const pL = rayP[grid.xr0] - 0.02, pR = rayP[grid.xr1 - 1] + 0.02;
   const inView = (zc, lat, rad) => { const z = zc > 0 ? zc : 0; return zc + rad > 0.3 && lat + rad > pL * z - 1 && lat - rad < pR * z + 1; };
 
+  // Your hero's box on screen (in rays) and depth: plants in front of them are see-through (rasterPrim).
+  heroBox[0] = 1; heroBox[1] = 0;
+  if (hero.on) {
+    const dxw = wrapDelta(hero.x - camX), dzw = wrapDelta(hero.z - camZ), zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
+    if (zc > 0.3) {
+      const k = vF / zc, y = hero.y - camY;
+      heroBox[0] = (grid.w * 0.5 + (lat - 0.7) * k) / grid.rayW - 1; heroBox[1] = (grid.w * 0.5 + (lat + 0.7) * k) / grid.rayW + 1;
+      heroBox[2] = (vHor - (y + 2.1) * k) / grid.rayH - 1; heroBox[3] = (vHor - (y - 0.2) * k) / grid.rayH + 1; heroBox[4] = zc;
+    }
+  }
   // Trees, bushes and boulders from the buckets within range.
   const trees = world.trees, buckets = world.treeBuckets;
   if (trees) {
@@ -3212,7 +3230,9 @@ function drawSprites(t, poses) {
         if (zc > zoneC) continue;
         const size = trees.size[i], lat = dxw * rx + dzw * rz;
         if (!inView(zc, lat, 4 * size) || !(trees.y[i] === trees.y[i])) continue;
+        const k0 = primCount;
         buildPlant(i, trees.kind[i], dxw, trees.y[i] - camY, dzw, size, zc);
+        if (hero.on) for (let k = k0; k < primCount; k++) prims[k].see = 1;   // (see-through near the camera or in front of the hero: rasterPrim)
       }
     }
   }
@@ -3224,6 +3244,11 @@ function drawSprites(t, poses) {
     if (zc > zoneC || !inView(zc, lat, 2.2) || !(m.y === m.y)) continue;
     pose.head = poses[mi * 3]; pose.look = poses[mi * 3 + 1]; pose.moving = poses[mi * 3 + 2] > 0;
     buildMerchant(m, mi, pose, dxw, m.y - camY, dzw, zc, t);
+  }
+  // Your hero, in the third person.
+  if (hero.on) {
+    const dxw = wrapDelta(hero.x - camX), dzw = wrapDelta(hero.z - camZ), zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
+    if (zc > 0.3 && inView(zc, lat, 2.2)) buildHero(dxw, hero.y - camY, dzw, zc, t);
   }
   // Clouds: three soft lobes each, lit above and grey below.
   const wind = world.wind;
@@ -3466,6 +3491,52 @@ function buildMerchant(m, mi, st, x, y, z, zc, t) {
   add(pCylinder(hx, hy, hz, tx, ty, tz, 0.25, K.MERCHANT, 0, R.dark, LOOK_SOLID), PART.BRIM, 0.05);
   add(pCone(hx, hy, hz, kx, ky, kz, 0.14, 0.09, K.MERCHANT, 0, R.dark, LOOK_SOLID), PART.CROWN, 0.1);
   if (zc < 50) shadowDiscs.push([x, z, y, 0.45, zc]);
+}
+
+// Your hero: a young traveller in a green tunic and brown trousers, with golden hair, built like the
+// merchants from capsules, spheres and cones, facing hero.face. The legs and arms swing with the
+// distance walked. (What you buy is added in step 4.)
+function buildHero(x, y, z, zc, t) {
+  const h = hero.face, ch = Math.cos(h), sh = Math.sin(h);
+  const Rx = -sh, Rz = ch, Fx = ch, Fz = sh;
+  const P = (r, f) => [x + Rx * r + Fx * f, z + Rz * r + Fz * f];
+  const phase = hero.walked * (Math.PI * 2 / 1.7), mv = hero.moving > 0, sw = mv ? Math.sin(phase) : 0, bob = mv ? 0.035 * Math.abs(Math.cos(phase)) : 0;
+  const lit = lightsOn ? warmAt(hero.x, hero.y + 1, hero.z) * 0.8 : 0;
+  const base = (K.MERCHANT << 24) | (255 << 8);
+  const add = (p, part, posAdd) => { p.seg = base | part; p.lit = lit; p.posAdd = posAdd || 0; return p; };
+  const cap = (r0, y0, f0, r1, y1, f1, rad, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCapsule(ax, y + y0, az, bx, y + y1, bz, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const ell = (r0, y0, f0, ex, ey, ez, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pEllipsoid(ax, y + y0, az, ex, ey, ez, h + Math.PI / 2, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const sph = (r0, y0, f0, rad, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pSphere(ax, y + y0, az, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const tunic = R.robe2, trousers = R.robe3;
+  // legs: thigh and shin, a knee that bends as the leg comes forward; boots
+  // (in a jump the stride stops, the knees come up and the feet tuck under)
+  const air = hero.air, ground = 1 - air;
+  for (const side of [-1, 1]) {
+    const s = sw * side * ground, fwd = s * 0.24 - air * 0.07, lift = (mv ? Math.max(0, Math.sin(phase + (side > 0 ? 0 : Math.PI))) * 0.09 : 0) * ground + air * 0.26;
+    const kneeF = fwd * 0.6 + (mv ? 0.05 : 0.02) + air * 0.24, kneeY = 0.5 + lift * 0.6 + air * 0.04;
+    cap(side * 0.1, 0.88 + bob, 0, side * 0.1, kneeY + bob, kneeF, 0.075, PART.LEG, trousers);
+    cap(side * 0.1, kneeY + bob, kneeF, side * 0.1, 0.12 + lift, fwd, 0.068, PART.LEG, trousers, -0.05);
+    ell(side * 0.1, 0.07 + lift, fwd + 0.05, 0.075, 0.07, 0.14, PART.BOOT, R.dark, -0.1);
+  }
+  // tunic: a short skirt, the body, a belt
+  const [cx, cz] = P(0, 0);
+  add(pVCone(cx, y + 0.62 + bob, cz, y + 1.02 + bob, 0.27, 0.2, K.MERCHANT, 0, tunic, LOOK_SOLID), PART.ROBE);
+  ell(0, 1.2 + bob, 0, 0.2, 0.25, 0.14, PART.ROBE, tunic);
+  add(pVCone(cx, y + 0.94 + bob, cz, y + 1.0 + bob, 0.205, 0.205, K.MERCHANT, 0, R.wood, LOOK_SOLID), PART.BELT, -0.15);
+  // arms swing against the legs
+  for (const side of [-1, 1]) {   // (in a jump, out to the sides)
+    const a = (mv ? -sw * side * 0.22 : 0) * ground, ex = side * (0.26 + air * 0.08), hx = side * (0.27 + air * 0.17), hy = 0.9 + air * 0.22;
+    cap(side * 0.22, 1.38 + bob, 0, ex, 1.14 + bob + air * 0.04, a * 0.5, 0.06, PART.SLEEVE, tunic);
+    cap(ex, 1.14 + bob + air * 0.04, a * 0.5, hx, hy + 0.03 + bob, a, 0.055, PART.SLEEVE, tunic, 0.05);
+    sph(hx, hy + bob, a, 0.05, PART.HAND, R.skin);
+  }
+  // head: neck, face, golden hair (from behind you see mostly hair), eyes when near
+  cap(0, 1.4 + bob, 0, 0, 1.5 + bob, 0.01, 0.055, PART.SKIN, R.skin, -0.1);
+  sph(0, 1.62 + bob, 0.01, 0.135, PART.SKIN, R.skin);
+  sph(0, 1.66 + bob, -0.035, 0.135, PART.CROWN, R.drygrass, 0.1);
+  sph(0, 1.72 + bob, 0.02, 0.1, PART.CROWN, R.drygrass, 0.15);
+  if (zc < 12) { sph(-0.045, 1.63 + bob, 0.125, 0.018, PART.EYE, R.ink); sph(0.045, 1.63 + bob, 0.125, 0.018, PART.EYE, R.ink); }
+  if (zc < 50) shadowDiscs.push([x, z, y + hero.gy - hero.y, 0.42 - 0.12 * air, zc]);   // (on the ground under them, smaller in a jump)
 }
 
 // Ground shadows: under every tree and figure, a soft disc on the ground away from the light.
@@ -4047,6 +4118,10 @@ function paintCells(t) {
     if (k === K.TERRAIN) {
       if (flags[i] & F_SHADOW) P = P > 0.18 ? P - 0.18 : 0;
       if (wetDark > 0 && !(flags[i] & F_WATER)) P -= wetDark;   // wet after rain
+      if (hero.on && depth[i] < 40) {   // the hero's own soft shadow on the ground under their feet
+        const pr = rayP[x], d = depth[i], ex = vCamX + (vFx + vRx * pr) * d - hero.x, ez = vCamZ + (vFz + vRz * pr) * d - hero.z, r2 = ex * ex + ez * ez;
+        if (r2 < 0.36) P -= 0.22 * (1 - r2 / 0.36);
+      }
       // the ground: the colours of the four cells around the point the ray met, blended by how near
       // it lies to each, so colour flows across the ground instead of jumping from cell to cell
       const pr = rayP[x], d = depth[i], fx = vCamX + (vFx + vRx * pr) * d - 0.5, fz = vCamZ + (vFz + vRz * pr) * d - 0.5;
@@ -4386,6 +4461,7 @@ function applyFrame(d) {
   for (let k = 0; k < 6; k++) light.faceShade[k] = d.light[4 + k];
   cur.ambient = d.cur[0]; cur.diffuse = d.cur[1]; cur.lights = d.cur[2]; cur.stars = d.cur[3];
   wx.rain = d.wx[0]; wx.snow = d.wx[1]; wx.fog = d.wx[2]; wx.wet = d.wx[3]; wx.aurora = d.wx[4]; wx.storm = d.wx[5];
+  hero.on = d.hero[0]; hero.x = d.hero[1]; hero.y = d.hero[2]; hero.z = d.hero[3]; hero.face = d.hero[4]; hero.walked = d.hero[5]; hero.moving = d.hero[6]; hero.gear = d.hero[7]; hero.air = d.hero[8]; hero.gy = d.hero[9];
   let o = 0;
   for (const L of COL.near) { L.set(d.col.subarray(o, o + L.length)); o += L.length; }
   for (const L of COL.far) { L.set(d.col.subarray(o, o + L.length)); o += L.length; }
@@ -4475,7 +4551,7 @@ function enableFallback() {
 function updateHelp() {
   const look = fallbackDrag ? 'drag to look' : 'mouse look · ESC release';
   const move = player.mode === 'walk' ? 'WASD walk · SPACE jump · SHIFT sprint · E talk' : 'WASD fly · SPACE/SHIFT up/down · E talk';
-  helpEl.textContent = `${move} · ${look}\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look`;
+  helpEl.textContent = `${move} · ${look}\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look · V hero or eyes`;
 }
 
 canvas.addEventListener('mousedown', () => { if (!locked) dragging = true; });
@@ -4891,6 +4967,7 @@ function workerSource() {
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
     `const cur = { ambient: 0.38, diffuse: 0.62, lights: 0, stars: 0 }, light = { lx: 0, ly: 1, lz: 0, darkness: 0, faceShade: new Float32Array(6) };`,
     `const wx = { rain: 0, snow: 0, fog: 0, wet: 0, aurora: 0, storm: 0 };`,
+    `const hero = { on: 0, x: 0, y: 0, z: 0, face: 0, walked: 0, moving: 0, gear: 0, air: 0, gy: 0 };`,
     `const COL = { near: RAMP_NAMES.map(n => new Uint32Array(KEYFRAMES.day.ramps[n].length)), far: RAMP_NAMES.map(() => new Uint32Array(3)), glow: 0, bird: 0 };`,
     `${renderCore}`,
     `const core = renderCore();`,
@@ -4972,6 +5049,90 @@ function merchantPose(m, dt) {
   return st;
 }
 
+// =====================================================================
+//  THIRD PERSON  (your hero, and the camera behind them)
+// =====================================================================
+// You walk as a hero seen from behind and above, as in Ocarina of Time. The simulation is v1's and
+// untouched: cam is still your eyes, and the mouse still turns them. The picture, though, is drawn
+// from viewCam, V3_DIST behind the hero along the way you look, and raised by an angle that the
+// mouse's up and down tilts (V3_PHI0 when level). It looks at the hero's head, so the hero stands in
+// the lower middle of the picture with the land ahead above them.
+// - Rising ground behind the hero lifts the camera over it (up to V3_PHI_MAX), as in Ocarina of
+//   Time: at once when the ground comes up, easing back down after.
+// - Past that, or with a wall behind, the camera comes in front of it (at once), and eases back out
+//   once the way is clear. Squeezed right up behind them, you see through their eyes.
+// The hero turns toward where they walk; their legs swing with the distance walked. V switches to your
+// own eyes; flying is always first person. hero is what the renderer draws.
+const V3_WADE = 0.55, V3_SIDE = 0.25;   // (how deep the hero is drawn in water; the room the camera keeps from walls to either side:
+                                        // less than a one-cell corridor leaves around a walker, whose body is 0.3 across RADIUS)
+const V3_DIST = 6.4, V3_PHI0 = 0.2, V3_PHI_MAX = 0.85, V3_AIM = 1.65, V3_AIM_HIGH = 1.2, V3_PIVOT = 1.85, V3_CLEAR = 0.5, V3_TILT = 1.3;
+const view3 = { on: true, dist: V3_DIST, cur: V3_DIST, lift: 0, face: 0, walked: 0, lastX: NaN, lastZ: NaN, speed: 0, wade: 0, feet: 0 };
+const viewCam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
+const hero = { on: 0, x: 0, y: 0, z: 0, face: 0, walked: 0, moving: 0, gear: 0, air: 0, gy: 0 };   // (air: 0 on the ground, 1 in a jump; gy: the ground under them)
+function solidAt(x, y, z) {   // inside a voxel of a building?
+  const h = structAt(x, z);
+  if (!h) return false;
+  const sp = h.s.tpl.spans[h.lx * h.s.tpl.sz + h.lz];
+  if (sp) for (let i = 0; i < sp.length; i += 3) if (y >= h.s.baseY + sp[i] && y <= h.s.baseY + sp[i + 1] + 1) return true;
+  return false;
+}
+function updateHero(dt) {
+  const walking = view3.on && player.mode === 'walk';
+  hero.on = walking ? 1 : 0;
+  Object.assign(viewCam, { x: cam.x, y: cam.y, z: cam.z, yaw: cam.yaw, pitch: cam.pitch });
+  if (!walking) { view3.lastX = NaN; return; }
+  // the hero turns toward where they walk, and walks on
+  const fresh = !(view3.lastX === view3.lastX);   // (just switched on, or back from flying)
+  const mx = wrapDelta(cam.x - view3.lastX), mz = wrapDelta(cam.z - view3.lastZ), moved = Math.hypot(mx, mz);
+  if (moved > 1e-4 && moved < 3) {
+    view3.walked += moved;
+    view3.face += wrapAngle(Math.atan2(mz, mx) - view3.face) * Math.min(1, dt * 10);
+  } else if (fresh) view3.face = cam.yaw;   // (a fresh start faces the way you look)
+  view3.speed += ((dt > 0 ? moved / dt : 0) - view3.speed) * Math.min(1, dt * 8);
+  view3.lastX = cam.x; view3.lastZ = cam.z;
+  // in water (which you walk on, as in v1) the hero wades, drawn up to their thighs in it
+  const ci = ((cam.z | 0) & MASK) * W + ((cam.x | 0) & MASK), wet = world.water[ci] && player.feetY < terrainHeight(cam.x, cam.z) + 0.3 ? V3_WADE : 0;
+  view3.wade = fresh ? wet : view3.wade + (wet - view3.wade) * Math.min(1, dt * 6);
+  hero.x = cam.x; hero.y = player.feetY - view3.wade; hero.z = cam.z; hero.face = view3.face; hero.walked = view3.walked; hero.moving = view3.speed > 0.4 ? 1 : 0;
+  hero.gy = groundAt(cam.x, cam.z, player.feetY) - view3.wade; hero.air = smoothstep(0.05, 0.5, player.feetY - view3.wade - hero.gy);   // (in a jump, or falling)
+  // the camera: the angle the mouse asks for, lifted over rising ground behind. It follows the hero's
+  // height a little behind, so you see them jump and step up, and the picture does not jolt.
+  view3.feet = fresh ? player.feetY : view3.feet + (player.feetY - view3.feet) * Math.min(1, dt * 8);
+  const pivot = view3.feet + V3_PIVOT, bx = -Math.cos(cam.yaw), bz = -Math.sin(cam.yaw);
+  const phiUser = clamp(V3_PHI0 - cam.pitch / grid.f * 0.6, -0.08, V3_PHI_MAX);
+  let need = -1;   // the lowest angle whose line from the pivot clears the ground behind by V3_CLEAR
+  for (let h = 0.5, reach = view3.dist * Math.cos(phiUser) + 0.01; h <= reach; h += 0.25) {
+    need = Math.max(need, Math.atan2(terrainHeight(cam.x + bx * h, cam.z + bz * h) + V3_CLEAR - pivot, h));
+  }
+  const wantLift = clamp(need - phiUser, 0, V3_PHI_MAX - phiUser);
+  view3.lift = wantLift > view3.lift ? wantLift : view3.lift + (wantLift - view3.lift) * Math.min(1, dt * 2);
+  const phi = phiUser + view3.lift, cph = Math.cos(phi), sph = Math.sin(phi);
+  // ...and in front of anything still in the way (walls with a little room to the sides, so the lens
+  // never grazes a wall's corner)
+  let want = view3.dist;
+  const sx = -bz * V3_SIDE, sz = bx * V3_SIDE;
+  for (let d = 0.5; d <= view3.dist; d += 0.25) {
+    const px = cam.x + bx * d * cph, pz = cam.z + bz * d * cph, py = pivot + d * sph;
+    if (terrainHeight(px, pz) > py - V3_CLEAR + 0.05 || solidAt(px, py, pz) || solidAt(px + sx, py, pz + sz) || solidAt(px - sx, py, pz - sz)) { want = Math.max(0.5, d - 0.45); break; }
+  }
+  view3.cur = want < view3.cur ? want : view3.cur + (want - view3.cur) * Math.min(1, dt * 2.5);
+  // Squeezed right up behind them, the camera slides into their eyes (e: 1 behind them, 0 in their
+  // eyes), and turns from looking at them to where the eyes look.
+  const D = view3.cur, e = clamp((D - 1.1) / 1.2, 0, 1), hd = D * cph * e;
+  viewCam.x = ((cam.x + bx * hd) % W + W) % W; viewCam.z = ((cam.z + bz * hd) % W + W) % W;
+  viewCam.y = cam.y + (pivot + D * sph - cam.y) * e;
+  viewCam.yaw = cam.yaw;
+  const aim = V3_AIM + (V3_AIM_HIGH - V3_AIM) * clamp((phi - 0.45) / 0.4, 0, 1);   // (from high up, lower, so their feet stay in the picture)
+  const look = clamp((view3.feet + aim - viewCam.y) / Math.max(0.5, hd) * grid.f, -grid.h * V3_TILT, grid.h * 1.3);   // looking at the hero's head
+  viewCam.pitch = cam.pitch + (look - cam.pitch) * smoothstep(0.35, 0.75, e);
+  if (e < 0.5) hero.on = 0;
+}
+function setThird(on) { view3.on = !!on; view3.lastX = NaN; view3.cur = view3.dist; view3.lift = 0; updateHero(0); }
+window.addEventListener('keydown', e => {
+  if (e.target === seedInput || ui.open || e.repeat || e.code !== 'KeyV') return;
+  setThird(!view3.on);
+});
+
 // The look the world is drawn in: painted (square pixels of continuous colour, each carrying one
 // letter) or mosaic (a glyph in two palette colours per cell, fitted to the shapes inside it).
 // L switches between them; ?look=mosaic starts in the mosaic.
@@ -5001,7 +5162,8 @@ function frameDesc(t, dt) {
   col[o] = COL.glow; col[o + 1] = COL.bird;
   return {
     type: 'frame', gen: pool.gen, t, poses, look: looks.mode, merchants: merch, col,
-    cam: [cam.x, cam.y, cam.z, cam.yaw, cam.pitch], hours: clock.hours, viewDist: view.dist,
+    cam: [viewCam.x, viewCam.y, viewCam.z, viewCam.yaw, viewCam.pitch], hours: clock.hours, viewDist: view.dist,
+    hero: [hero.on, hero.x, hero.y, hero.z, hero.face, hero.walked, hero.moving, hero.gear, hero.air, hero.gy],
     light: [light.lx, light.ly, light.lz, light.darkness, ...light.faceShade], cur: [cur.ambient, cur.diffuse, cur.lights, cur.stars],
     wx: [wx.rain, wx.snow, wx.fog, wx.wet, wx.aurora, wx.storm],
   };
@@ -5108,6 +5270,7 @@ function frame(now) {
   if (lightJob.step >= 0) lightSlice();                                  // (the light, a slice a frame)
   else if (lightTimer > 0.2) { lightBegin(); lightSlice(); lightTimer = 0; }
 
+  updateHero(dt);
   const desc = frameDesc(now / 1000, dt);
   for (const k in frameStats) frameStats[k] = 0;
   pool.t0 = performance.now();
@@ -5120,7 +5283,10 @@ function frame(now) {
       wk.postMessage({ ...desc, buf }, buf ? [buf] : []);
     });
   } else {
+    const eyes = { x: cam.x, y: cam.y, z: cam.z, yaw: cam.yaw, pitch: cam.pitch };
+    Object.assign(cam, viewCam);                                   // (drawn from behind the hero; cam is your eyes again after)
     const s = local.renderFrame(desc.t, desc.poses, desc.look);
+    Object.assign(cam, eyes);
     ctx.putImageData(grid.img, 0, 0);
     Object.assign(frameStats, s);
     finishFrame();
@@ -5144,6 +5310,7 @@ window.TV = {
   regenerate, setMode, update, updateMerchants, updateNearest, openPanel, closePanel, groundAt, deckAt,
   setHour: h => { clock.hours = h; updateLighting(); },
   setWeather, updateWeather, weather, wx, weatherAt,
+  setThird, updateHero, view3, viewCam, hero, terrainHeight, solidAt,
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
   renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0
