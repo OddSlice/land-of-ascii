@@ -280,3 +280,52 @@ A shear looks right up to about 45°. Beyond that it stretches everything uprigh
   - a flower right at the lens is a big flat blob;
   - a wall beside the camera can fill a side of the picture (a standing stone by the road, in `sheet-first-third`).
 - **At night the hero is dark** until the lantern of step 4.
+
+## Step 4: gear on your hero
+
+Shots: `shots/phase3/step4/` (sheets: `sheet-gear`, `sheet-tunics`, `sheet-night`, `sheet-moving`).
+
+### What changed
+
+- **What you buy shows on your hero** (`updateGear`). It shows every good you own, from any merchant, that can be worn or carried, and the tunic you bought last:
+
+  | Good | On your hero |
+  |---|---|
+  | Pointed cap (new) | a long cap drooping back, in the tunic's colour |
+  | Wool cloak | a red cloak from the shoulders that streams back as you walk (brown over a red tunic) |
+  | Short sword (new) | on the back, the hilt over the right shoulder |
+  | Round shield (new) | on the back, over the sword: wood in an iron rim, with a boss |
+  | Leather boots | tall brown boots instead of shoes |
+  | Iron lantern | at the left hip; after dark it glows and lights the way |
+  | Rope, twenty feet | a coil at the right hip |
+  | Copper kettle, flask of cider, map fragment | at the back of the belt |
+  | Red, blue or russet tunic (new) | the tunic, and the cap, in that colour; you start in green |
+
+  Food, candles and the lucky pebble do not show.
+- **The lantern lights the way.** After dark it lights the ground around you, in any view, also through your own eyes. It is one more of the lights the merchants' lanterns use, a little smaller: the warm pool reaches about 2.5 cells. Figures catch little firelight in this renderer, so your own colours light up instead.
+- **Twice the merchants** (8, listed fix), for four times the land. On seed 42 the nearest merchant was 240 cells from where you start; now it is 100.
+- **Each merchant sells 7 to 9 of the 18 goods** (4 or 5 of 12 before, listed fix). Every piece of gear is on sale in each of the five test worlds.
+- **A bigger purse: 300 gold** (was 100, listed fix). All the gear together costs about 230 to 410, so you choose. There is still no way to earn gold: v1 has none.
+- **A new world brings new merchants**, and what you owned stays behind (as in v1): you start again in green. Your gold goes with you.
+
+### Numbers
+
+- **Tests:** all pass.
+  - The world checksums are re-recorded, since the merchants changed.
+  - v1's movement still agrees exactly, with eight merchants walking.
+  - A new check: a good you own shows (a cloak, a lantern), the tunic bought last is worn, and a new world starts you with nothing on.
+  - There are 13 listed fixes to v1's code now.
+- **Speed:** the full kit costs about 0.2 ms a frame.
+- **Workers and the main thread agree**, byte for byte in both looks, across seven gear scenes and a jump in full kit.
+
+### Tools
+
+- **Scenes can say what the hero wears** (`gear: ['CLOAK', ...]`, `tunic: 0` to `3`) and which way they face (`heroFace`: degrees from the way you look). `TV.setGear(names, tunic)` does the same for the tools; `null` goes back to what you own.
+- **New scenes:** `hero-kit`, `hero-kit-side`, `hero-kit-front`, `hero-night`, `hero-night-none`, `hero-red`, `hero-blue`, `hero-russet`.
+- **`bench-v2.mjs`** puts the scene's gear on.
+
+### Still open
+
+- **Trade is still v1's:** nothing to sell and no way to earn gold.
+- **You cannot take things off:** what you own is worn, and the tunic is the one bought last.
+- **The small things at the belt** (rope, kettle, flask, map) are hard to see from the usual distance.

@@ -32,7 +32,7 @@ In file order:
 7. **Presentation:**
    - the worker pool (`workerSource`, `startWorkers`, `syncWorkers`);
    - merchant poses (`merchantPose`, main thread) and `frameDesc`;
-   - the third person: `updateHero` places `viewCam`, the camera behind your hero, and fills `hero`, their pose for the renderer (`V3_*` set the camera: distance, angles, tilt limit);
+   - the third person: `updateHero` places `viewCam`, the camera behind your hero, and fills `hero`, their pose for the renderer (`V3_*` set the camera: distance, angles, tilt limit); `updateGear` turns the goods you own into `hero.gear` (`GEAR` bits, `GEAR_OF`, the tunic bought last);
    - the weather: `weatherAt` is each day's plan, `updateWeather` works out `wx`, what the renderer draws this frame;
    - the main loop, boot, and `window.TV`.
 
@@ -103,7 +103,8 @@ Test harness notes:
   - **Step 1 (a steady picture) is built:** the march samples points fixed to the ground; drawing choices depend on the land, not on screen rows; letters come from where each ray lands and fade out far off; water mirrors blend; thin plant parts are at least 2.4 rays across. Flicker is 3–10 times lower walking, about half turning, at the same speed.
   - **Step 2 (a bigger, more open world) is built:** 1024 cells across, landforms twice as wide and 1.7 times as tall (`LAND`, `LIFT`, `fbmLand`), landmarks spread out, open green fields, walking at 5.5, bolder colours after Ocarina of Time, lighting worked out over 12 frames (`lightBegin`/`lightSlice`), v1's road finder fixed for the bigger grid, a spawn you can walk from (`spawnAt`).
   - **Step 3 (third person) is built:** your hero seen from behind and above (`buildHero`), turning to where they walk, with walk and jump poses and wading in water; a camera that rises over ground behind, comes closer before walls and steep slopes, and slides into the eyes when squeezed (`updateHero`, `viewCam`); plants in front of the hero or at the lens see-through; V for your own eyes.
-  - Next: step 4, gear that shows on your hero.
+  - **Step 4 (gear on your hero) is built:** what you buy shows (cap, cloak, sword, shield, boots, lantern, rope, kettle, flask, map, tunics in four colours); the lantern lights the ground after dark; eight merchants selling 7 to 9 of 18 goods; 300 gold to start (listed fixes).
+  - Next: step 5, settlements.
 - **Speed on Martin's Mac** (M1 Max, painted look): on the 512 world, Chromium 5.7–7.5 ms a frame, Firefox 7.3–9.9 ms, WebKit 6.5–14.1 ms. The 1024 world has not been measured on an idle machine yet: with Chrome busy in the background it ran Chromium 8.4–12.5 ms, Firefox 12.3–17.1 ms. A world generates in about 2.3 s (0.5 s on the 512 world).
 - **Rough edges:**
   - turning still crawls a little (detail sliding across the pixels);
@@ -111,4 +112,5 @@ Test harness notes:
   - cliff faces right in front of you are blocky, with a break at the horizon line;
   - palm fronds are tubes up close, and canopies look faceted;
   - merchant faces and outfits are simple;
-  - third person: the camera goes into your eyes on slopes steeper than about 50° and with your back to a wall; looking down steeply stretches upright things a little (the tilt is a shear); a flower at the lens is a big flat blob; the hero's green tunic is close to the fields' green.
+  - third person: the camera goes into your eyes on slopes steeper than about 50° and with your back to a wall; looking down steeply stretches upright things a little (the tilt is a shear); a flower at the lens is a big flat blob; the hero's green tunic is close to the fields' green;
+  - gear: nothing to sell and no way to earn gold (v1's trade); what you own is always worn; the things at the belt are small.

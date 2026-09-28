@@ -61,3 +61,19 @@ export function applyFixes(text) {
   }
   return text;
 }
+// Phase 3, step 4: gear on your hero (docs/phase3.md).
+FIXES.push({
+  why: 'phase 3: twice the merchants for four times the land (so you meet one), and a bigger purse for the new gear',
+  from: 'const MERCHANT_COUNT = 4, MERCHANT_SPEED = 3, TALK_RADIUS = 4, START_GOLD = 100;',
+  to: 'const MERCHANT_COUNT = 8, MERCHANT_SPEED = 3, TALK_RADIUS = 4, START_GOLD = 300;',
+});
+FIXES.push({
+  why: 'phase 3: new goods that show on your hero: a pointed cap, a short sword, a round shield, tunics in three colours',
+  from: "  ['Copper kettle', 18, 30], ['Flask of cider', 5, 9], ['Rope, twenty feet', 10, 18], ['Lucky pebble', 1, 3],\n];",
+  to: "  ['Copper kettle', 18, 30], ['Flask of cider', 5, 9], ['Rope, twenty feet', 10, 18], ['Lucky pebble', 1, 3],\n  ['Pointed cap', 8, 15], ['Short sword', 40, 70], ['Round shield', 35, 60], ['Red tunic', 20, 35], ['Blue tunic', 20, 35], ['Russet tunic', 20, 35],\n];",
+});
+FIXES.push({
+  why: 'phase 3: each merchant sells 7 to 9 of the 18 goods (4 or 5 of 12 before), so most goods can be found in a world',
+  from: '    const count = 4 + ((rng() * 2) | 0);',
+  to: '    const count = 7 + ((rng() * 3) | 0);',
+});

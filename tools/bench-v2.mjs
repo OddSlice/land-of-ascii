@@ -22,7 +22,7 @@ const rows = [];
 for (const sc of scenes) {
   const c = sc.cam;
   const cam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
-  const r = await page.evaluate(async ({ seed, view, cam, hour, ground, merchants, frames, runs, weather, third }) => {
+  const r = await page.evaluate(async ({ seed, view, cam, hour, ground, merchants, frames, runs, weather, third, gear, tunic }) => {
     const TV = window.TV;
     if (TV.world.seed !== seed) TV.regenerate(seed);
     TV.view.dist = view || 500;
@@ -32,6 +32,7 @@ for (const sc of scenes) {
     const hold = () => { Object.assign(TV.cam, cam); for (const m of merchants || []) { const M = TV.world.merchants[m.i]; M.s = m.s; } };
     hold();
     if (TV.setThird) { if (third) TV.setMode('walk'); TV.setThird(third); }   // (the hero stands where the eyes are)
+    if (TV.setGear) TV.setGear(gear || null, tunic || 0);                     // (and wears what the scene says)
     TV.setHour(hour);
     await new Promise(res => setTimeout(res, 300));
     hold(); TV.setHour(hour);
@@ -48,7 +49,7 @@ for (const sc of scenes) {
     }
     const med = k => { const v = wins.map(o => o[k]).sort((a, b) => a - b); return +v[v.length >> 1].toFixed(2); };
     return Object.fromEntries([...keys, 'fps', 'threads'].map(k => [k, med(k)]));
-  }, { seed: sc.seed ?? cfg.seed, view: sc.view, cam, hour: sc.hour, ground: !!c.ground, merchants: sc.merchants, frames, runs, weather: sc.weather, third: thirdAll || !!sc.third });
+  }, { seed: sc.seed ?? cfg.seed, view: sc.view, cam, hour: sc.hour, ground: !!c.ground, merchants: sc.merchants, frames, runs, weather: sc.weather, third: thirdAll || !!sc.third, gear: sc.gear, tunic: sc.tunic });
   rows.push({ scene: sc.name + (thirdAll || sc.third ? ' (3rd)' : ''), ...r });
 }
 console.table(rows);

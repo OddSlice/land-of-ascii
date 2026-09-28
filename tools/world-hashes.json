@@ -22,9 +22,9 @@
    "birds": 2199793535,
    "clouds": 940164182,
    "wind": 68396924,
-   "lights": 2793690230,
+   "lights": 3868098131,
    "structs": 3509891807,
-   "merchants": 3417643849
+   "merchants": 3498858377
   },
   "42": {
    "H": 3176310537,
@@ -48,9 +48,9 @@
    "birds": 3544655317,
    "clouds": 2251463202,
    "wind": 3844055051,
-   "lights": 1372872347,
+   "lights": 2841591397,
    "structs": 2237159401,
-   "merchants": 372734870
+   "merchants": 2627760530
   },
   "1234": {
    "H": 2778023465,
@@ -74,9 +74,9 @@
    "birds": 1115660115,
    "clouds": 3511758958,
    "wind": 1303150684,
-   "lights": 2435139007,
+   "lights": 42219044,
    "structs": 2809302113,
-   "merchants": 279173468
+   "merchants": 1732628346
   },
   "31337": {
    "H": 1357613413,
@@ -100,9 +100,9 @@
    "birds": 25209835,
    "clouds": 3783885443,
    "wind": 1798051471,
-   "lights": 1923183305,
+   "lights": 2260536086,
    "structs": 1112125570,
-   "merchants": 1803733615
+   "merchants": 492766977
   },
   "99991": {
    "H": 4198269362,
@@ -126,9 +126,9 @@
    "birds": 3608892105,
    "clouds": 71284694,
    "wind": 819375825,
-   "lights": 3004265758,
+   "lights": 1359296996,
    "structs": 3700536379,
-   "merchants": 1041384360
+   "merchants": 661724433
   }
  },
  "note": "Checksums of each seed's world, part by part (tools/test-sim.mjs). Re-record with node tools/test-sim.mjs --record after a deliberate change to world generation. Recorded in Chromium."

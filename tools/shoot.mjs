@@ -36,7 +36,7 @@ for (const sc of scenes) {
   if (await page.evaluate(s => window.TV.world.seed !== s, scSeed)) await page.evaluate(s => window.TV.regenerate(s), scSeed);
   const camv = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
   if (c.ground) camv.y = await page.evaluate(k => window.TV.groundAt(k.x, k.z, 1e9) + 1.55 + k.y, camv);
-  await showScene(page, { seed: scSeed, hour: sc.hour, t: sc.t, cam: camv, merchants: sc.merchants, view: sc.view, weather: sc.weather, third: sc.third || third });
+  await showScene(page, { seed: scSeed, hour: sc.hour, t: sc.t, cam: camv, merchants: sc.merchants, view: sc.view, weather: sc.weather, gear: sc.gear, tunic: sc.tunic, heroFace: sc.heroFace, third: sc.third || third });
   if (walkArg) {   // walk (the clock still frozen at the scene's hour), a frame at a time
     await page.evaluate(k => { for (const key of k) window.TV.keys[key] = true; }, walkArg.split('+'));
     for (let f = 0; f < walkFrames; f++) { await page.evaluate(() => window.__step(1000 / 60)); await page.evaluate(() => window.TV.whenIdle()); }

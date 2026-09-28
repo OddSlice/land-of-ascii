@@ -20,7 +20,7 @@
 //   6. Third person: walks from the start through the castle gate and back against its walls, down
 //      and up a steep hillside, and through a forest, stepping the camera behind the hero with every
 //      step. The camera is never inside the ground or a building; the hero faces the way they walk;
-//      V (setThird) and flying give back your own eyes.
+//      V (setThird) and flying give back your own eyes; what you buy shows on the hero (hero.gear).
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs [--record]
 import fs from 'node:fs';
@@ -389,6 +389,25 @@ console.log('6. third person, seed 42');
   });
   if (!(r.third && r.eyes && r.fly && r.back)) fail(`switching views: ${JSON.stringify(r)}`);
   else console.log('  V gives your own eyes and back; flying is always your own eyes');
+  // what you buy shows on your hero: a good you own sets its gear, the tunic bought last is worn, and
+  // a new world (new merchants, nothing owned) starts you in green with nothing on
+  const g = await p2.evaluate(() => {
+    const TV = window.TV, G = TV.GEAR;
+    TV.regenerate(42); TV.setGear(null); TV.updateHero(0);
+    const start = TV.hero.gear;
+    const own = n => { for (const m of TV.world.merchants) for (const it of m.goods) if (it.name === n) { it.owned++; TV.updateHero(0); return true; } return false; };
+    const tunic = () => TV.hero.gear >> 12 & 3, steps = [];
+    steps.push(own('Lucky pebble') ? TV.hero.gear === 0 : 'no pebble');
+    steps.push(own('Wool cloak') && TV.hero.gear === G.CLOAK);
+    steps.push(own('Iron lantern') && TV.hero.gear === (G.CLOAK | G.LANTERN));
+    steps.push(own('Red tunic') && tunic() === 1);
+    steps.push(own('Blue tunic') && tunic() === 2);
+    steps.push(own('Red tunic') && tunic() === 1);   // (a second red one: red again)
+    TV.regenerate(42); TV.updateHero(0);
+    return { start, steps, after: TV.hero.gear };
+  });
+  if (g.start !== 0 || g.after !== 0 || !g.steps.every(v => v === true)) fail(`gear: ${JSON.stringify(g)}`);
+  else console.log('  what you buy shows on your hero (a cloak, a lantern, the tunic bought last); a new world starts you with nothing on');
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

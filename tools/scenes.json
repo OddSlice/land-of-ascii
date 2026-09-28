@@ -577,6 +577,207 @@
         "pitch": 0,
         "ground": true
       }
+    },
+    {
+      "name": "hero-kit",
+      "title": "Your hero with everything on: cap, cloak, sword and shield, boots, lantern, rope, kettle, flask, map",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 510.5,
+        "y": 0,
+        "z": 276.5,
+        "yaw": 22,
+        "pitch": 0,
+        "ground": true
+      },
+      "gear": [
+        "CLOAK",
+        "BOOTS",
+        "LANTERN",
+        "ROPE",
+        "KETTLE",
+        "FLASK",
+        "MAP",
+        "CAP",
+        "SWORD",
+        "SHIELD"
+      ]
+    },
+    {
+      "name": "hero-kit-side",
+      "title": "The same, turned to the side",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 510.5,
+        "y": 0,
+        "z": 276.5,
+        "yaw": 22,
+        "pitch": 0,
+        "ground": true
+      },
+      "gear": [
+        "CLOAK",
+        "BOOTS",
+        "LANTERN",
+        "ROPE",
+        "KETTLE",
+        "FLASK",
+        "MAP",
+        "CAP",
+        "SWORD",
+        "SHIELD"
+      ],
+      "heroFace": 90
+    },
+    {
+      "name": "hero-kit-front",
+      "title": "The same, turned to face you",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 510.5,
+        "y": 0,
+        "z": 276.5,
+        "yaw": 22,
+        "pitch": 0,
+        "ground": true
+      },
+      "gear": [
+        "CLOAK",
+        "BOOTS",
+        "LANTERN",
+        "ROPE",
+        "KETTLE",
+        "FLASK",
+        "MAP",
+        "CAP",
+        "SWORD",
+        "SHIELD"
+      ],
+      "heroFace": 180
+    },
+    {
+      "name": "hero-night",
+      "title": "At night, the lantern lights the way (22:00)",
+      "seed": 42,
+      "hour": 22,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 510.5,
+        "y": 0,
+        "z": 276.5,
+        "yaw": 22,
+        "pitch": 0,
+        "ground": true
+      },
+      "gear": [
+        "LANTERN",
+        "CLOAK",
+        "BOOTS"
+      ]
+    },
+    {
+      "name": "hero-night-none",
+      "title": "At night without a lantern (22:00)",
+      "seed": 42,
+      "hour": 22,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 510.5,
+        "y": 0,
+        "z": 276.5,
+        "yaw": 22,
+        "pitch": 0,
+        "ground": true
+      },
+      "gear": []
+    },
+    {
+      "name": "hero-red",
+      "title": "A red tunic and cap",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 510.5,
+        "y": 0,
+        "z": 276.5,
+        "yaw": 22,
+        "pitch": 0,
+        "ground": true
+      },
+      "gear": [
+        "CAP",
+        "BOOTS"
+      ],
+      "tunic": 1,
+      "heroFace": 150
+    },
+    {
+      "name": "hero-blue",
+      "title": "A blue tunic and cap, with a cloak",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 510.5,
+        "y": 0,
+        "z": 276.5,
+        "yaw": 22,
+        "pitch": 0,
+        "ground": true
+      },
+      "gear": [
+        "CAP",
+        "CLOAK",
+        "BOOTS"
+      ],
+      "tunic": 2,
+      "heroFace": 150
+    },
+    {
+      "name": "hero-russet",
+      "title": "A russet tunic and cap, sword and shield",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 510.5,
+        "y": 0,
+        "z": 276.5,
+        "yaw": 22,
+        "pitch": 0,
+        "ground": true
+      },
+      "gear": [
+        "CAP",
+        "SWORD",
+        "SHIELD",
+        "BOOTS"
+      ],
+      "tunic": 3,
+      "heroFace": 150
     }
   ]
 }

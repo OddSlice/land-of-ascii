@@ -136,7 +136,9 @@ const RAYS_X = 2, RAYS_Y = 4;
 const NEAR_SMOOTH = 26;                   // nearer than this, terrain is sampled bilinearly (no flat blocks at your feet)
 // What a ray hit, recorded per ray and read by the cell stage.
 const K = { SKY: 0, TERRAIN: 1, WALL: 2, TOP: 3, UNDER: 4, TREE: 5, CONIFER: 6, BUSH: 7, TRUNK: 8, BOULDER: 9, MERCHANT: 10, CLOUD: 12, FLAME: 13, LOGS: 14, SUN: 16, MOON: 17, PALM: 18, CACTUS: 19, REED: 20, NONE: 255 };
-const PART = { STAFF: 1, LANTERN: 2, BOOT: 3, LEG: 4, BELT: 5, ROBE: 6, HAND: 8, SLEEVE: 9, SKIN: 10, EYE: 11, BRIM: 12, CROWN: 13, PACK: 14 };
+const PART = { STAFF: 1, LANTERN: 2, BOOT: 3, LEG: 4, BELT: 5, ROBE: 6, HAND: 8, SLEEVE: 9, SKIN: 10, EYE: 11, BRIM: 12, CROWN: 13, PACK: 14, CLOAK: 15, STEEL: 16, GEAR: 17, SHIELD: 18, CAP: 19 };
+// What you have bought, as it shows on your hero: hero.gear holds these bits, and the tunic's colour in bits 12-13.
+const GEAR = { CLOAK: 1, BOOTS: 2, LANTERN: 4, ROPE: 8, KETTLE: 16, FLASK: 32, MAP: 64, CAP: 128, SWORD: 256, SHIELD: 512 };
 const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8, F_FACE = 16, F_FLOWER = 32;   // per-ray flags (F_FACE: on a banded face of rock; F_FLOWER: a bloom, painted look)
 
 // =====================================================================
@@ -1730,7 +1732,7 @@ function spawnClouds(rng) {
 // =====================================================================
 //  MERCHANTS  (walk the roads, can be talked to)
 // =====================================================================
-const MERCHANT_COUNT = 4, MERCHANT_SPEED = 3, TALK_RADIUS = 4, START_GOLD = 100;
+const MERCHANT_COUNT = 8, MERCHANT_SPEED = 3, TALK_RADIUS = 4, START_GOLD = 300;
 const NAME_FIRST = ['Bram', 'Ysolde', 'Corvin', 'Maud', 'Piran', 'Elska', 'Tobin', 'Nell', 'Osric', 'Wren', 'Halvard', 'Ivo'];
 const NAME_LAST = ['the Pedlar', 'of the Ford', 'Saltbeard', 'Threadneedle', 'the Tinker', 'Longstride', 'of Greyhaven', 'the Quiet', 'Copperpot', 'Halfmoon'];
 const GREETINGS = [
@@ -1745,6 +1747,7 @@ const GOODS = [
   ['Loaf of bread', 3, 6], ['Wheel of cheese', 8, 14], ['Wool cloak', 20, 35], ['Tallow candle', 2, 5],
   ['Iron lantern', 25, 45], ['Salted fish', 6, 12], ['Leather boots', 30, 50], ['Map fragment', 15, 40],
   ['Copper kettle', 18, 30], ['Flask of cider', 5, 9], ['Rope, twenty feet', 10, 18], ['Lucky pebble', 1, 3],
+  ['Pointed cap', 8, 15], ['Short sword', 40, 70], ['Round shield', 35, 60], ['Red tunic', 20, 35], ['Blue tunic', 20, 35], ['Russet tunic', 20, 35],
 ];
 
 // Each merchant owns one road and walks it end to end and back. The road is the centre-line
@@ -1762,7 +1765,7 @@ function spawnMerchants(rng) {
     }
     const goods = [];
     const poolIdx = GOODS.map((_, j) => j);
-    const count = 4 + ((rng() * 2) | 0);
+    const count = 7 + ((rng() * 3) | 0);
     for (let g = 0; g < count; g++) {
       const j = poolIdx.splice((rng() * poolIdx.length) | 0, 1)[0];
       const [name, lo, hi] = GOODS[j];
@@ -2322,6 +2325,7 @@ function collectLights(t) {
     add(L.x, L.y, L.z, L.r, L.color, L.i * flick * strength);
   }
   if (k > 0.05) for (const m of world.merchants) add(m.x, m.y + 1.1, m.z, 9, [1, 0.75, 0.4], 0.9 * k);
+  if (k > 0.05 && hero.gear & GEAR.LANTERN) add(hero.x, hero.y + 0.8, hero.z, 8, [1, 0.78, 0.42], 0.8 * k);   // (your hero's lantern, in any view)
 }
 // How much firelight reaches a world position: 0 (none) to 1 (full warm ramp).
 function warmAt(x, y, z) {
@@ -3503,26 +3507,83 @@ function buildHero(x, y, z, zc, t) {
   const phase = hero.walked * (Math.PI * 2 / 1.7), mv = hero.moving > 0, sw = mv ? Math.sin(phase) : 0, bob = mv ? 0.035 * Math.abs(Math.cos(phase)) : 0;
   const lit = lightsOn ? warmAt(hero.x, hero.y + 1, hero.z) * 0.8 : 0;
   const base = (K.MERCHANT << 24) | (255 << 8);
-  const add = (p, part, posAdd) => { p.seg = base | part; p.lit = lit; p.posAdd = posAdd || 0; return p; };
+  // (figures catch little firelight, so after dark their own lantern shows as their colours lit up)
+  const gear = hero.gear, has = b => (gear & b) !== 0, glow = has(GEAR.LANTERN) ? light.darkness * 0.3 : 0;
+  const add = (p, part, posAdd) => { p.seg = base | part; p.lit = lit; p.posAdd = (posAdd || 0) + glow; return p; };
   const cap = (r0, y0, f0, r1, y1, f1, rad, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCapsule(ax, y + y0, az, bx, y + y1, bz, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
   const ell = (r0, y0, f0, ex, ey, ez, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pEllipsoid(ax, y + y0, az, ex, ey, ez, h + Math.PI / 2, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
   const sph = (r0, y0, f0, rad, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pSphere(ax, y + y0, az, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
-  const tunic = R.robe2, trousers = R.robe3;
-  // legs: thigh and shin, a knee that bends as the leg comes forward; boots
+  const cyl = (r0, y0, f0, r1, y1, f1, rad, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCylinder(ax, y + y0, az, bx, y + y1, bz, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const cone = (r0, y0, f0, r1, y1, f1, ra, rb, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCone(ax, y + y0, az, bx, y + y1, bz, ra, rb, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  // what they wear and carry (hero.gear): the tunic you bought last (green to start with)
+  const tunic = [R.robe2, R.robe0, R.robe1, R.robe3][(gear >> 12) & 3], trousers = R.robe3;
+  // legs: thigh and shin, a knee that bends as the leg comes forward; shoes, or tall leather boots
   // (in a jump the stride stops, the knees come up and the feet tuck under)
-  const air = hero.air, ground = 1 - air;
+  const air = hero.air, ground = 1 - air, boots = has(GEAR.BOOTS);
   for (const side of [-1, 1]) {
     const s = sw * side * ground, fwd = s * 0.24 - air * 0.07, lift = (mv ? Math.max(0, Math.sin(phase + (side > 0 ? 0 : Math.PI))) * 0.09 : 0) * ground + air * 0.26;
     const kneeF = fwd * 0.6 + (mv ? 0.05 : 0.02) + air * 0.24, kneeY = 0.5 + lift * 0.6 + air * 0.04;
     cap(side * 0.1, 0.88 + bob, 0, side * 0.1, kneeY + bob, kneeF, 0.075, PART.LEG, trousers);
     cap(side * 0.1, kneeY + bob, kneeF, side * 0.1, 0.12 + lift, fwd, 0.068, PART.LEG, trousers, -0.05);
-    ell(side * 0.1, 0.07 + lift, fwd + 0.05, 0.075, 0.07, 0.14, PART.BOOT, R.dark, -0.1);
+    if (boots) {   // (the shaft covers the lower half of the shin)
+      const by = kneeY + bob + (0.12 + lift - kneeY - bob) * 0.45, bf = kneeF + (fwd - kneeF) * 0.45;
+      cap(side * 0.1, by, bf, side * 0.1, 0.12 + lift, fwd, 0.083, PART.BOOT, R.wood, 0.05);
+    }
+    ell(side * 0.1, 0.07 + lift, fwd + 0.05, boots ? 0.082 : 0.075, 0.075, 0.15, PART.BOOT, boots ? R.wood : R.dark, boots ? 0 : -0.1);
   }
+  // the back, at a height: of the body, or of the cloak over it (where the things on the back hang)
+  const cloakOn = has(GEAR.CLOAK), trail = (mv ? 0.1 + 0.04 * Math.abs(sw) : 0.03) + air * 0.15;
+  const back = yy => cloakOn ? -0.25 - (0.25 + trail) * clamp((1.43 - yy) / 0.93, 0, 1) : yy > 1 ? -0.15 : -0.15 - (1 - yy) * 0.3;
   // tunic: a short skirt, the body, a belt
   const [cx, cz] = P(0, 0);
   add(pVCone(cx, y + 0.62 + bob, cz, y + 1.02 + bob, 0.27, 0.2, K.MERCHANT, 0, tunic, LOOK_SOLID), PART.ROBE);
   ell(0, 1.2 + bob, 0, 0.2, 0.25, 0.14, PART.ROBE, tunic);
   add(pVCone(cx, y + 0.94 + bob, cz, y + 1.0 + bob, 0.205, 0.205, K.MERCHANT, 0, R.wood, LOOK_SOLID), PART.BELT, -0.15);
+  // a wool cloak from the shoulders, streaming back as they walk (red, or brown over a red tunic)
+  if (cloakOn) {
+    const cloak = tunic === R.robe0 ? R.robe3 : R.robe0;
+    cone(0, 1.43 + bob, -0.1, 0, 0.5 + bob * 0.5, -0.2 - trail, 0.15, 0.3, PART.CLOAK, cloak, -0.05);
+    cap(-0.19, 1.42 + bob, -0.02, 0.19, 1.42 + bob, -0.02, 0.06, PART.CLOAK, cloak);
+  }
+  // on the back: a short sword (hilt over the right shoulder), a round shield over it
+  if (has(GEAR.SWORD)) {
+    const f0 = back(1.42) - 0.04, f1 = back(0.82) - 0.04;
+    cap(0.13, 1.42 + bob, f0, -0.17, 0.82 + bob, f1, 0.036, PART.STEEL, R.wood, -0.1);   // (the scabbard)
+    cap(0.143, 1.447 + bob, f0, 0.2, 1.563 + bob, f0, 0.022, PART.STEEL, R.dark);          // (the grip)
+    cap(0.072, 1.461 + bob, f0, 0.198, 1.399 + bob, f0, 0.02, PART.STEEL, R.stone, 0.15);   // (the crossguard)
+    sph(0.206, 1.575 + bob, f0, 0.03, PART.STEEL, R.stone, 0.2);                             // (the pommel)
+  }
+  if (has(GEAR.SHIELD)) {   // (wood in an iron rim, with a boss)
+    const sf = back(1.12) - (has(GEAR.SWORD) ? 0.09 : 0.03);
+    cyl(0, 1.12 + bob, sf, 0, 1.12 + bob, sf - 0.045, 0.26, PART.SHIELD, R.wood, 0.1);
+    cyl(0, 1.12 + bob, sf + 0.005, 0, 1.12 + bob, sf - 0.035, 0.285, PART.STEEL, R.stone, -0.1);
+    sph(0, 1.12 + bob, sf - 0.05, 0.055, PART.STEEL, R.stone, 0.15);
+  }
+  // at the belt: a lantern out at the left hip (lit after dark, and seen beside a cloak), a coil of
+  // rope on the right, and at the back a copper kettle, a flask and a rolled map
+  const swing = mv ? sw * 0.03 : 0;
+  if (has(GEAR.LANTERN)) {
+    cap(-0.21, 0.95 + bob, -0.03, -0.3, 0.88 + bob, -0.05 + swing, 0.01, PART.GEAR, R.dark);
+    cyl(-0.3, 0.875 + bob, -0.05 + swing, -0.3, 0.7 + bob, -0.05 + swing, 0.058, PART.GEAR, R.dark, -0.05);
+    const glass = sph(-0.3, 0.785 + bob, -0.05 + swing, 0.062, PART.LANTERN, R.fire, 0);
+    if (light.darkness > 0.05) { glass.look = LOOK_GLOW; glass.posAdd = 0.85; glass.lit = 0; } else { glass.ramp = R.stone; glass.posAdd = 0.1; }
+  }
+  if (has(GEAR.ROPE)) {   // (a coil, facing back and to the right)
+    cyl(0.235, 0.8 + bob, -0.01, 0.265, 0.8 + bob, -0.05, 0.1, PART.GEAR, R.drygrass, 0.05);
+    sph(0.27, 0.8 + bob, -0.055, 0.035, PART.GEAR, R.wood, -0.1);
+  }
+  if (has(GEAR.KETTLE)) {
+    const kf = back(0.8) - 0.06;
+    sph(-0.13, 0.8 + bob, kf, 0.075, PART.GEAR, R.redrock, 0.1);
+    cap(-0.2, 0.81 + bob, kf, -0.24, 0.86 + bob, kf, 0.015, PART.GEAR, R.redrock);   // (the spout)
+    sph(-0.13, 0.88 + bob, kf, 0.02, PART.GEAR, R.dark);                              // (the lid's knob)
+  }
+  if (has(GEAR.FLASK)) {
+    const ff = back(0.82) - 0.045;
+    ell(0.13, 0.82 + bob, ff, 0.05, 0.07, 0.04, PART.GEAR, R.wood, 0.05);
+    sph(0.13, 0.9 + bob, ff, 0.018, PART.GEAR, R.drygrass);
+  }
+  if (has(GEAR.MAP)) { const mf = back(0.98) - 0.03; cap(-0.1, 0.98 + bob, mf, 0.1, 0.98 + bob, mf, 0.028, PART.GEAR, R.sand, 0.1); }
   // arms swing against the legs
   for (const side of [-1, 1]) {   // (in a jump, out to the sides)
     const a = (mv ? -sw * side * 0.22 : 0) * ground, ex = side * (0.26 + air * 0.08), hx = side * (0.27 + air * 0.17), hy = 0.9 + air * 0.22;
@@ -3530,11 +3591,15 @@ function buildHero(x, y, z, zc, t) {
     cap(ex, 1.14 + bob + air * 0.04, a * 0.5, hx, hy + 0.03 + bob, a, 0.055, PART.SLEEVE, tunic, 0.05);
     sph(hx, hy + bob, a, 0.05, PART.HAND, R.skin);
   }
-  // head: neck, face, golden hair (from behind you see mostly hair), eyes when near
+  // head: neck, face, golden hair (from behind you see mostly hair), eyes when near; or under a
+  // long pointed cap in the tunic's colour, drooping back
   cap(0, 1.4 + bob, 0, 0, 1.5 + bob, 0.01, 0.055, PART.SKIN, R.skin, -0.1);
   sph(0, 1.62 + bob, 0.01, 0.135, PART.SKIN, R.skin);
   sph(0, 1.66 + bob, -0.035, 0.135, PART.CROWN, R.drygrass, 0.1);
-  sph(0, 1.72 + bob, 0.02, 0.1, PART.CROWN, R.drygrass, 0.15);
+  if (has(GEAR.CAP)) {
+    sph(0, 1.69 + bob, -0.02, 0.145, PART.CAP, tunic, 0.05);
+    cone(0, 1.72 + bob, -0.05, 0, 1.47 + bob - trail * 0.3, -0.46 - trail * 0.5, 0.125, 0.02, PART.CAP, tunic, 0.05);
+  } else sph(0, 1.72 + bob, 0.02, 0.1, PART.CROWN, R.drygrass, 0.15);
   if (zc < 12) { sph(-0.045, 1.63 + bob, 0.125, 0.018, PART.EYE, R.ink); sph(0.045, 1.63 + bob, 0.125, 0.018, PART.EYE, R.ink); }
   if (zc < 50) shadowDiscs.push([x, z, y + hero.gy - hero.y, 0.42 - 0.12 * air, zc]);   // (on the ground under them, smaller in a jump)
 }
@@ -4955,7 +5020,7 @@ function setupGrid() {
 }
 
 function workerSource() {
-  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, F_FLOWER, RAMP_NAMES, R };
+  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, GEAR, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, F_FLOWER, RAMP_NAMES, R };
   return [
     "'use strict';",
     ...Object.entries(consts).map(([k, v]) => `const ${k} = ${JSON.stringify(v)};`),
@@ -5076,9 +5141,37 @@ function solidAt(x, y, z) {   // inside a voxel of a building?
   if (sp) for (let i = 0; i < sp.length; i += 3) if (y >= h.s.baseY + sp[i] && y <= h.s.baseY + sp[i + 1] + 1) return true;
   return false;
 }
+// What you have bought shows on your hero: every good you own (from any merchant) that can be worn
+// or carried, and the tunic you bought last. hero.gear carries it to the renderer.
+const GEAR_OF = {
+  'Wool cloak': GEAR.CLOAK, 'Leather boots': GEAR.BOOTS, 'Iron lantern': GEAR.LANTERN, 'Rope, twenty feet': GEAR.ROPE, 'Copper kettle': GEAR.KETTLE,
+  'Flask of cider': GEAR.FLASK, 'Map fragment': GEAR.MAP, 'Pointed cap': GEAR.CAP, 'Short sword': GEAR.SWORD, 'Round shield': GEAR.SHIELD,
+};
+const TUNIC_OF = { 'Red tunic': 1, 'Blue tunic': 2, 'Russet tunic': 3 };   // (0: the green one you start in)
+const wardrobe = { tunic: 0, had: {}, force: null };   // (force: gear the tools set for pictures, or null)
+function updateGear() {
+  let bits = 0;
+  const owned = {};
+  for (const m of world.merchants) for (const g of m.goods) if (g.owned > 0) {
+    bits |= GEAR_OF[g.name] || 0;
+    if (TUNIC_OF[g.name]) owned[g.name] = (owned[g.name] || 0) + g.owned;
+  }
+  for (const n in owned) if (owned[n] > (wardrobe.had[n] || 0)) wardrobe.tunic = TUNIC_OF[n];   // (a tunic just bought is put on)
+  if (wardrobe.tunic && !Object.keys(owned).some(n => TUNIC_OF[n] === wardrobe.tunic)) wardrobe.tunic = 0;   // (a new world: back in green)
+  wardrobe.had = owned;
+  hero.gear = wardrobe.force != null ? wardrobe.force : bits | wardrobe.tunic << 12;
+}
+// For the tools: wear these (GEAR names, e.g. ['CLOAK', 'LANTERN']) and this tunic (0 green, 1 red,
+// 2 blue, 3 russet) whatever you own; null goes back to what you own.
+function setGear(names, tunic = 0) {
+  wardrobe.force = names ? names.reduce((b, n) => b | GEAR[n], 0) | (tunic & 3) << 12 : null;
+  updateGear();
+}
 function updateHero(dt) {
   const walking = view3.on && player.mode === 'walk';
   hero.on = walking ? 1 : 0;
+  updateGear();
+  hero.x = cam.x; hero.z = cam.z; hero.y = player.mode === 'walk' ? player.feetY : cam.y - EYE;   // (the lantern lights the way in any view)
   Object.assign(viewCam, { x: cam.x, y: cam.y, z: cam.z, yaw: cam.yaw, pitch: cam.pitch });
   if (!walking) { view3.lastX = NaN; return; }
   // the hero turns toward where they walk, and walks on
@@ -5310,7 +5403,7 @@ window.TV = {
   regenerate, setMode, update, updateMerchants, updateNearest, openPanel, closePanel, groundAt, deckAt,
   setHour: h => { clock.hours = h; updateLighting(); },
   setWeather, updateWeather, weather, wx, weatherAt,
-  setThird, updateHero, view3, viewCam, hero, terrainHeight, solidAt,
+  setThird, updateHero, view3, viewCam, hero, terrainHeight, solidAt, setGear, wardrobe, GEAR,
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
   renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0

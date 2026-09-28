@@ -14,7 +14,7 @@ export const MAC_METRICS = `(() => {
 export const HIDE_OVERLAYS = '#hud,#help,#hint,#prompt,#panel{display:none!important}';
 
 // Put the world into a scene's state and draw exactly one frame at page time tMs.
-// scene: { seed, hour, cam: {x,y,z,yaw,pitch}, merchants: [{i, s}] , t, view }
+// scene: { seed, hour, cam: {x,y,z,yaw,pitch}, merchants: [{i, s}] , t, view, weather, third, gear: ['CLOAK', ...], tunic, heroFace }
 export async function showScene(page, scene) {
   await page.evaluate(sc => {
     const TV = window.TV;
@@ -35,6 +35,8 @@ export async function showScene(page, scene) {
     const TV = window.TV;
     Object.assign(TV.cam, sc.cam);
     if (sc.third) { TV.setMode('walk'); TV.setThird(true); }   // (v2: the hero stands where the eyes are, and the camera goes behind them)
+    if (TV.setGear) TV.setGear(sc.gear || null, sc.tunic || 0);   // (v2: what the hero wears, or what you own)
+    if (sc.third && sc.heroFace != null) TV.view3.face = TV.cam.yaw + sc.heroFace * Math.PI / 180;   // (v2: the hero turned, degrees from the way you look)
     TV.setHour(sc.hour);   // again, now that the frame above blended the palette for this hour (lights, darkness)
     for (const m of sc.merchants || []) { const M = TV.world.merchants[m.i]; M.s = m.s; M.dir = m.dir ?? 1; if (m.walked != null) M.walked = m.walked; }
     TV.updateMerchants(0);
