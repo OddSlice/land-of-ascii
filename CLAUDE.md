@@ -4,7 +4,9 @@ An explorer drawn as a mosaic of text glyphs, walked as a hero seen from behind 
 
 Read `docs/phase1.md` first. It explains how a frame is drawn, the workers, the tests, measured speed and the open issues.
 
-**Phase 3 is in progress: read `docs/phase3.md`.** It is Martin's direction after phase 2's second step (third person, a bigger and more open world after Ocarina of Time, no flicker, gear that shows on your hero, then settlements), the plan in five steps, and each step as it is built.
+**Phase 4 is in progress: read `docs/phase4.md`** (castles with a purpose after Orthodox churches, castles spread out with towns, roads, ground, climbable mountains). The game is public and playable at https://oddslice.github.io/land-of-ascii/ (GitHub Pages from `main`): every push to `main` is live, so keep `main` playable.
+
+**Phase 3 is done: `docs/phase3.md`.** It is Martin's direction after phase 2's second step (third person, a bigger and more open world after Ocarina of Time, no flicker, gear that shows on your hero, then settlements), the plan in five steps, and each step as it is built.
 
 **Phase 2's brief is `docs/phase2-world.md`**, and its steps are recorded in `docs/phase2.md` (steps 1 and 2 built; its settlements become phase 3's step 5). It is the brief: varied land (regions, terrain, weather, bridges), villages and towns, people and animals, how the tests change once world generation changes, and the order of work (a design pass, then land, settlements, people and animals, finish), with a commit and screenshots after each step. `docs/phase2.md` records each step as it is built: what, the numbers, the tests, the speed.
 
@@ -34,6 +36,7 @@ In file order:
    - merchant poses (`merchantPose`, main thread) and `frameDesc`;
    - the third person: `updateHero` places `viewCam`, the camera behind your hero, and fills `hero`, their pose for the renderer (`V3_*` set the camera: distance, angles, tilt limit); `updateGear` turns the goods you own into `hero.gear` (`GEAR` bits, `GEAR_OF`, the tunic bought last);
    - the weather: `weatherAt` is each day's plan, `updateWeather` works out `wx`, what the renderer draws this frame;
+   - the legend (`updateLegend`: the keys, each switch's current choice, a note when a setting changes; it replaces v1's `#help`, which is hidden);
    - the main loop, boot, and `window.TV`.
 
 ## Rules

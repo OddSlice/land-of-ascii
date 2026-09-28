@@ -437,6 +437,21 @@ console.log('6. third person, seed 42');
     if (bad) fail(`${what}: ${bad}`);
     else console.log(`  ${what}: ${r.steps} steps, the camera at least ${r.clear.toFixed(2)} above the ground and never in a building, squeezed into the eyes on ${r.squeezed}; the hero faced the way they walked (${r.faceChecks} checks)`);
   }
+  // Starting the way the game does (no step at dt 0 first): after half a second of walking the hero's
+  // legs are moving (a first frame with nothing to measure from once left the walk frozen for good)
+  const fresh = await p2.evaluate(() => {
+    const TV = window.TV, c = TV.cam;
+    TV.setMode('fly'); c.x = 510.5; c.z = 276.5; c.yaw = 0; c.pitch = 0; c.y = TV.groundAt(c.x, c.z, 1e9) + 1.55; TV.setMode('walk');
+    TV.view3.on = true; TV.view3.lastX = NaN; TV.view3.speed = 0;
+    for (const k of Object.keys(TV.keys)) TV.keys[k] = false;
+    const w0 = TV.view3.walked;
+    TV.keys.KeyW = true;
+    for (let i = 0; i < 30; i++) { TV.update(1 / 60); TV.updateHero(1 / 60); }
+    TV.keys.KeyW = false;
+    return { moving: TV.hero.moving, speed: TV.view3.speed, walked: TV.view3.walked - w0 };
+  });
+  if (!(fresh.moving === 1 && Number.isFinite(fresh.speed) && fresh.walked > 2)) fail(`walking from a fresh start: ${JSON.stringify(fresh)}`);
+  else console.log(`  from a fresh start, the legs move (${fresh.walked.toFixed(1)} cells walked, speed ${fresh.speed.toFixed(1)})`);
   // V and flying give back your own eyes; V again brings the hero back
   const r = await p2.evaluate(() => {
     const TV = window.TV, c = TV.cam, v = TV.viewCam, same = () => v.x === c.x && v.y === c.y && v.z === c.z && v.yaw === c.yaw && v.pitch === c.pitch;

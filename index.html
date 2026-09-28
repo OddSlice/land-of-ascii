@@ -14,14 +14,38 @@
   html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: var(--font); color: var(--hud); }
   canvas { display: block; width: 100vw; height: 100vh; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges; image-rendering: pixelated; }
 
-  #hud { position: fixed; top: 12px; left: 12px; font-size: 13px; line-height: 1.5; background: rgba(0,0,0,.35); padding: 8px 10px; pointer-events: none; }
+  #hud { position: fixed; top: 12px; left: 12px; font-size: 13px; line-height: 1.5; background: rgba(6,6,6,.55); border: 1px solid rgba(216,200,160,.14); padding: 7px 11px; pointer-events: none; }
   #hud .row { white-space: pre; }
-  #hud .lbl { color: var(--hud-dim); }
+  #hud .lbl { color: #9d9380; }
   #seed { pointer-events: auto; font: inherit; color: var(--hud); background: transparent; border: 0; border-bottom: 1px solid var(--hud-dim); width: 8ch; padding: 0; outline: none; -moz-appearance: textfield; }
   #seed::-webkit-outer-spin-button, #seed::-webkit-inner-spin-button { -webkit-appearance: none; }
   #seed:focus { border-bottom-color: var(--hud); }
 
-  #help { position: fixed; left: 12px; bottom: 12px; font-size: 12px; color: var(--hud-dim); background: rgba(0,0,0,.35); padding: 6px 10px; pointer-events: none; white-space: pre; }
+  #help { display: none; }   /* (v1's help line, kept up to date by v1's code: the legend below replaces it) */
+
+  /* The legend: the keys by group, each switch's choices with the current one lit, a line on what it means */
+  :root { --amber: #f0c870; --dim2: #6f675a; }
+  #legend { position: fixed; left: 12px; bottom: 12px; max-width: min(680px, calc(100vw - 24px)); font-size: 12px; line-height: 1.95; color: var(--hud-dim);
+    background: rgba(6,6,6,.55); border: 1px solid rgba(216,200,160,.14); padding: 7px 12px 8px; pointer-events: none; }
+  #legend .row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 16px; }
+  #legend .grp { width: 7ch; color: var(--hud); font-size: 11px; letter-spacing: .14em; }
+  #legend .it { white-space: nowrap; }
+  #legend .opt { color: var(--dim2); }
+  #legend .opt.on { color: var(--amber); }
+  #legend .sep { color: #474238; margin: 0 5px; }
+  #legend .note { color: var(--hud-dim); }
+  #legend .note::before { content: '— '; color: #474238; }
+  kbd { display: inline-block; min-width: 1.7ch; padding: 0 5px; margin-right: 3px; font: inherit; font-size: 11px; line-height: 1.55; color: var(--hud); text-align: center;
+    border: 1px solid #7a7262; border-bottom-width: 2px; border-radius: 3px; background: rgba(216,200,160,.07); }
+
+  /* A note at the top whenever a setting changes: what it is now, and what that means */
+  #toast { position: fixed; top: 14px; left: 50%; transform: translate(-50%, -8px); min-width: 300px; max-width: calc(100vw - 32px); text-align: center;
+    background: rgba(8,8,8,.88); border: 1px solid rgba(240,200,112,.45); padding: 7px 18px 9px; opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+  #toast b { display: block; font-weight: normal; font-size: 11px; letter-spacing: .24em; color: var(--hud-dim); }
+  #toast .val { display: block; margin: 1px 0 2px; font-size: 16px; letter-spacing: .1em; color: var(--amber); }
+  #toast small { display: block; font-size: 12px; color: var(--hud); }
+  @media (prefers-reduced-motion: reduce) { #toast { transition: none; } }
 
   #prompt { position: fixed; top: 176px; left: 12px; font-size: 13px; color: var(--hud); background: rgba(0,0,0,.45); padding: 6px 10px; pointer-events: none; white-space: pre; }
   #prompt[hidden] { display: none; }
@@ -46,6 +70,10 @@
   #hint h1 { margin: 0; font-size: 22px; letter-spacing: .35em; font-weight: normal; }
   #hint p { margin: 0; font-size: 14px; }
   #hint small { color: var(--hud-dim); font-size: 12px; white-space: pre; text-align: center; line-height: 1.6; }
+  #hint .keys { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 20px; font-size: 13px; color: var(--hud-dim); max-width: calc(100vw - 48px); }
+  #hint .keys span { white-space: nowrap; }
+  #hint .touch { display: none; color: var(--amber); }
+  @media (pointer: coarse) { #hint .touch { display: block; } }
   #hint[hidden] { display: none; }
 </style>
 </head>
@@ -76,11 +104,15 @@
 
 <div id="help">WASD walk · SPACE jump · SHIFT sprint · E talk · mouse look · ESC release
 F fly mode · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look · V hero or eyes</div>
+<div id="legend"></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <div id="hint">
   <h1>LAND OF ASCII</h1>
   <p>Click to explore</p>
-  <small>WASD to walk · Space to jump · F to fly · Esc to release</small>
+  <div class="keys"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span><span><kbd>Space</kbd> jump</span><span><kbd>mouse</kbd> look around</span><span><kbd>E</kbd> talk and trade</span></div>
+  <div class="keys"><span><kbd>V</kbd> your hero or your own eyes</span><span><kbd>L</kbd> painted or mosaic</span><span><kbd>H</kbd> all the keys</span></div>
+  <small class="touch">This needs a keyboard and a mouse.</small>
 </div>
 
 <script>
@@ -5472,13 +5504,14 @@ function updateHero(dt) {
   Object.assign(viewCam, { x: cam.x, y: cam.y, z: cam.z, yaw: cam.yaw, pitch: cam.pitch });
   if (!walking) { view3.lastX = NaN; return; }
   // the hero turns toward where they walk, and walks on
-  const fresh = !(view3.lastX === view3.lastX);   // (just switched on, or back from flying)
-  const mx = wrapDelta(cam.x - view3.lastX), mz = wrapDelta(cam.z - view3.lastZ), moved = Math.hypot(mx, mz);
+  const fresh = !(view3.lastX === view3.lastX);   // (just switched on, or back from flying: nothing to measure a step from)
+  const mx = fresh ? 0 : wrapDelta(cam.x - view3.lastX), mz = fresh ? 0 : wrapDelta(cam.z - view3.lastZ), moved = Math.hypot(mx, mz);
   if (moved > 1e-4 && moved < 3) {
     view3.walked += moved;
     view3.face += wrapAngle(Math.atan2(mz, mx) - view3.face) * Math.min(1, dt * 10);
   } else if (fresh) view3.face = cam.yaw;   // (a fresh start faces the way you look)
   view3.speed += ((dt > 0 ? moved / dt : 0) - view3.speed) * Math.min(1, dt * 8);
+  if (!(view3.speed >= 0)) view3.speed = 0;   // (never let a bad frame stop the walk for good)
   view3.lastX = cam.x; view3.lastZ = cam.z;
   // in water (which you walk on, as in v1) the hero wades, drawn up to their thighs in it
   const ci = ((cam.z | 0) & MASK) * W + ((cam.x | 0) & MASK), wet = world.water[ci] && player.feetY < terrainHeight(cam.x, cam.z) + 0.3 ? V3_WADE : 0;
@@ -5533,6 +5566,63 @@ window.addEventListener('keydown', e => {
   if (e.target === seedInput || ui.open || e.repeat || e.code !== 'KeyL') return;
   looks.mode = (looks.mode + 1) % LOOK_NAMES.length;
   document.getElementById('look').textContent = LOOK_NAMES[looks.mode];
+});
+
+// =====================================================================
+//  LEGEND  (the keys on screen: what each does, and what is on now)
+// =====================================================================
+// It replaces v1's help line (#help, hidden): the keys in groups, each switch's choices with the
+// current one lit, and a line on what the style and the detail choices mean. Whenever a setting
+// changes (by its key or otherwise), a note at the top says what it is now. H folds the legend
+// away (remembered in this browser).
+const legendEl = document.getElementById('legend'), toastEl = document.getElementById('toast');
+const LOOK_NOTES = ['soft colour, a letter in each pixel', 'crisp glyphs, two colours to a cell'];
+const DETAIL_NOTES = ['the smallest cells: the sharpest, and the slowest', 'the usual: sharp and quick', 'bigger cells: softer, and faster', 'the biggest cells: the fastest'];
+const legend = { shown: true, last: null, timer: 0 };
+try { legend.shown = localStorage.getItem('loa-legend') !== 'hidden'; } catch (e) { /* (no storage: shown) */ }
+const kbd = k => `<kbd>${k}</kbd>`, item = (keys, text) => `<span class="it">${keys} ${text}</span>`;
+const pickOf = (list, cur) => list.map((o, i) => `<span class="opt${i === cur ? ' on' : ''}">${o}</span>`).join('<span class="sep">·</span>');
+const legendState = () => ({ fly: player.mode === 'fly', third: view3.on, look: looks.mode, cells: grid.preset, view: view.dist, fast: clock.scale > 1, seed: world.seed, drag: fallbackDrag, shown: legend.shown });
+function drawLegend(s) {
+  if (!s.shown) { legendEl.innerHTML = `<div class="row">${item(kbd('H'), 'show the keys')}</div>`; return; }
+  const rows = [
+    ['MOVE', item(kbd('W') + kbd('A') + kbd('S') + kbd('D'), s.fly ? 'fly' : 'walk'), item(kbd('Space'), s.fly ? 'up' : 'jump'), item(kbd('Shift'), s.fly ? 'down' : 'sprint'), item(kbd('F'), pickOf(['walk', 'fly'], s.fly ? 1 : 0))],
+    ['CAMERA', item(kbd('mouse'), s.drag ? 'drag to look' : 'look around'), item(kbd('V'), pickOf(['your hero', 'your own eyes'], s.third ? 0 : 1)), s.drag ? '' : item(kbd('Esc'), 'free the mouse')],
+    ['WORLD', item(kbd('E'), 'talk and trade'), item(kbd('T'), 'time ' + pickOf(['×1', '×10'], s.fast ? 1 : 0)), item(kbd('R'), 'a new world'), item(kbd('[') + kbd(']'), `view <span class="opt on">${s.view}</span>`)],
+    ['STYLE', item(kbd('L'), pickOf(['painted', 'mosaic'], s.look)), `<span class="note">${LOOK_NOTES[s.look]}</span>`],
+    ['DETAIL', item(kbd('−') + kbd('+'), pickOf(CELL_PRESETS.map(([w, h]) => `${w}×${h}`), s.cells)), `<span class="note">${DETAIL_NOTES[s.cells]}</span>`],
+    ['', item(kbd('H'), 'hide these keys')],
+  ];
+  legendEl.innerHTML = rows.map(([g, ...its]) => `<div class="row"><span class="grp">${g}</span>${its.join('')}</div>`).join('');
+}
+function toast(title, value, note) {
+  toastEl.innerHTML = `<b>${title}</b><span class="val">${value}</span>${note ? `<small>${note}</small>` : ''}`;
+  toastEl.classList.add('show');
+  clearTimeout(legend.timer);
+  legend.timer = setTimeout(() => toastEl.classList.remove('show'), 2600);
+}
+// every frame: when something changed, say what, and redraw
+function updateLegend() {
+  const s = legendState(), p = legend.last;
+  if (p && Object.keys(s).every(k => s[k] === p[k])) return;
+  if (p) {
+    const [cw, ch] = CELL_PRESETS[s.cells];
+    if (s.look !== p.look) toast('STYLE', LOOK_NAMES[s.look], LOOK_NOTES[s.look]);
+    else if (s.cells !== p.cells) toast('DETAIL', `${cw}×${ch} CELLS`, DETAIL_NOTES[s.cells]);
+    else if (s.view !== p.view) toast('VIEW DISTANCE', `${s.view} CELLS`, s.view > p.view ? 'further: a little more to draw' : 'nearer: quicker to draw');
+    else if (s.fly !== p.fly) toast(s.fly ? 'FLYING' : 'WALKING', s.fly ? 'SPACE UP · SHIFT DOWN' : 'ON YOUR OWN FEET', s.fly ? 'F to land' : '');
+    else if (s.third !== p.third) toast('CAMERA', s.third ? 'YOUR HERO' : 'YOUR OWN EYES', s.third ? 'seen from behind' : 'V to see your hero again');
+    else if (s.fast !== p.fast) toast('TIME', s.fast ? '×10' : '×1', s.fast ? 'the day runs ten times faster' : 'back to the usual pace');
+    else if (s.seed !== p.seed) toast('A NEW WORLD', `SEED ${s.seed}`, 'R for another');
+    else if (s.shown !== p.shown) toast('KEYS', s.shown ? 'SHOWN' : 'HIDDEN', s.shown ? 'H to hide them' : 'H to show them');
+  }
+  legend.last = s;
+  drawLegend(s);
+}
+window.addEventListener('keydown', e => {
+  if (e.target === seedInput || ui.open || e.repeat || e.code !== 'KeyH') return;
+  legend.shown = !legend.shown;
+  try { localStorage.setItem('loa-legend', legend.shown ? 'shown' : 'hidden'); } catch (err) { /* (no storage: this visit only) */ }
 });
 
 // Everything a frame needs that changes every frame, packed small.
@@ -5683,6 +5773,7 @@ function frame(now) {
   }
   stats.threads = pool.workers.length;
   updateHud(dt);
+  updateLegend();
   requestAnimationFrame(frame);
 }
 
