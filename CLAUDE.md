@@ -27,7 +27,11 @@ In file order:
    - the painted look (`paintCells`, `composePainted`): two square pixels per cell in continuous colour, one letter each, water mirrors;
    - the worker message interface.
 6. **Canvas and grid**, then input, movement and trade/HUD/lifecycle (ported).
-7. **Presentation:** the worker pool (`workerSource`, `startWorkers`, `syncWorkers`), merchant poses (`merchantPose`, main thread), `frameDesc`, the main loop, boot, and `window.TV`.
+7. **Presentation:**
+   - the worker pool (`workerSource`, `startWorkers`, `syncWorkers`);
+   - merchant poses (`merchantPose`, main thread) and `frameDesc`;
+   - the weather: `weatherAt` is each day's plan, `updateWeather` works out `wx`, what the renderer draws this frame;
+   - the main loop, boot, and `window.TV`.
 
 ## Rules
 
@@ -36,7 +40,8 @@ In file order:
   - The rest of the simulation (movement, input, trade, rivers, structures, roads, merchants, lighting) is still v1's code. For any change to it, add the exact edit to `tools/lib/v2-fixes.mjs`, so `check-verbatim.mjs` and `test-sim.mjs` keep proving nothing else moved. If a change is too big for a from/to edit, retire the relevant comparison and say so in the docs.
 - **`renderCore()` must stand alone.** Each worker is built from its source (`workerSource()`). Inside it, use only its own code, the constants and helpers `workerSource()` passes in, and the objects `world`, `cam`, `clock`, `view`, `cur`, `light` and `COL`. A new constant or helper used inside the core must be added to `workerSource()`. Main-thread-only things (`ui`, `player`, the DOM) stay outside.
 - **Workers and the main thread must agree.** Rendering with `?threads=0` must give the same pixels as the default workers, in both looks. Check it after renderer changes (diff two `tools/shoot.mjs` runs, one with `--threads 0`, with `--look painted` and `--look mosaic`). Anything that reads neighbouring columns must work within the columns a stripe computes (`grid.xr0`..`grid.xr1`, one cell wider than it draws).
-- **Two looks.** Painted (the default since the step 1 review) and mosaic (step 1's; L switches, `?look=mosaic`). A renderer change must keep both working.
+- **Two looks.** Painted (the default since the step 1 review) and mosaic (step 1's; L switches, `?look=mosaic`). A renderer change must keep both working. The mosaic look draws rain, snow and fireflies as marks, and has no fog or aurora.
+- **Weather is the same for a given seed, day and hour.** `wx` reaches the workers with every frame, and the storm greying is applied to the palette before it is sent.
 - **Drawing rules:**
   - Glyphs are bitmasks built in code, never a font.
   - Every colour comes from the palette ramps: stepped in the mosaic look, blended between steps in the painted look.
@@ -67,7 +72,8 @@ Test harness notes:
 
 - Tests freeze page time (`__setNow` / `__step` in `tools/lib/harness.mjs`) and wait for the workers with `TV.whenIdle()`.
 - A render worker that crashes falls back to the main thread without a visible sign, so the harness fails any run in which one does.
-- Scenes in `tools/scenes.json` may carry their own `seed` and `view` (view distance). `TV.defs` exposes the palettes, materials and regions to the tools.
+- Scenes in `tools/scenes.json` may carry their own `seed`, `view` (view distance) and `weather` (pinned; without it a scene is clear). `TV.defs` exposes the palettes, materials and regions to the tools.
+- The harness also fails any run with an error in the page.
 - Pointer lock makes headless Chromium crawl (v1 drops to 4 fps), so tests never lock the pointer.
 
 ## Where things stand
@@ -80,7 +86,12 @@ Test harness notes:
 - **Phase 2 is under way**, following `docs/phase2-world.md`.
   - **Step 1 (design pass) is built**: regions, terrain shaping, five new ground materials, rock strata, trees by region, castles in clearings. See `docs/phase2.md`. Martin confirmed the regions and the palette on 28 Sep.
   - Martin's review of step 1 (Glyphmoor as the reference) led to the painted look, shadows and hollows, steadier ground and water mirrors; see "After step 1" in `docs/phase2.md`. He confirmed it: the painted look stays the default, and the living-world items are left to be iterated on.
-  - Step 2 (land), part 1 is built: plants by region (palms, cacti, reeds, birches, snow pines, meadow flowers), cleaner ground (walls, material edges, shores, reflections) and bridges (`buildBridges`). See "Step 2, part 1" in `docs/phase2.md`. Next: weather (rain, snow, dawn fog) and night life (fireflies, auroras).
+  - **Step 2 (land) is built** (see "Step 2, part 1" and "part 2" in `docs/phase2.md`):
+    - plants by region (palms, cacti, reeds, birches, snow pines, meadow flowers);
+    - cleaner ground (walls, material edges, shores, reflections);
+    - bridges (`buildBridges`);
+    - weather from the seed and the day (rain, snow, dawn valley fog), with fireflies and auroras at night.
+  - Next is step 3: settlements.
 - **Speed on Martin's Mac** (M1 Max, painted look, ten scenes): Chromium 5.7–7.5 ms a frame, Firefox 7.3–9.9 ms, WebKit 6.5–14.1 ms (its colour stage varies a lot between runs), all at 60 fps. A world generates in about 0.5 s.
 - **Rough edges:**
   - roads at a shallow angle still step at close range;

@@ -141,7 +141,7 @@ const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8, F_FACE = 16, F_FL
 // Three keyframes, blended by the clock. Each carries the lighting constants the world is shaded
 // with and the hand-built colour ramps everything is drawn in. Every ramp runs dark to light and
 // is hue-shifted: shadows lean cool and lights lean warm. A ramp has the same length in all three.
-const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack', 'sand', 'redrock', 'drygrass', 'mud', 'reeds', 'birch', 'palm', 'cactus', 'dead', 'bloomR', 'bloomY', 'bloomV'];
+const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack', 'sand', 'redrock', 'drygrass', 'mud', 'reeds', 'birch', 'palm', 'cactus', 'dead', 'bloomR', 'bloomY', 'bloomV', 'aurora', 'firefly', 'rain'];
 const R = {};
 RAMP_NAMES.forEach((n, i) => { R[n] = i; });
 const KEYFRAMES = {
@@ -183,6 +183,9 @@ const KEYFRAMES = {
       bloomR: ['#6e1e3a', '#b8324a', '#e8606a', '#ffa0a0'],
       bloomY: ['#7a5a14', '#c8961e', '#f2c83a', '#fff08a'],
       bloomV: ['#3e2a6e', '#6a48b0', '#9a7ae0', '#c8b2ff'],
+      aurora: ['#2a6a58', '#46c090', '#9ae8c4', '#c0a8ff'],
+      firefly: ['#8a9a30', '#c8e04a', '#f0ff9a'],
+      rain: ['#7f8c99', '#a7b4c0', '#cfd8e0'],
     },
   },
   dusk: {
@@ -223,6 +226,9 @@ const KEYFRAMES = {
       bloomR: ['#3e1630', '#782640', '#b04a52', '#e0807a'],
       bloomY: ['#4a3018', '#8a5a22', '#c48a36', '#eab35a'],
       bloomV: ['#2a1c46', '#4a3272', '#7656a0', '#a488c8'],
+      aurora: ['#1e5a4a', '#3ab884', '#8ce0b8', '#b096f0'],
+      firefly: ['#7a8a2a', '#c0d848', '#ecff96'],
+      rain: ['#5e6674', '#8a93a2', '#b4bcc8'],
     },
   },
   night: {
@@ -263,6 +269,9 @@ const KEYFRAMES = {
       bloomR: ['#140a14', '#241020', '#3a1a2c', '#52283a'],
       bloomY: ['#12100c', '#221c14', '#36301e', '#4c442c'],
       bloomV: ['#0c0a1a', '#16122c', '#221c40', '#322a58'],
+      aurora: ['#0e3a34', '#22b07a', '#6cf0b0', '#a67cff'],
+      firefly: ['#6a7a20', '#c4e24a', '#f6ffa0'],
+      rain: ['#2c3440', '#48525e', '#6a7684'],
     },
   },
 };
@@ -280,7 +289,7 @@ const COL = {
   glow: 0, bird: 0,
 };
 const NO_FOG = new Uint8Array(RAMP_NAMES.length);
-for (const n of ['sky', 'sun', 'moon', 'fire', 'star', 'ink', 'haze', 'lit']) NO_FOG[R[n]] = 1;
+for (const n of ['sky', 'sun', 'moon', 'fire', 'star', 'ink', 'haze', 'lit', 'aurora', 'firefly', 'rain']) NO_FOG[R[n]] = 1;
 
 // Packed little-endian RGBA pixels, the form the frame buffer takes. Every channel is clamped.
 const BLACK = 0xff000000;
@@ -298,6 +307,7 @@ function blendPalette(h) {
     for (let i = 0; i < out.length; i++) out[i] = mixp(A[i], B[i]);
   }
   COL.glow = mixp(a.glowRGB, b.glowRGB); COL.bird = mixp(a.birdRGB, b.birdRGB);
+  if (wx.storm > 0.001) stormTint(wx.storm);
   // Far ramps: three steps, each pulled halfway toward the haze at the same brightness.
   const hz = COL.near[R.haze];
   const half = (p, q) => pack(((p & 255) + (q & 255)) >> 1, (((p >> 8) & 255) + ((q >> 8) & 255)) >> 1, (((p >> 16) & 255) + ((q >> 16) & 255)) >> 1);
@@ -306,6 +316,24 @@ function blendPalette(h) {
     if (NO_FOG[r] || n < 3) { for (let i = 0; i < 3; i++) F[i] = L[Math.min(n - 1, i)]; continue; }
     F[0] = half(L[1], hz[1]); F[1] = half(L[Math.max(1, n - 2)], hz[2]); F[2] = half(L[n - 1], hz[3]);
   }
+}
+
+// Under rain clouds every colour turns greyer and darker, the sky and the haze greyest of all (but
+// not the lights: sun, moon, fire, lamplight, stars, aurora, fireflies, the rain itself); the
+// sun's share of the light falls, so shadows soften, and the stars go.
+const STORM_KEEP = new Uint8Array(RAMP_NAMES.length);
+for (const n of ['sun', 'moon', 'fire', 'lit', 'star', 'aurora', 'firefly', 'rain']) STORM_KEEP[R[n]] = 1;
+function stormTint(a) {
+  for (let r = 0; r < RAMP_NAMES.length; r++) {
+    if (STORM_KEEP[r]) continue;
+    const L = COL.near[r], sky = r === R.sky || r === R.haze || r === R.cloud;
+    const g = (sky ? 0.8 : 0.45) * a, dk = 1 - (sky ? 0.14 : 0.3) * a;
+    for (let i = 0; i < L.length; i++) {
+      const c = L[i], cr = c & 255, cg = (c >> 8) & 255, cb = (c >> 16) & 255, lum = cr * 0.3 + cg * 0.59 + cb * 0.11;
+      L[i] = pack((cr + (lum * 0.95 - cr) * g) * dk, (cg + (lum * 0.99 - cg) * g) * dk, (cb + (lum * 1.08 - cb) * g) * dk);
+    }
+  }
+  cur.diffuse *= 1 - 0.6 * a; cur.stars *= 1 - a;
 }
 
 // =====================================================================
@@ -453,9 +481,44 @@ function generateWorld(seed) {
   placeLights(rng);
   bridgeLights();
 
-  // 7. Materials and lighting normals, then what shades the ground (hollows, and whatever stands on it).
+  // 7. Materials and lighting normals, then what shades the ground (hollows, and whatever stands on it),
+  //    and where dawn fog lies.
   paintGround();
   computeOcclusion();
+  makeFogField();
+}
+
+// Dawn fog lies in the valleys like a lake: its surface is the valley floor (the lowest ground within
+// FOG_REACH cells, smoothed) and FOG_DEPTH above it, and never lower than a mist over the water. So
+// valley floors and basins fill with it, and slopes, hills and ridges stand out of it.
+const FOG_REACH = 16, FOG_DEPTH = 4, FOG_MIST = 2.5;
+function makeFogField() {
+  const { H, seaLevel } = world, F = world.fogTop || (world.fogTop = new Float32Array(N)), T = new Float32Array(N);
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {   // lowest ground within reach: across...
+    let m = Infinity;
+    for (let k = -FOG_REACH; k <= FOG_REACH; k++) { const h = H[z * W + ((x + k) & MASK)]; if (h < m) m = h; }
+    T[z * W + x] = m;
+  }
+  for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) {   // ...then down
+    let m = Infinity;
+    for (let k = -FOG_REACH; k <= FOG_REACH; k++) { const h = T[((z + k) & MASK) * W + x]; if (h < m) m = h; }
+    F[z * W + x] = m;
+  }
+  const R = 8, n = 2 * R + 1;   // smoothed (a running box average, twice each way, wrapping)
+  for (let pass = 0; pass < 2; pass++) {
+    for (let z = 0; z < W; z++) {
+      const r = z * W;
+      let sum = 0;
+      for (let k = -R; k <= R; k++) sum += F[r + (k & MASK)];
+      for (let x = 0; x < W; x++) { T[r + x] = sum / n; sum += F[r + ((x + R + 1) & MASK)] - F[r + ((x - R) & MASK)]; }
+    }
+    for (let x = 0; x < W; x++) {
+      let sum = 0;
+      for (let k = -R; k <= R; k++) sum += T[(k & MASK) * W + x];
+      for (let z = 0; z < W; z++) { F[z * W + x] = sum / n; sum += T[((z + R + 1) & MASK) * W + x] - T[((z - R) & MASK) * W + x]; }
+    }
+  }
+  for (let i = 0; i < N; i++) F[i] = Math.max(F[i] + FOG_DEPTH, seaLevel + FOG_MIST);
 }
 
 // =====================================================================
@@ -2293,6 +2356,13 @@ function mipHeight(x, z, l) {   // bilinear, from level l (0: the heightmap itse
   const a = S[r0 + c0] + (S[r0 + c1] - S[r0 + c0]) * tx, b = S[r1 + c0] + (S[r1 + c1] - S[r1 + c0]) * tx;
   return a + (b - a) * tz;
 }
+// The dawn fog's surface over (x, z), blended between cell centres.
+function fogTopAt(x, z) {
+  const F = world.fogTop, fx = x - 0.5, fz = z - 0.5, x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
+  const r0 = (z0 & MASK) * W, r1 = ((z0 + 1) & MASK) * W, c0 = x0 & MASK, c1 = (x0 + 1) & MASK;
+  const a = F[r0 + c0] + (F[r0 + c1] - F[r0 + c0]) * tx, b = F[r1 + c0] + (F[r1 + c1] - F[r1 + c0]) * tx;
+  return a + (b - a) * tz;
+}
 function marchHeight(x, z, dist) {
   const lf = Math.log2(0.5 + dist * 0.008);   // the march's step at this distance, as a mip level
   if (!(lf > 0)) return terrainHeight(x, z);
@@ -3664,6 +3734,22 @@ function drawOverlays(t) {
     GL[i] = markAt(b.frame === 0 ? MK.birdv : b.frame === 1 ? MK.birdm : MK.birdup, b.x - c * cellW, b.y - r * cellH + 1);
     FG[i] = COL.bird;
   }
+  // weather, as marks: fireflies on still nights, then rain (ticks) and snow (flakes) in front of everything
+  const ffOn = smoothstep(0.55, 0.85, light.darkness) * (1 - wx.rain) * (1 - wx.snow), FF = COL.near[R.firefly];
+  if (ffOn > 0) forEachFirefly(t, (fx, fy, fz, b) => {
+    const rx = fx - vCamX, ry = fy - vCamY, rz = fz - vCamZ, zc = rx * vFx + rz * vFz;
+    if (zc < 0.8 || b * ffOn < 0.25) return;
+    const sx = grid.w * 0.5 + (rx * vRx + rz * vRz) / zc * grid.f, sy = vHor - ry / zc * grid.f, c = Math.floor(sx / cellW), r = Math.floor(sy / cellH);
+    if (c < c0 || c >= c1 || r < 0 || r >= rows || cellDepth(c, r) < zc) return;
+    GL[r * cols + c] = markAt(MK.dot, sx - c * cellW, sy - r * cellH); FG[r * cols + c] = FF[b > 0.6 ? FF.length - 1 : 1];
+  });
+  if (wx.rain > 0.01 || wx.snow > 0.01) forEachDrop(t, rows * 2, cols, (c, pr, a, snow, near) => {
+    const r = pr >> 1;
+    if (c < c0 || c >= c1 || r < 0 || r >= rows || (!near && a < 0.3)) return;
+    const i = r * cols + c;
+    GL[i] = snow ? markAnywhere(near ? MK.flake : MK.dot, hash2(c, r, 7)) : markAnywhere(MK.tick, hash2(c, pr, 8));
+    FG[i] = snow ? COL.near[R.snow][COL.near[R.snow].length - 1] : COL.near[R.rain][near ? 2 : 1];
+  });
 }
 
 // =====================================================================
@@ -3695,6 +3781,8 @@ const LETTERS = {
   'w': ['.....', '#...#', '#.#.#', '.#.#.', '.....'],
   '!': ['..#..', '..#..', '..#..', '.....', '..#..'],
   'i': ['..#..', '.....', '..#..', '..#..', '..#..'],
+  '/': ['....#', '...#.', '..#..', '.#...', '#....'],
+  '\\': ['#....', '.#...', '..#..', '...#.', '....#'],
 };
 const LETTER_LIST = Object.keys(LETTERS), LT = {};
 LETTER_LIST.forEach((ch, k) => { LT[ch] = k + 1; });   // letter ids: 0 is none
@@ -3714,6 +3802,7 @@ const FLOWER_AT = new Float32Array(Object.keys(MAT).length);
 FLOWER_AT[MAT.GRASS] = 0.45; FLOWER_AT[MAT.GRASS2] = 0.28; FLOWER_AT[MAT.DRYGRASS] = 0.1; FLOWER_AT[MAT.REEDS] = 0.12;
 const BLOOMS = [R.bloomR, R.bloomY, R.bloomV, R.birch];
 const shareM = new Int32Array(4), shareW = new Float32Array(4);   // the materials around a point and their shares
+let aurCol = new Float32Array(0), aurRow = new Float32Array(0), aurCol2 = new Float32Array(0);   // the aurora's pattern this frame
 function addShare(m, w, n) {
   for (let q = 0; q < n; q++) if (shareM[q] === m) { shareW[q] += w; return n; }
   shareM[n] = m; shareW[n] = w; return n + 1;
@@ -3744,7 +3833,33 @@ function paintCells(t) {
     const F = listF[l];
     for (let k = 0; k < L.length; k++) { const c = L[k]; F[k * 3] = c & 255; F[k * 3 + 1] = (c >> 8) & 255; F[k * 3 + 2] = (c >> 16) & 255; }
   }
-  const nHaze = COL.near[R.haze].length, nWarm = COL.near[R.lit].length, bloomOpen = 1 - Math.min(1, cur.stars * 1.6);
+  const nHaze = COL.near[R.haze].length, nWarm = COL.near[R.lit].length, bloomOpen = 1 - smoothstep(0.25, 0.6, light.darkness);
+  // weather: how much the ground darkens wet, the dawn fog (its colour, and whether you stand in it)
+  // and the aurora's strength
+  const wetDark = 0.1 * wx.wet, vfog = wx.fog * 0.95, aur = wx.aurora * smoothstep(0.35, 0.75, light.darkness);
+  let fogR = 0, fogG = 0, fogB = 0, camInFog = 0;
+  if (aur > 0) {   // the aurora's pattern: along the sky by column (where curtains hang, their fine rays),
+    // and up it by row (the lower edge, and the colour: green low, violet high)
+    if (aurCol.length < grid.RW * 2) aurCol = new Float32Array(grid.RW * 2);
+    if (aurRow.length < RH * 4) { aurRow = new Float32Array(RH * 4); aurCol2 = new Float32Array(RH); }
+    for (let x = grid.xr0; x < grid.xr1; x++) {   // (every ray column this stripe computes, margins included)
+      const az = cam.yaw + Math.atan(rayP[x]), north = 0.35 + 0.65 * Math.max(0, -Math.sin(az));
+      const band = 0.5 + 0.5 * Math.sin(az * 2.3 + Math.sin(az * 5.1 + t * 0.07) * 1.4 + t * 0.03);
+      const streaks = 0.65 + 0.35 * Math.sin(az * 31 + t * 0.35 + Math.sin(az * 11 + t * 0.2) * 2.5);
+      aurCol[x * 2] = band; aurCol[x * 2 + 1] = band * band * streaks * north;
+    }
+    const nA = COL.near[R.aurora].length;
+    for (let y = 0; y < RH; y++) {
+      const e = Math.atan(rayQ[y]);
+      aurRow[y * 4] = e > 0.06 ? smoothstep(0.08, 0.2, e) : 0; aurRow[y * 4 + 1] = e;
+      listColour(R.aurora, (0.9 + 2.1 * smoothstep(0.12, 0.7, e)) * (nA - 1) / 3, 3);
+      aurRow[y * 4 + 2] = tmpC[3] * 0.9; aurRow[y * 4 + 3] = tmpC[4] * 0.9; aurCol2[y] = tmpC[5] * 0.9;
+    }
+  }
+  if (vfog > 0) {
+    listColour(LIST_HAZE, nHaze - 1, 0); fogR = tmpC[0] + (238 - tmpC[0]) * 0.45; fogG = tmpC[1] + (240 - tmpC[1]) * 0.45; fogB = tmpC[2] + (244 - tmpC[2]) * 0.45;
+    camInFog = smoothstep(-0.5, 1.5, fogTopAt(vCamX, vCamZ) - vCamY);
+  }
   const glowR = COL.glow & 255, glowG = (COL.glow >> 8) & 255, glowB = (COL.glow >> 16) & 255;
   let sunX = 0, sunY = 0, sunR = 1;
   if (sunScreen) { sunX = sunScreen.x; sunY = sunScreen.y; sunR = sunScreen.r; }
@@ -3762,6 +3877,12 @@ function paintCells(t) {
         const ex = ((x + 0.5) * rayW - sunX) / sunR, ey = ((y + 0.5) * rayH - sunY) / sunR, d = Math.sqrt(ex * ex + ey * ey);
         if (d > 1 && d < 5) { const gl = Math.exp(-(d - 1) * 0.9) * 0.85; r += (glowR - r) * gl; g += (glowG - g) * gl; b += (glowB - b) * gl; }
       }
+      if (aur > 0 && aurRow[y * 4] > 0) {   // aurora: curtains hanging across the northern half of the sky, fixed to the compass
+        const band = aurCol[x * 2], e = aurRow[y * 4 + 1];
+        const a = aur * aurCol[x * 2 + 1] * aurRow[y * 4] * (1 - smoothstep(0.3 + 0.3 * band, 0.95, e));
+        if (a > 0.01) { r += aurRow[y * 4 + 2] * a; g += aurRow[y * 4 + 3] * a; b += aurCol2[y] * a; }
+      }
+      if (camInFog > 0) { const a = camInFog * vfog * 0.9; r += (fogR - r) * a; g += (fogG - g) * a; b += (fogB - b) * a; }
       rayCol[o] = r; rayCol[o + 1] = g; rayCol[o + 2] = b; continue;
     }
     let P = pos[i];
@@ -3784,6 +3905,7 @@ function paintCells(t) {
     }
     if (k === K.TERRAIN) {
       if (flags[i] & F_SHADOW) P = P > 0.18 ? P - 0.18 : 0;
+      if (wetDark > 0 && !(flags[i] & F_WATER)) P -= wetDark;   // wet after rain
       // the ground: the colours of the four cells around the point the ray met, blended by how near
       // it lies to each, so colour flows across the ground instead of jumping from cell to cell
       const pr = rayP[x], d = depth[i], fx = vCamX + (vFx + vRx * pr) * d - 0.5, fz = vCamZ + (vFz + vRz * pr) * d - 0.5;
@@ -3853,6 +3975,13 @@ function paintCells(t) {
     if (fg > 0) {
       listColour(LIST_HAZE, Math.min(nHaze - 1, P * 1.4 + fg * 2.2), 3);
       r += (tmpC[3] - r) * fg; g += (tmpC[4] - g) * fg; b += (tmpC[5] - b) * fg;
+    }
+    if (vfog > 0) {   // dawn fog lying in the valleys: thicker the deeper in it a thing stands and the further off it is
+      const d = depth[i], pr = rayP[x], deep = fogTopAt(vCamX + (vFx + vRx * pr) * d, vCamZ + (vFz + vRz * pr) * d) - (vCamY + rayQ[y] * d);
+      let a = deep > -0.5 ? smoothstep(-0.5, 3, deep) * (1 - Math.exp(-d / 10)) : 0;
+      if (camInFog > 0) a = Math.max(a, camInFog * (1 - Math.exp(-d / 10)));
+      a *= vfog;
+      if (a > 0.004) { r += (fogR - r) * a; g += (fogG - g) * a; b += (fogB - b) * a; }
     }
     rayCol[o] = r; rayCol[o + 1] = g; rayCol[o + 2] = b;
   }
@@ -3947,6 +4076,86 @@ function paintCells(t) {
     if (depth[ri] < bd.zc) continue;
     G[pr * cols + c] = LT.v; FG[pr * cols + c] = COL.bird;
   }
+
+  // 5. fireflies over the grass and the reed beds on a still night, blinking, hidden behind whatever
+  //    stands in front of them; each lights its half cell and a little around it
+  const ffOn = smoothstep(0.55, 0.85, light.darkness) * (1 - wx.rain) * (1 - wx.snow);
+  if (ffOn > 0) {
+    const nF = COL.near[R.firefly].length;
+    forEachFirefly(t, (fx, fy, fz, b) => {
+      const rx = fx - vCamX, ry = fy - vCamY, rz = fz - vCamZ, zc = rx * vFx + rz * vFz;
+      if (zc < 0.8) return;
+      const sx = grid.w * 0.5 + (rx * vRx + rz * vRz) / zc * grid.f, sy = vHor - ry / zc * grid.f;
+      const cc = Math.floor(sx / cellW), pr = Math.floor(sy / SH), xr = Math.floor(sx / rayW);
+      if (cc < c0 - 1 || cc > c1 || pr < 0 || pr >= rows * 2 || xr < xm0 || xr >= xm1) return;
+      if (depth[xr * RH + Math.min(RH - 1, Math.floor(sy / rayH))] < zc) return;   // behind a tree or a hill
+      const a = b * ffOn * (zc < 25 ? 1 : Math.max(0, 1 - (zc - 25) / 15));
+      if (a < 0.03) return;
+      listColour(R.firefly, (0.5 + 0.5 * b) * (nF - 1), 0);
+      for (let dy = -1; dy <= 1; dy++) for (let dxc = -1; dxc <= 1; dxc++) {
+        const c = cc + dxc, rr = pr + dy;
+        if (c < c0 || c >= c1 || rr < 0 || rr >= rows * 2) continue;
+        const pi = rr * cols + c, w = dxc === 0 && dy === 0 ? a : a * (dxc === 0 || dy === 0 ? 0.38 : 0.18);
+        const bg = BG[pi], br = bg & 255, bgG = (bg >> 8) & 255, bb = (bg >> 16) & 255;
+        BG[pi] = packF(br + (tmpC[0] - br) * w, bgG + (tmpC[1] - bgG) * w, bb + (tmpC[2] - bb) * w);
+        if (dxc === 0 && dy === 0) { G[pi] = LT['.']; FG[pi] = packF(tmpC[0], tmpC[1], tmpC[2]); } else if (!G[pi]) FG[pi] = BG[pi];
+      }
+    });
+  }
+
+  // 6. rain and snow falling in front of everything: slanted streaks, or drifting flakes
+  if (wx.rain > 0.01 || wx.snow > 0.01) forEachDrop(t, rows * 2, cols, (c, pr, a, snow, near, slant) => {
+    if (c < c0 || c >= c1 || pr < 0 || pr >= rows * 2) return;
+    const pi = pr * cols + c, L = snow ? R.snow : R.rain, n = COL.near[L].length;
+    listColour(L, (snow ? 1 : near ? 0.75 : 0.5) * (n - 1), 0);
+    const bg = BG[pi], br = bg & 255, bgG = (bg >> 8) & 255, bb = (bg >> 16) & 255;
+    BG[pi] = packF(br + (tmpC[0] - br) * a, bgG + (tmpC[1] - bgG) * a, bb + (tmpC[2] - bb) * a);
+    G[pi] = snow ? (near ? LT['*'] : LT['.']) : slant > 0.12 ? LT['/'] : slant < -0.12 ? LT['\\'] : LT['|'];
+    FG[pi] = packF(tmpC[0] + 20, tmpC[1] + 20, tmpC[2] + 22);
+  });
+}
+
+// Fireflies near the eye: over grass and reed beds, one in some cells, each wandering slowly about its
+// cell a little above the ground and blinking on its own rhythm. Calls f(x, y, z, brightness).
+const FIREFLY_AT = new Float32Array(Object.keys(MAT).length);
+FIREFLY_AT[MAT.GRASS] = 0.06; FIREFLY_AT[MAT.GRASS2] = 0.07; FIREFLY_AT[MAT.REEDS] = 0.12; FIREFLY_AT[MAT.DRYGRASS] = 0.02;
+function forEachFirefly(t, f) {
+  const R0 = 36, cx0 = Math.floor(vCamX), cz0 = Math.floor(vCamZ), seed = world.seed, wMat = world.mat, wH = world.H;
+  for (let dz = -R0; dz <= R0; dz++) for (let dx = -R0; dx <= R0; dx++) {
+    if (dx * vFx + dz * vFz < -1) continue;   // behind the eye
+    const cx = cx0 + dx, cz = cz0 + dz, i = (cz & MASK) * W + (cx & MASK), p = FIREFLY_AT[wMat[i]];
+    if (!p || hash2(cx, cz, seed + 81) >= p) continue;
+    const h = hash2(cx, cz, seed + 82), ph = h * 6.283;
+    const blink = Math.sin(t * (0.9 + 0.7 * h) + ph * 3);
+    if (blink < 0.2) continue;
+    const b = (blink - 0.2) / 0.8;
+    f(cx + 0.5 + 0.45 * Math.sin(t * 0.33 + ph), wH[i] + 0.6 + 0.6 * h + 0.25 * Math.sin(t * 0.8 + ph * 2), cz + 0.5 + 0.45 * Math.cos(t * 0.27 + ph * 1.3), b * b);
+  }
+}
+
+// Rain and snow on the screen: a fixed crowd of drops, each falling from its own place at its own
+// speed, looping top to bottom, fewer when it rains or snows less, slanted by the wind across the
+// view. Calls f(column, half-cell row, opacity, snow?, near layer?, slant) for every half cell a drop covers.
+function forEachDrop(t, rowsH, cols, f) {
+  const wind = world.wind, side = wind[0] * vRx + wind[1] * vRz, slant = clamp(side * 0.35, -0.45, 0.45);
+  for (const snow of [false, true]) {
+    const amt = snow ? wx.snow : wx.rain;
+    if (amt < 0.01) continue;
+    for (let layer = 0; layer < 2; layer++) {
+      const near = layer === 1, count = Math.round((snow ? (near ? 240 : 480) : (near ? 260 : 520)) * amt * cols / 240);
+      const speed = snow ? (near ? 16 : 9) : (near ? 95 : 60), len = snow ? 1 : near ? 5 : 3, span = rowsH + len;
+      const alpha = snow ? (near ? 0.9 : 0.55) : (near ? 0.42 : 0.22);
+      for (let k = 0; k < count; k++) {
+        const h1 = hash2(k, layer, snow ? 301 : 311), h2 = hash2(k, layer, snow ? 302 : 312), h3 = hash2(k, layer, snow ? 303 : 313);
+        const head = (h2 * span + t * speed * (0.8 + 0.4 * h3)) % span;
+        const sway = snow ? Math.sin(t * (0.6 + 0.5 * h3) + h1 * 40) * 1.6 : 0;
+        for (let q = 0; q < len; q++) {
+          const pr = Math.floor(head) - q, c = Math.floor(h1 * cols + pr * (snow ? slant * 0.4 : slant) + sway);
+          f(((c % cols) + cols) % cols, pr, alpha * (1 - q / (len + 1)), snow, near, slant);
+        }
+      }
+    }
+  }
 }
 
 // Paint every half cell of the stripe as its letter in its two colours.
@@ -3985,8 +4194,8 @@ function renderFrame(t, poses, look) {
   if (skyPosRow.length !== grid.RH) skyPosRow = new Float32Array(grid.RH);
   for (let y = 0; y < grid.RH; y++) { const e = (vHor - (y + 0.5) * grid.rayH) / (0.55 * f); skyPosRow[y] = e <= 0 ? 1 : e >= 1 ? 0 : 1 - e; }
   updateShadeMips();
-  sunScreen = projectBody(s.sunEl, s.sunAz);
-  moonScreen = s.sunEl < 0.15 ? projectBody(s.moonEl, s.moonAz) : null;
+  sunScreen = wx.storm > 0.55 ? null : projectBody(s.sunEl, s.sunAz);   // (behind rain clouds, neither shows)
+  moonScreen = s.sunEl < 0.15 && wx.storm <= 0.55 ? projectBody(s.moonEl, s.moonAz) : null;
   marchRays(t);
   const t1 = performance.now();
   drawSprites(t, poses);
@@ -4015,6 +4224,7 @@ function applyFrame(d) {
   light.lx = d.light[0]; light.ly = d.light[1]; light.lz = d.light[2]; light.darkness = d.light[3];
   for (let k = 0; k < 6; k++) light.faceShade[k] = d.light[4 + k];
   cur.ambient = d.cur[0]; cur.diffuse = d.cur[1]; cur.lights = d.cur[2]; cur.stars = d.cur[3];
+  wx.rain = d.wx[0]; wx.snow = d.wx[1]; wx.fog = d.wx[2]; wx.wet = d.wx[3]; wx.aurora = d.wx[4]; wx.storm = d.wx[5];
   let o = 0;
   for (const L of COL.near) { L.set(d.col.subarray(o, o + L.length)); o += L.length; }
   for (const L of COL.far) { L.set(d.col.subarray(o, o + L.length)); o += L.length; }
@@ -4519,6 +4729,7 @@ function workerSource() {
     `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null };`,
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
     `const cur = { ambient: 0.38, diffuse: 0.62, lights: 0, stars: 0 }, light = { lx: 0, ly: 1, lz: 0, darkness: 0, faceShade: new Float32Array(6) };`,
+    `const wx = { rain: 0, snow: 0, fog: 0, wet: 0, aurora: 0, storm: 0 };`,
     `const COL = { near: RAMP_NAMES.map(n => new Uint32Array(KEYFRAMES.day.ramps[n].length)), far: RAMP_NAMES.map(() => new Uint32Array(3)), glow: 0, bird: 0 };`,
     `${renderCore}`,
     `const core = renderCore();`,
@@ -4553,7 +4764,7 @@ function syncWorkers() {
   if (pool.sentWorld !== world.structs) {
     pool.sentWorld = world.structs;
     const pkg = {
-      seed: world.seed, H: world.H, mat: world.mat,
+      seed: world.seed, H: world.H, mat: world.mat, fogTop: world.fogTop,
       structs: world.structs.map(s => ({ cx: s.cx, cz: s.cz, x0: s.x0, z0: s.z0, baseY: s.baseY, radius: s.radius, half: s.half, type: s.type, tpl: { sx: s.tpl.sx, sy: s.tpl.sy, sz: s.tpl.sz, spans: s.tpl.spans, topSolid: s.tpl.topSolid } })),
       trees: world.trees, treeBuckets: world.treeBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds,
       merchants: world.merchants.map(m => ({ robe: m.robe, x: m.x, y: m.y, z: m.z, walked: m.walked })),
@@ -4632,6 +4843,7 @@ function frameDesc(t, dt) {
     type: 'frame', gen: pool.gen, t, poses, look: looks.mode, merchants: merch, col,
     cam: [cam.x, cam.y, cam.z, cam.yaw, cam.pitch], hours: clock.hours, viewDist: view.dist,
     light: [light.lx, light.ly, light.lz, light.darkness, ...light.faceShade], cur: [cur.ambient, cur.diffuse, cur.lights, cur.stars],
+    wx: [wx.rain, wx.snow, wx.fog, wx.wet, wx.aurora, wx.storm],
   };
 }
 
@@ -4649,6 +4861,62 @@ function workerDone(k, msg) {
     }
   }
   if (--pool.busy === 0) { finishFrame(); for (const f of pool.idle.splice(0)) f(); }
+}
+
+// =====================================================================
+//  WEATHER  (from the seed and the day, so tests can pin it)
+// =====================================================================
+// Each day has its own weather, from the seed:
+//   - on about a third of days a spell of rain some hours long, falling as snow where you stand if
+//     it is cold or high;
+//   - on half the mornings, fog lying in the valleys at dawn;
+//   - on some nights an aurora, bright in the cold and on the heights.
+// The day counts up each time the clock passes midnight. wx is what the renderer draws this frame;
+// scenes and tests pin it (TV.setWeather, or ?weather=rain|snow|fog|aurora|clear in the address).
+const weather = { day: 0, lastHours: START_HOUR, seed: NaN, pin: null, snowy: 0 };
+const wx = { rain: 0, snow: 0, fog: 0, wet: 0, aurora: 0, storm: 0 };
+// The day's plan at hour h: how hard it rains (or snows), how thick the dawn fog, how bright the aurora.
+function weatherAt(seed, day, h) {
+  const spell = (d, hh) => {   // day d's rain spell, if it has one, at hour hh of that day (hh may run past 24)
+    if (hash2(seed, d, 201) >= 0.35) return 0;
+    const start = 5 + 14 * hash2(seed, d, 202), len = 3 + 5 * hash2(seed, d, 203), strength = 0.55 + 0.45 * hash2(seed, d, 204);
+    return strength * smoothstep(start, start + 1, hh) * (1 - smoothstep(start + len - 1, start + len, hh));
+  };
+  const precip = Math.max(spell(day, h), spell(day - 1, h + 24));
+  const fog = hash2(seed, day, 205) < 0.5 ? (0.7 + 0.3 * hash2(seed, day, 206)) * smoothstep(3.8, 5.2, h) * (1 - smoothstep(7.6, 9.4, h)) : 0;
+  const night = h >= 12 ? day : day - 1, hn = h >= 12 ? h : h + 24;   // a night belongs to the day whose evening starts it
+  const aurora = hash2(seed, night, 207) < 0.4 ? smoothstep(20.5, 22, hn) * (1 - smoothstep(27.5, 28.8, hn)) : 0;
+  return { precip, fog, aurora };
+}
+function updateWeather(dt) {
+  if (weather.seed !== world.seed) { weather.seed = world.seed; weather.day = 0; wx.wet = 0; }   // a new world starts on its first day
+  else if (clock.hours < weather.lastHours - 12) weather.day++;                                   // past midnight
+  else if (clock.hours > weather.lastHours + 12 && weather.day > 0) weather.day--;               // set back past midnight
+  weather.lastHours = clock.hours;
+  // how cold it is where you stand, which turns rain to snow and brings out the aurora (eased, so
+  // walking over a region's border does not flip it)
+  const i = (Math.floor(cam.z) & MASK) * W + (Math.floor(cam.x) & MASK);
+  const cold = Math.max(1 - smoothstep(0.22, 0.4, world.heat[i]), smoothstep(world.snowLine - 25, world.snowLine - 5, world.H[i]));
+  weather.snowy += (cold - weather.snowy) * Math.min(1, dt * 0.5);
+  const p = weather.pin, gh = dt / DAY_SECONDS * 24 * clock.scale;   // game hours this frame
+  if (p) {
+    wx.rain = p.rain || 0; wx.snow = p.snow || 0; wx.fog = p.fog || 0; wx.aurora = p.aurora || 0;
+    wx.wet = p.wet !== undefined ? p.wet : wx.rain;
+  } else {
+    const w = weatherAt(world.seed, weather.day, clock.hours);
+    wx.rain = w.precip * (1 - weather.snowy); wx.snow = w.precip * weather.snowy; wx.fog = w.fog;
+    wx.aurora = w.aurora * smoothstep(0.2, 0.7, weather.snowy);
+    // the ground wets in the rain within the hour and dries over a few
+    wx.wet = wx.rain > wx.wet ? Math.min(wx.rain, wx.wet + gh * 1.5) : Math.max(0, wx.wet - gh * 0.35);
+  }
+  wx.storm = Math.min(1, Math.max(wx.rain, wx.snow) * 1.2);
+}
+// Pin the weather: { rain, snow, fog, aurora, wet } (each 0..1, missing ones 0), or null to follow the days.
+function setWeather(p) { weather.pin = p ? { ...p } : null; updateWeather(0); blendPalette(clock.hours); updateLighting(); }
+{
+  const q = new URLSearchParams(location.search).get('weather');
+  const PRESETS = { clear: {}, rain: { rain: 1 }, snow: { snow: 1 }, fog: { fog: 1 }, aurora: { aurora: 1 } };
+  if (q && PRESETS[q]) weather.pin = PRESETS[q];
 }
 
 // =====================================================================
@@ -4674,6 +4942,7 @@ function frame(now) {
   updateNearest();
   if (ui.open) clock.hours = (clock.hours + dt / DAY_SECONDS * 24 * clock.scale) % 24;   // the world clock keeps going
 
+  updateWeather(dt);
   blendPalette(clock.hours);
   lightTimer += dt;
   if (lightTimer > 0.2) { updateLighting(); lightTimer = 0; }
@@ -4713,6 +4982,7 @@ window.TV = {
   world, cam, clock, grid, stats, view, light, player, keys, ui,
   regenerate, setMode, update, updateMerchants, updateNearest, openPanel, closePanel, groundAt, deckAt,
   setHour: h => { clock.hours = h; updateLighting(); },
+  setWeather, updateWeather, weather, wx, weatherAt,
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
   renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0

@@ -1,6 +1,6 @@
 {
   "seed": 42,
-  "note": "Fixed cameras. seed: the world (default: the top-level seed). yaw in degrees (v1 convention: 0 = +x, -90 = -z/north), pitch is v1's horizon shift in pixels at 1440x900, t is page time in ms (birds, clouds, flames), view is the view distance (default 500). ground:true puts the eye 1.55 + y above whatever is under the camera. Re-aim with node tools/find-views.mjs after world generation changes (--classic for the six phase-1 scenes, --aerial-only --seed N for aerials). A scene with fixed: true was placed by hand and is left alone by find-views.",
+  "note": "Fixed cameras. seed: the world (default: the top-level seed). yaw in degrees (v1 convention: 0 = +x, -90 = -z/north), pitch is v1's horizon shift in pixels at 1440x900, t is page time in ms (birds, clouds, flames), view is the view distance (default 500). ground:true puts the eye 1.55 + y above whatever is under the camera. Re-aim with node tools/find-views.mjs after world generation changes (--classic for the six phase-1 scenes, --aerial-only --seed N for aerials). weather pins the weather ({ rain, snow, fog, aurora, wet }, each 0..1; without it a scene is clear). A scene with fixed: true was placed by hand and is left alone by find-views.",
   "scenes": [
     {
       "name": "vista",
@@ -394,6 +394,117 @@
         "z": 496,
         "yaw": 160,
         "pitch": -60
+      }
+    },
+    {
+      "name": "rain",
+      "title": "Rain over the meadow, 14:00",
+      "seed": 42,
+      "hour": 14,
+      "t": 1000,
+      "weather": {
+        "rain": 1
+      },
+      "fixed": true,
+      "cam": {
+        "x": 216.5,
+        "y": 1.5,
+        "z": 144.5,
+        "yaw": -67.5,
+        "pitch": -110,
+        "ground": true
+      }
+    },
+    {
+      "name": "snow",
+      "title": "Snowfall on the peaks, 11:00",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "weather": {
+        "snow": 1
+      },
+      "fixed": true,
+      "cam": {
+        "x": 12.5,
+        "y": 2,
+        "z": 168.5,
+        "yaw": 0,
+        "pitch": 50,
+        "ground": true
+      }
+    },
+    {
+      "name": "fog-dawn",
+      "title": "Fog in the valley at dawn, 06:30",
+      "seed": 42,
+      "hour": 6.5,
+      "t": 1000,
+      "weather": {
+        "fog": 1
+      },
+      "fixed": true,
+      "cam": {
+        "x": 255.64,
+        "y": 58.36,
+        "z": 102.64,
+        "yaw": -135,
+        "pitch": -165
+      }
+    },
+    {
+      "name": "marsh-fog",
+      "title": "The marsh in fog, 06:24",
+      "seed": 42,
+      "hour": 6.4,
+      "t": 1000,
+      "weather": {
+        "fog": 1
+      },
+      "fixed": true,
+      "cam": {
+        "x": 186.5,
+        "y": 1,
+        "z": 360.5,
+        "yaw": -135,
+        "pitch": -150,
+        "ground": true
+      }
+    },
+    {
+      "name": "fireflies",
+      "title": "Fireflies over the meadow, 22:30",
+      "seed": 42,
+      "hour": 22.5,
+      "t": 4000,
+      "weather": {},
+      "fixed": true,
+      "cam": {
+        "x": 216.5,
+        "y": 1.5,
+        "z": 144.5,
+        "yaw": -67.5,
+        "pitch": -110,
+        "ground": true
+      }
+    },
+    {
+      "name": "aurora",
+      "title": "An aurora over the peaks, 23:30",
+      "seed": 42,
+      "hour": 23.5,
+      "t": 4000,
+      "weather": {
+        "aurora": 1
+      },
+      "fixed": true,
+      "cam": {
+        "x": 12.5,
+        "y": 2,
+        "z": 168.5,
+        "yaw": 0,
+        "pitch": 120,
+        "ground": true
       }
     }
   ]

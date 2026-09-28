@@ -14,6 +14,9 @@
 //      footprint, on the same path.
 //   4. Bridges: on every seed, walk across every bridge from one bank to the other, both ways: the
 //      walk must reach the far bank and never drop below the deck on the way (into the river).
+//   5. Weather: each day's plan (rain or snow, dawn fog, aurora) is the same every time for a seed,
+//      day and hour, stays within 0..1, and over 60 days each kind comes about as often as meant; the
+//      day counts up as the clock passes midnight.
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs [--record]
 import fs from 'node:fs';
@@ -291,6 +294,33 @@ for (const seed of SEEDS) {
   }, seed);
   for (const r of res) if (!r.ok) fail(`seed ${seed}: ${r.variant} bridge (${r.L} long), walking ${r.dir > 0 ? 'forward' : 'back'}: ${r.why || `reached=${r.reached} (cell ${r.k} of ${r.n}, at ${r.at}), lowest ${r.lowest} against the deck, road either side ${r.ends.join(' / ')} above it`}`);
   console.log(`  seed ${seed}: ${res.filter(r => r.dir > 0).map(r => r.variant + ' ' + r.L).join(', ') || 'no bridges'}${res.length && res.every(r => r.ok) ? ': walked across both ways on the deck; on and off within a step' : ''}`);
+}
+
+// ---- 5. weather ----
+console.log('5. weather, every seed');
+for (const seed of SEEDS) {
+  const r = await p2.evaluate(seed => {
+    const TV = window.TV, DAYS = 60;
+    let rainDays = 0, fogDays = 0, auroraNights = 0, same = true, inRange = true;
+    for (let d = 0; d < DAYS; d++) {
+      let rain = 0, fog = 0, aur = 0;
+      for (let h = 0; h < 24; h += 0.25) {
+        const a = TV.weatherAt(seed, d, h), b = TV.weatherAt(seed, d, h);
+        if (a.precip !== b.precip || a.fog !== b.fog || a.aurora !== b.aurora) same = false;
+        for (const v of [a.precip, a.fog, a.aurora]) if (!(v >= 0 && v <= 1)) inRange = false;
+        rain = Math.max(rain, a.precip); fog = Math.max(fog, a.fog); if (h >= 22) aur = Math.max(aur, a.aurora);
+      }
+      if (rain > 0.3) rainDays++; if (fog > 0.3) fogDays++; if (aur > 0.3) auroraNights++;
+    }
+    // the day counter: the clock passing midnight moves it on, and setting it back moves it back
+    if (TV.world.seed !== seed) TV.regenerate(seed);
+    TV.setWeather(null); TV.clock.hours = 23.9; TV.updateWeather(0);
+    const d0 = TV.weather.day; TV.clock.hours = 0.1; TV.updateWeather(0); const d1 = TV.weather.day; TV.clock.hours = 23.8; TV.updateWeather(0); const d2 = TV.weather.day;
+    return { same, inRange, rainDays: rainDays / DAYS, fogDays: fogDays / DAYS, auroraNights: auroraNights / DAYS, days: [d0, d1, d2] };
+  }, seed);
+  const ok = r.same && r.inRange && r.rainDays > 0.15 && r.rainDays < 0.6 && r.fogDays > 0.25 && r.fogDays < 0.75 && r.auroraNights > 0.15 && r.auroraNights < 0.65 && r.days[1] === r.days[0] + 1 && r.days[2] === r.days[0];
+  if (!ok) fail(`seed ${seed}: weather ${JSON.stringify(r)}`);
+  else console.log(`  seed ${seed}: over 60 days rain on ${Math.round(r.rainDays * 100)}%, dawn fog on ${Math.round(r.fogDays * 100)}%, an aurora on ${Math.round(r.auroraNights * 100)}% of nights; the same every time; the day turns at midnight`);
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

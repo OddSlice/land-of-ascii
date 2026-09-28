@@ -33,7 +33,7 @@ for (const sc of scenes) {
   if (await page.evaluate(s => window.TV.world.seed !== s, scSeed)) await page.evaluate(s => window.TV.regenerate(s), scSeed);
   const camv = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
   if (c.ground) camv.y = await page.evaluate(k => window.TV.groundAt(k.x, k.z, 1e9) + 1.55 + k.y, camv);
-  await showScene(page, { seed: scSeed, hour: sc.hour, t: sc.t, cam: camv, merchants: sc.merchants, view: sc.view });
+  await showScene(page, { seed: scSeed, hour: sc.hour, t: sc.t, cam: camv, merchants: sc.merchants, view: sc.view, weather: sc.weather });
   const out = path.resolve(ROOT, sc.out || path.join(dir, `${sc.name}${browserName === 'chromium' ? '' : '-' + browserName}.png`));
   await page.screenshot({ path: out });
   const st = await page.evaluate(() => { const s = window.TV.stats; return { edges: s.edgeCells, threads: s.threads, cols: window.TV.grid.cols, rows: window.TV.grid.rows }; });

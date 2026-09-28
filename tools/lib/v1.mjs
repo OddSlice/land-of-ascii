@@ -20,6 +20,7 @@ export async function showScene(page, scene) {
     const TV = window.TV;
     if (TV.world.seed !== sc.seed) TV.regenerate(sc.seed);
     TV.view.dist = sc.view || 500;
+    if (TV.setWeather) TV.setWeather(sc.weather || {});   // (v2: the scene's weather, or clear, so shots compare)
     TV.clock.scale = 0;
     TV.setMode('fly');
     Object.assign(TV.cam, sc.cam);

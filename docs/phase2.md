@@ -380,3 +380,77 @@ M1 Max, six workers, 1440×900, painted look, ten scenes including the boardwalk
   - palm fronds are tubes up close;
   - tower corners still shimmer.
 - **Beaches are fewer on rugged seeds** (seed 1234: 0.8% of the land), since steep shores now keep their shape.
+
+## Step 2, part 2: weather and night life
+
+The rest of step 2. Shots: `shots/phase2/step2/sheet-weather.png`, plus the six scenes below.
+
+### How the weather works
+
+- **Each day has its own weather, from the seed** (`weatherAt(seed, day, hour)`, one pure function):
+  - on about a third of days a spell of rain 3 to 8 hours long;
+  - on half the mornings, fog in the valleys at dawn (about 4:00 to 9:30);
+  - on four nights in ten, an aurora from late evening to before dawn.
+- **The day counts up** each time the clock passes midnight (a day is 4 minutes of play, so a rain spell lasts about a minute).
+- **Where you stand decides the rest.** The spell falls as snow where it is cold or high (by the region's warmth and the height against the snow line), and the aurora shows in the cold and on the heights. Both ease in over a few seconds, so walking over a region's border does not flip them.
+- **Pinning:** `TV.setWeather({ rain, snow, fog, aurora, wet })`, or `?weather=rain|snow|fog|aurora|clear` in the address, pins the weather. Scenes pin it with a `weather` field. Every other scene (and the benchmark) is clear, so shots stay comparable.
+
+### What it looks like
+
+- **Rain:**
+  - slanted streaks falling in front of everything, in two layers (near: longer and brighter; far: fainter), drawn as `/` letters in the painted look and as ticks in the mosaic;
+  - under the clouds every colour turns greyer and darker, the sky greyest; the sun's share of the light drops, so shadows soften; the sun, the moon and the stars are hidden;
+  - the ground darkens as it gets wet and dries over a few hours.
+- **Snow:** flakes drifting down and swaying (`*` near, `.` far), with the same grey sky.
+- **Dawn fog** lies in the valleys like a lake (`makeFogField`, built with the world):
+  - Its surface is the valley floor (the lowest ground within 16 cells, smoothed) plus 4, never lower than a mist over water.
+  - Whatever lies deeper in it, and further off, fades into a pale fog tinted by the hour.
+  - If you stand in it, everything fades with distance, the sky included.
+- **Fireflies** hover over grass and reed beds on still nights within 36 cells of you:
+  - Each one wanders slowly about its cell and blinks on its own rhythm.
+  - They are hidden behind trees and hills, and each lights a little of the air around it.
+- **Aurora:** curtains of green (low) to violet (high) hanging across the northern sky, fixed to the compass, rippling slowly.
+- **Flowers** close after dusk.
+- **Both looks:** the painted look has all of the above. The mosaic has rain, snow, fireflies (as marks) and the grey storm palette, but not the fog or the aurora.
+
+### Scenes
+
+- Six new scenes, each with its weather pinned and marked `fixed`:
+  - `rain` (the meadow, 14:00);
+  - `snow` (the peaks, 11:00);
+  - `fog-dawn` (the castle valley, 06:30);
+  - `marsh-fog` (06:24);
+  - `fireflies` (the meadow, 22:30);
+  - `aurora` (the peaks, 23:30).
+- `shoot.mjs`, `probe.mjs` and `bench-v2.mjs` pass a scene's weather on.
+
+### Tests
+
+All pass.
+
+- **New test 5, weather:** on every seed, each day's plan is the same every time for a seed, day and hour, and stays within 0..1. Over 60 days, rain comes on 37–47% of days (a spell can run past midnight), dawn fog on 40–52% of mornings and an aurora on 32–43% of nights. The day turns at midnight and back when the clock is set back.
+- **The harness** now also fails any run with an error in the page. A still screenshot came out fine while the page crashed on its next frame.
+- **Weather is drawn, not generated,** so the recorded worlds do not change (the fog field is built with the world but is not part of its checksum).
+
+### Speed
+
+M1 Max, six workers, 1440×900, painted look, the five weather scenes.
+
+| | Frame |
+|---|---|
+| Chromium | 5.0–6.3 ms |
+| Firefox | 6.1–8.3 ms (about 115 fps on a 120 Hz screen) |
+| WebKit | 6.4–11.8 ms (the aurora heaviest) |
+
+- **All three hold 60 fps.**
+- **Workers and the main thread give byte-identical frames in both looks.**
+- The aurora's pattern is worked out once per column and per row, not per pixel. That brought WebKit from 14.8 to 11.8 ms.
+
+### Next
+
+- **Step 3, settlements:**
+  - villages and towns with houses you can walk into, roofs, chimney smoke and lit windows;
+  - flags on the castles.
+- **Still open from step 2:**
+  - ground marks for the new materials in the mosaic look;
+  - the close-up rough edges listed under part 1.

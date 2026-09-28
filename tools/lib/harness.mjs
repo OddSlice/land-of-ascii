@@ -70,7 +70,7 @@ export async function launch({ width = 1440, height = 900, browser = 'chromium',
   const pw = loadPlaywright();
   const b = await pw[browser].launch(launchOptions(browser, jsFlags));
   const page = await b.newPage({ viewport: { width, height }, deviceScaleFactor: dpr });
-  page.on('pageerror', e => console.error('[pageerror]', e.message));
+  page.on('pageerror', e => { console.error('[pageerror]', e.message); process.exitCode = 1; });   // (an error in the page fails the run)
   page.on('console', m => {
     if (m.type() !== 'error' && m.type() !== 'warning') return;
     console.error('[console]', m.text());
