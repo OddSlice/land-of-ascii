@@ -2199,6 +2199,11 @@ const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.sto
 // each a step of tone from the next, with crisp edges between them (the band is part of the
 // segment). Red rock is banded strongly, grey rock gently.
 const STRATA_INV = 1 / 1.4, STRATA_POS = [0, -0.2, 0.1, -0.12];
+const THIN = 1.2;   // the thinnest a plant's parts get, in rays (as a radius): over two rays across, or they fall between the rays and blink
+// The march crosses grid lines every half cell up to DD_HALF, every cell to DD_1, then every 2 cells to
+// DD_2, 4 to DD_4, then 8: each spacing starts where the heights are averaged to that size (mipLevel),
+// so changing spacing does not change the ground.
+const DD_HALF = 12, DD_1 = 124, DD_2 = 289, DD_4 = 620;
 const WALL_RISE = 1.5, WALL_SLOPE = 3;   // a step whose ground climbs (or falls) more than this, and this steeply, holds a wall
 const STRATA_K = new Float32Array(Object.keys(MAT).length);
 STRATA_K[MAT.REDROCK] = 1; STRATA_K[MAT.ROCK] = 0.35;
@@ -2356,6 +2361,15 @@ function mipHeight(x, z, l) {   // bilinear, from level l (0: the heightmap itse
   const a = S[r0 + c0] + (S[r0 + c1] - S[r0 + c0]) * tx, b = S[r1 + c0] + (S[r1 + c1] - S[r1 + c0]) * tx;
   return a + (b - a) * tz;
 }
+// The light along the march, filtered like the heights: the cells' own near the eye, then blending
+// through the 2×2, 4×4 and 8×8 averages as the distance grows, so it never steps at a set distance.
+function marchShade(x, z, dist) {
+  const lf = mipLevel(dist) + 0.6 * clamp((dist - NEAR_SMOOTH) / 40, 0, 1);   // (the extra blur eases in past the near ground, so they meet without a seam)
+  if (!(lf > 0)) return smoothShade(x, z);
+  const l = lf < 3 ? lf | 0 : 2, a = Math.min(1, lf - l), s0 = l === 0 ? smoothShade(x, z) : mipShade(x, z, l);
+  return a > 0 ? s0 + (mipShade(x, z, l + 1) - s0) * a : s0;
+}
+
 // The dawn fog's surface over (x, z), blended between cell centres.
 function fogTopAt(x, z) {
   const F = world.fogTop, fx = x - 0.5, fz = z - 0.5, x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
@@ -2363,8 +2377,14 @@ function fogTopAt(x, z) {
   const a = F[r0 + c0] + (F[r0 + c1] - F[r0 + c0]) * tx, b = F[r1 + c0] + (F[r1 + c1] - F[r1 + c0]) * tx;
   return a + (b - a) * tz;
 }
+// How coarsely the ground is averaged at a distance, as a mip level (0: the cells themselves; 1: 2×2
+// cells; 2: 4×4; 3: 8×8): log2(0.5 + MIP_K · dist), taken as a straight line within each doubling
+// (close enough for a blend, and cheaper than a logarithm at every step of every ray). Level 1 is
+// reached at 124 cells, 2 at 289, 3 at 620.
+const MIP_K = 0.0121;
+const mipLevel = d => { const x = 0.5 + d * MIP_K; return x < 2 ? x - 1 : x < 4 ? x * 0.5 : x < 8 ? 1 + x * 0.25 : 3; };
 function marchHeight(x, z, dist) {
-  const lf = Math.log2(0.5 + dist * 0.008);   // the march's step at this distance, as a mip level
+  const lf = mipLevel(dist);   // the march's step at this distance, as a mip level
   if (!(lf > 0)) return terrainHeight(x, z);
   const l = lf < 3 ? lf | 0 : 2, a = Math.min(1, lf - l), h0 = mipHeight(x, z, l);
   return a > 0 ? h0 + (mipHeight(x, z, l + 1) - h0) * a : h0;
@@ -2405,6 +2425,17 @@ function marchRays(t) {
   }
   const posOf = sh => { const p = (sh - posLo) * posInv; return !(p > 0) ? 0 : p > 1 ? 1 : p; };
 
+  // The ground at the previous step, looked up if the march did not draw it (it was hidden, or a
+  // block was skipped): a step is always a slope from the ground before it, never a flat guess, so
+  // what you see does not change with whether the step before happened to be in view.
+  function prevGround(lo, near) {
+    if (lastShZ === lo) { if (lastSh !== lastSh) lastSh = marchShade(camX + dx * lo, camZ + dz * lo, lo); return; }
+    const x = camX + dx * lo, y = camZ + dz * lo;
+    lastH = near || lo < NEAR_SMOOTH ? terrainHeight(x, y) : marchHeight(x, y, lo);
+    lastSh = near || lo < NEAR_SMOOTH ? smoothShade(x, y) : marchShade(x, y, lo);
+    lastShZ = lo;
+  }
+
   function terrainAt(idx, z, px, pz, hIn) {
     const near = z < NEAR_SMOOTH;
     const h = hIn !== undefined ? hIn : near ? terrainHeight(px, pz) : marchHeight(px, pz, z);
@@ -2412,17 +2443,30 @@ function marchRays(t) {
     if (!(row < ybuf)) return;   // (also skips a NaN height: seed 42 has one, at 416, 390)
     if (row < 0) row = 0;
     const warm = lightsOn && z < 120 && hasLightsAt(px, pz);
-    if (near && ybuf - row > 2) {
-      // Close up one step spans many rows: find where each row's ray meets the ground (as a plane
-      // at this step's height, between the previous step and this one) and read material,
-      // lighting and firelight there, so the ground at your feet is as sharp as the ground ahead.
+    // A step with a wall in it is drawn as one (wallAt), near or far, by the lie of the land alone.
+    prevGround(zPrev, near);
+    const riseNow = h - lastH;
+    if ((riseNow > WALL_RISE || riseNow < -WALL_RISE) && (riseNow > 0 ? riseNow : -riseNow) > WALL_SLOPE * (z - zPrev)) {
+      const mW = mat[idx];
+      let shW = near ? smoothShade(px, pz) : marchShade(px, pz, z), flW = 0;
+      if (mW === MAT.WATER) { shW += 0.12; flW = F_WATER; }
+      wallAt(z, row, h, shW, TERRAIN_SEG | mW, MAT_RAMP[mW], warm ? warmAt(px, h, pz) : 0, flW);
+      lastShZ = z; lastSh = shW; lastH = h;
+      ybuf = row;
+      return;
+    }
+    if (near) {
+      // Close up, each row reads material, lighting and firelight where its own ray meets the ground
+      // (between the previous step and this one), so the ground at your feet is as sharp as the
+      // ground ahead. (Always, however few rows the step covers: switching how a step is drawn by
+      // its size on screen flips as ridges in front shift a row, and flickers.)
       const lo = zPrev, hgt = camY - h;
-      // the ground between the previous step and this one, as a sloped segment (flat when the step
-      // before is not known): each row finds where its ray meets it
-      const h0 = lastShZ === lo ? lastH : h, sl = z > lo ? (h - h0) / (z - lo) : 0, sOff = camY - h0 + sl * lo;
-      // lighting varies smoothly along the ray: read it at both ends of the step and blend (the
-      // near end is usually the far end of the step before)
-      const sh1 = smoothShade(px, pz), sh0 = lastShZ === lo ? lastSh : smoothShade(camX + dx * lo, camZ + dz * lo), kSh = z > lo ? (sh1 - sh0) / (z - lo) : 0;
+      // the ground between the previous step and this one, as a sloped segment: each row finds where
+      // its ray meets it. Lighting varies smoothly along the ray: read it at both ends of the step and
+      // blend (the near end is usually the far end of the step before).
+      prevGround(lo, true);
+      const h0 = lastH, sl = z > lo ? (h - h0) / (z - lo) : 0, sOff = camY - h0 + sl * lo;
+      const sh1 = smoothShade(px, pz), sh0 = lastSh, kSh = z > lo ? (sh1 - sh0) / (z - lo) : 0;
       const w1 = warm ? warmAt(px, h, pz) : 0, w0 = warm ? warmAt(camX + dx * lo, h, camZ + dz * lo) : 0, kW = z > lo ? (w1 - w0) / (z - lo) : 0;
       let lastCi = -1, m = 0, kR = 0, kS = 0, kSt = 0;
       for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
@@ -2445,39 +2489,64 @@ function marchRays(t) {
       return;
     }
     const m = mat[idx];
-    let sh = z < 60 ? smoothShade(px, pz) : mipShade(px, pz, z < 120 ? 1 : z < 240 ? 2 : 3), fl = 0;
+    let sh = marchShade(px, pz, z), fl = 0;
     if (m === MAT.WATER) {
       sh += 0.12; fl = F_WATER;                       // water reflects the sky: a touch brighter than land
       if (z < vd * 0.6 && Math.sin(px * 0.31 + t * 1.7) + Math.sin(pz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE;
     }
     const kS = TERRAIN_SEG | m, kR = MAT_RAMP[m], kL = warm ? warmAt(px, h, pz) : 0, kSt = STRATA_K[m];
-    const rise = lastShZ === zPrev ? h - lastH : 0;
-    if (ybuf - row > 1 && (rise > WALL_RISE || rise < -WALL_RISE) && (rise > 0 ? rise : -rise) > WALL_SLOPE * (z - zPrev)) wallAt(z, row, h, sh, kS, kR, kL, fl);
-    else if (kSt && ybuf - row > 2) {   // a face of rock: banded by height, lit from the light averaged over 4×4 cells so its columns agree
-      const kF = posOf(mipShade(px, pz, 2));
-      for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
-        if (kind[i] !== NONE) continue;
-        const band = Math.floor((camY + rayQ[r] * z) * STRATA_INV) & 3, p = kF + STRATA_POS[band] * kSt;
-        kind[i] = K.TERRAIN; seg[i] = kS | (band << 8); ramp[i] = kR; pos[i] = p < 0 ? 0 : p > 1 ? 1 : p; depth[i] = z; lit[i] = kL; flags[i] = fl | F_FACE; left--;
-      }
-    } else {
+    {
       // Each row sees the ground where its own ray meets it (the ground between the previous step and
       // this one, as a sloped segment), lit by the light blended between the two steps. A row keeps
       // the same ground as the steps slide over bumps, so the colour holds still as the camera moves.
-      const lo = zPrev, known = lastShZ === lo, sh0 = known ? lastSh : sh, kSh = z > lo ? (sh - sh0) / (z - lo) : 0;
-      const h0 = known ? lastH : h, sl = z > lo ? (h - h0) / (z - lo) : 0, sOff = camY - h0 + sl * lo;
+      // Steep rock is banded by height, the more the steeper (strata fade in, not switch on).
+      const lo = zPrev, sh0 = lastSh, kSh = z > lo ? (sh - sh0) / (z - lo) : 0;
+      const h0 = lastH, sl = z > lo ? (h - h0) / (z - lo) : 0, sOff = camY - h0 + sl * lo;
+      const bands = kSt ? kSt * smoothstep(1, 2, (sl > 0 ? sl : -sl) / Math.sqrt(dx * dx + dz * dz)) : 0;
       for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
         if (gaps && kind[i] !== NONE) continue;
         const den = sl - rayQ[r];
         let tt = den > 1e-6 ? sOff / den : z;
         if (!(tt <= z)) tt = z; else if (tt < lo) tt = lo;
-        kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = posOf(sh0 + (tt - lo) * kSh); depth[i] = tt; lit[i] = kL; flags[i] = fl;
+        let p = posOf(sh0 + (tt - lo) * kSh), sg = kS;
+        if (bands > 0) { const band = Math.floor((camY + rayQ[r] * tt) * STRATA_INV) & 3; p += STRATA_POS[band] * bands; if (bands > 0.5) sg |= band << 8; }
+        kind[i] = K.TERRAIN; seg[i] = sg; ramp[i] = kR; pos[i] = p < 0 ? 0 : p > 1 ? 1 : p; depth[i] = tt; lit[i] = kL; flags[i] = fl;
         if (gaps) left--;
       }
       if (!gaps) left -= ybuf - row;
     }
     lastShZ = z; lastSh = sh; lastH = h;
     ybuf = row;
+  }
+
+  // Where the march samples the ground: where the ray crosses the lines through the centres of
+  // the height grid, every half cell at your feet, then every cell, and every 2, 4 and 8 cells
+  // further off (where the heights are averaged that coarsely anyway). Those points are fixed to
+  // the ground, not to the eye, so as you walk they stay put and the ground holds still: steps of
+  // a set length from the eye slid over it, and every slope and crest flickered. ddS is the
+  // spacing being crossed, ddTx/ddTz the depth of the next crossing of each set of lines.
+  let ddS = 0, ddEnd = 0, ddTx = 0, ddTz = 0, ddStepX = 0, ddStepZ = 0;
+  function ddNext(z) {
+    const s = z < ddEnd && ddS ? ddS : z < DD_HALF ? 0.5 : z < DD_1 ? 1 : z < DD_2 ? 2 : z < DD_4 ? 4 : 8;
+    if (s !== ddS) {   // (re)start on this spacing: the first crossing of each set past z
+      ddEnd = s === 0.5 ? DD_HALF : s === 1 ? DD_1 : s === 2 ? DD_2 : s === 4 ? DD_4 : Infinity;
+      const off = s < 1 ? 0 : s * 0.5, inv = 1 / s, x = camX + dx * z, y = camZ + dz * z;
+      ddS = s;
+      // (only the lines the ray runs across most, x or z: as many samples as it needs, fewer than
+      // taking both sets, and each still fixed to the ground)
+      const acrossX = (dx > 0 ? dx : -dx) >= (dz > 0 ? dz : -dz);
+      if (acrossX && dx > 1e-9) { ddTx = ((Math.floor((x - off) * inv) + 1) * s + off - camX) / dx; ddStepX = s / dx; }
+      else if (acrossX && dx < -1e-9) { ddTx = ((Math.ceil((x - off) * inv) - 1) * s + off - camX) / dx; ddStepX = -s / dx; }
+      else { ddTx = Infinity; ddStepX = 0; }
+      if (!acrossX && dz > 1e-9) { ddTz = ((Math.floor((y - off) * inv) + 1) * s + off - camZ) / dz; ddStepZ = s / dz; }
+      else if (!acrossX && dz < -1e-9) { ddTz = ((Math.ceil((y - off) * inv) - 1) * s + off - camZ) / dz; ddStepZ = -s / dz; }
+      else { ddTz = Infinity; ddStepZ = 0; }
+    }
+    for (;;) {   // the nearer of the two next crossings (any left behind by a jump are passed over)
+      let t;
+      if (ddTx < ddTz) { t = ddTx; ddTx += ddStepX; } else { t = ddTz; ddTz += ddStepZ; }
+      if (t > z + 1e-6) return t;
+    }
   }
 
   // A wall inside a step (the side of a mesa, a sea cliff, a terrace's riser), or a drop past an edge.
@@ -2488,12 +2557,14 @@ function marchRays(t) {
   // and flat ground beyond; each row takes its colour from the part it really meets.
   function wallAt(z, row, h, sh, kS, kR, kL, fl) {
     const lo = zPrev, h0 = lastH, hm = (h0 + h) * 0.5, up = h > h0;
-    let a = lo, b = z;
-    for (let it = 0; it < 6; it++) {
-      const c = (a + b) * 0.5;
-      if ((marchHeight(camX + dx * c, camZ + dz * c, c) < hm) === up) a = c; else b = c;
+    let a = lo, b = z, ha = h0, hb = h;
+    for (let it = 0; it < 7; it++) {
+      const c = (a + b) * 0.5, hc = marchHeight(camX + dx * c, camZ + dz * c, c);
+      if ((hc < hm) === up) { a = c; ha = hc; } else { b = c; hb = hc; }
     }
-    const tw = (a + b) * 0.5;
+    // (read off the last bracket in proportion, not its middle: the halving's rounding would make the
+    // wall's foot hop back and forth as you walk)
+    const tw = hb !== ha ? a + (b - a) * clamp((hm - ha) / (hb - ha), 0, 1) : (a + b) * 0.5;
     // the ground before the wall, and the face (read a little past its foot, on its own cell)
     const tA = (lo + tw) * 0.5, mA = mat[(Math.floor(camZ + dz * tA) & MASK) * W + (Math.floor(camX + dx * tA) & MASK)];
     let shA = lastSh, flA = 0;
@@ -2507,7 +2578,7 @@ function marchRays(t) {
     // (lit by the light averaged over the cells around the wall, which changes smoothly along it, so
     // neighbouring columns agree instead of each taking its own cell's light in stripes)
     const mF = mat[cF], kSt = STRATA_K[mF];
-    const sF = TERRAIN_SEG | mF, rF = MAT_RAMP[mF], pF = posOf(mipShade(xw + 0.5, zw + 0.5, z < 120 ? 1 : 2)), pB = posOf(sh);
+    const sF = TERRAIN_SEG | mF, rF = MAT_RAMP[mF], pF = posOf(marchShade(xw + 0.5, zw + 0.5, z + 70)), pB = posOf(sh);
     for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
       if (kind[i] !== NONE) continue;
       const q = rayQ[r], tA0 = q < 0 ? (h0 - camY) / q : Infinity;
@@ -2637,11 +2708,12 @@ function marchRays(t) {
       if (nInt === MAX_INT) break;
     }
 
-    // March near to far. Terrain is sampled with a growing step; when the next step would
-    // enter a structure's footprint the march stops there and the DDA takes over until the
-    // ray leaves it. Once the last footprint is behind us no structure work happens at all.
+    // March near to far. Terrain is sampled where the ray crosses the lines of the height grid
+    // (ddNext); when the next step would enter a structure's footprint the march stops there and
+    // the DDA takes over until the ray leaves it. Once the last footprint is behind us no
+    // structure work happens at all.
     let k = 0, z = 1.0, blockExit = 0;
-    zPrev = 0.3;
+    zPrev = 0.3; ddS = 0;
     while (z < vd && left > 0) {
       if (k < nInt && intT0[k] <= z) {
         marchStructure(active[intRef[k]], intT0[k], intT1[k]);
@@ -2666,9 +2738,10 @@ function marchRays(t) {
         const idx = (Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK);
         const hf = marchHeight(px, pz, z);
         if ((horizonPix + (camY - hf) * f / z) * invRayH - 0.5 <= ybuf - 1) terrainAt(idx, z, px, pz, hf);
+        else { lastShZ = z; lastH = hf; lastSh = NaN; }   // (hidden: its light is looked up only if the next step needs it)
       } else terrainAt((Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK), z, px, pz);
       zPrev = z;
-      let nz = z + 0.5 + z * 0.008;
+      let nz = ddNext(z);
       if (k < nInt && intT0[k] < nz) nz = intT0[k];
       z = nz;
     }
@@ -3159,7 +3232,7 @@ function buildPlant(i, kind, x, y, z, s, zc) {
     // A palm: a trunk of four segments bending away from the wind, crowned with drooping fronds
     // (each an inner and a lower outer leaf) and a couple of coconuts; far off, trunk and crown.
     const a = hash2(i, 5, 41) * Math.PI * 2, lean = (0.35 + 0.35 * hash2(i, 6, 41)) * s, ca = Math.cos(a), sa = Math.sin(a);
-    const tseg = (K.TRUNK << 24) | i, fseg = (K.PALM << 24) | i, tw = Math.max(0.12 * s, fp * 0.45), nSeg = far ? 1 : 4;
+    const tseg = (K.TRUNK << 24) | i, fseg = (K.PALM << 24) | i, tw = Math.max(0.12 * s, fp * THIN), nSeg = far ? 1 : 4;
     let px = x, py = y - 0.2, pz = z;
     for (let k = 1; k <= nSeg; k++) {
       const f = k / nSeg, nx = x + ca * lean * f * f, ny = y + 3.6 * s * f, nz = z + sa * lean * f * f;
@@ -3168,14 +3241,14 @@ function buildPlant(i, kind, x, y, z, s, zc) {
     }
     // Fronds: each a blade arching up and out from the crown, then down to a drooping tip (far off,
     // one stroke each, out and down).
-    const nF = far ? 5 : 8, bw = Math.max(0.075 * s, fp * 0.5);
+    const nF = far ? 5 : 8, bw = Math.max(0.075 * s, fp * THIN);
     for (let k = 0; k < nF; k++) {
       const b = a + k / nF * Math.PI * 2 + hash2(i, k, 43) * 0.5, cb = Math.cos(b), sb = Math.sin(b), len = (0.85 + 0.3 * hash2(i, k, 44)) * s;
-      if (far) { const f = pCapsule(px, py, pz, px + cb * 1.9 * len, py - 0.8 * len, pz + sb * 1.9 * len, Math.max(0.22 * s, fp * 0.5), K.PALM, fseg, R.palm, LOOK_CANOPY); f.lit = lit * 0.6; f.posAdd = jit; continue; }
+      if (far) { const f = pCapsule(px, py, pz, px + cb * 1.9 * len, py - 0.8 * len, pz + sb * 1.9 * len, Math.max(0.22 * s, fp * THIN), K.PALM, fseg, R.palm, LOOK_CANOPY); f.lit = lit * 0.6; f.posAdd = jit; continue; }
       const P = [[0, 0], [0.75, 0.3], [1.45, 0.18], [2.0, -0.35], [2.3, -1.0]];
       for (let q = 0; q < 4; q++) {
         const [o0, h0] = P[q], [o1, h1] = P[q + 1];
-        const f = pCapsule(px + cb * o0 * len, py + h0 * len, pz + sb * o0 * len, px + cb * o1 * len, py + h1 * len, pz + sb * o1 * len, Math.max(bw * (1 - q * 0.2), fp * 0.5), K.PALM, fseg, R.palm, LOOK_CANOPY);
+        const f = pCapsule(px + cb * o0 * len, py + h0 * len, pz + sb * o0 * len, px + cb * o1 * len, py + h1 * len, pz + sb * o1 * len, Math.max(bw * (1 - q * 0.2), fp * THIN), K.PALM, fseg, R.palm, LOOK_CANOPY);
         f.lit = lit * 0.6; f.posAdd = jit + 0.05 - q * 0.05;   // lighter toward the crown, darker at the tips
       }
     }
@@ -3185,7 +3258,7 @@ function buildPlant(i, kind, x, y, z, s, zc) {
   }
   if (kind === SPRITE.CACTUS) {
     // A saguaro: a column with a round top and one or two arms that turn upward.
-    const seg = (K.CACTUS << 24) | i, rr = Math.max(0.2 * s, fp * 0.5), top = 2.3 * s;
+    const seg = (K.CACTUS << 24) | i, rr = Math.max(0.2 * s, fp * THIN), top = 2.3 * s;
     const col = pVCone(x, y - 0.2, z, y + top, rr, rr * 0.92, K.CACTUS, seg, R.cactus, LOOK_SOLID); col.lit = lit * 0.6; col.posAdd = jit;
     const cap = pSphere(x, y + top, z, rr * 0.92, K.CACTUS, seg, R.cactus, LOOK_SOLID); cap.lit = lit * 0.6; cap.posAdd = jit;
     if (!far) {
@@ -3201,8 +3274,8 @@ function buildPlant(i, kind, x, y, z, s, zc) {
   }
   if (kind === SPRITE.DEADTREE) {
     // A dead tree: a pale, leafless trunk and a few bare branches reaching up and out.
-    const seg = (K.TRUNK << 24) | i, bw = Math.max(0.05 * s, fp * 0.45);
-    const tr = pVCone(x, y - 0.3, z, y + 2.3 * s, Math.max(0.13 * s, fp * 0.45), Math.max(0.06 * s, fp * 0.45), K.TRUNK, seg, R.dead, LOOK_SOLID); tr.lit = lit * 0.6;
+    const seg = (K.TRUNK << 24) | i, bw = Math.max(0.05 * s, fp * THIN);
+    const tr = pVCone(x, y - 0.3, z, y + 2.3 * s, Math.max(0.13 * s, fp * THIN), Math.max(0.06 * s, fp * THIN), K.TRUNK, seg, R.dead, LOOK_SOLID); tr.lit = lit * 0.6;
     if (!far) for (let k = 0; k < 4; k++) {
       const b = hash2(i, k, 51) * Math.PI * 2, h = (1.1 + 1.0 * hash2(i, k, 52)) * s, len = (0.55 + 0.45 * hash2(i, k, 53)) * s;
       const br = pCapsule(x, y + h, z, x + Math.cos(b) * len, y + h + len * 0.8, z + Math.sin(b) * len, bw, K.TRUNK, seg, R.dead, LOOK_SOLID); br.lit = lit * 0.6;
@@ -3223,12 +3296,12 @@ function buildPlant(i, kind, x, y, z, s, zc) {
     const seg = (K.REED << 24) | i;
     if (zc > 60) { const q = pEllipsoid(x, y + 0.55 * s, z, 0.45 * s, 0.7 * s, 0.45 * s, 0, K.REED, seg, R.drygrass, LOOK_CANOPY); q.lit = lit * 0.6; q.posAdd = jit; return; }
     // (thin stalks leaning out a little, most of them green and a few gone to straw)
-    const sw = Math.max(0.022 * s, fp * 0.5);
+    const sw = Math.max(0.022 * s, fp * THIN);
     for (let k = 0; k < 7; k++) {
       const b = hash2(i, k, 57) * Math.PI * 2, r0 = 0.3 * s * hash2(i, k, 58), hgt = (1.0 + 0.6 * hash2(i, k, 59)) * s, lean = 0.12 * s + r0 * 0.4;
       const x0 = x + Math.cos(b) * r0, z0 = z + Math.sin(b) * r0, x1 = x0 + Math.cos(b) * lean, z1 = z0 + Math.sin(b) * lean;
       const st = pCapsule(x0, y - 0.1, z0, x1, y + hgt, z1, sw, K.REED, seg, k < 5 ? R.reeds : R.drygrass, LOOK_SOLID); st.lit = lit * 0.6; st.posAdd = jit + 0.12;
-      if (k < 2) { const hw = Math.max(0.05 * s, fp * 0.5), hd = pCapsule(x1 - Math.cos(b) * 0.03 * s, y + hgt - 0.3 * s, z1 - Math.sin(b) * 0.03 * s, x1, y + hgt - 0.05 * s, z1, hw, K.REED, seg, R.wood, LOOK_SOLID); hd.lit = lit * 0.6; }
+      if (k < 2) { const hw = Math.max(0.05 * s, fp * THIN), hd = pCapsule(x1 - Math.cos(b) * 0.03 * s, y + hgt - 0.3 * s, z1 - Math.sin(b) * 0.03 * s, x1, y + hgt - 0.05 * s, z1, hw, K.REED, seg, R.wood, LOOK_SOLID); hd.lit = lit * 0.6; }
     }
     return;
   }
@@ -3242,13 +3315,13 @@ function buildPlant(i, kind, x, y, z, s, zc) {
     return;
   }
   if (kind === SPRITE.CONIFER || kind === SPRITE.SNOWPINE) {
-    if (!far) { const tw = Math.max(0.09 * s, fp * 0.45); const tr = pVCone(x, y - 0.3, z, y + 1.0 * s, tw, tw, K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
+    if (!far) { const tw = Math.max(0.09 * s, fp * THIN); const tr = pVCone(x, y - 0.3, z, y + 1.0 * s, tw, tw, K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
     const tiers = far ? 2 : 3, snowy = kind === SPRITE.SNOWPINE;
     for (let k = 0; k < tiers; k++) {
       const b = far ? [0.7, 1.9][k] : [0.7, 1.66, 2.56][k], top = far ? [2.6, 3.9][k] : [2.3, 3.1, 3.9][k], r = far ? [0.95, 0.62][k] : [0.95, 0.72, 0.5][k];
-      const p = pVCone(x, y + b * s, z, y + top * s, r * s, Math.max(0.03 * s, fp * 0.5), K.CONIFER, leafSeg, R.conifer, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit + 0.1 * k;
+      const p = pVCone(x, y + b * s, z, y + top * s, r * s, Math.max(0.03 * s, fp * THIN), K.CONIFER, leafSeg, R.conifer, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit + 0.1 * k;
       if (snowy) {   // snow lying on the upper part of each tier
-        const sb = top - (top - b) * 0.4, c = pVCone(x, y + sb * s, z, y + top * s + 0.02, r * 0.44 * s, Math.max(0.03 * s, fp * 0.5), K.CONIFER, leafSeg, R.snow, LOOK_CANOPY); c.lit = lit * 0.6; c.posAdd = 0.1;
+        const sb = top - (top - b) * 0.4, c = pVCone(x, y + sb * s, z, y + top * s + 0.02, r * 0.44 * s, Math.max(0.03 * s, fp * THIN), K.CONIFER, leafSeg, R.snow, LOOK_CANOPY); c.lit = lit * 0.6; c.posAdd = 0.1;
       }
     }
     if (zc < 90) shadowDiscs.push([x, z, y, 0.9 * s, zc]);
@@ -3256,7 +3329,7 @@ function buildPlant(i, kind, x, y, z, s, zc) {
   }
   const birch = kind === SPRITE.BIRCH, crownY = birch ? 2.9 : 2.45, leaves = birch ? R.grass : R.leaf;
   if (!far) {
-    const tr = pVCone(x, y - 0.3, z, y + (birch ? 2.5 : 1.9) * s, Math.max((birch ? 0.09 : 0.13) * s, fp * 0.45), Math.max((birch ? 0.06 : 0.07) * s, fp * 0.45), K.TRUNK, (K.TRUNK << 24) | i, birch ? R.birch : R.wood, LOOK_SOLID); tr.lit = lit * 0.6;
+    const tr = pVCone(x, y - 0.3, z, y + (birch ? 2.5 : 1.9) * s, Math.max((birch ? 0.09 : 0.13) * s, fp * THIN), Math.max((birch ? 0.06 : 0.07) * s, fp * THIN), K.TRUNK, (K.TRUNK << 24) | i, birch ? R.birch : R.wood, LOOK_SOLID); tr.lit = lit * 0.6;
     if (birch) tr.marks = true;   // (so the painted look can band the bark)
   }
   const p = pEllipsoid(x, y + crownY * s, z, (birch ? 0.8 : 1.02) * s, (birch ? 1.1 : 0.95) * s, (birch ? 0.8 : 1.02) * s, 0, K.TREE, leafSeg, leaves, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit;
@@ -3914,7 +3987,7 @@ function paintCells(t) {
       const a0 = (z0 & MASK) * W, a1 = ((z0 + 1) & MASK) * W, b0 = x0 & MASK, b1 = (x0 + 1) & MASK;
       const m00 = wMat[a0 + b0], m10 = wMat[a0 + b1], m01 = wMat[a1 + b0], m11 = wMat[a1 + b1];
       if (flags[i] & F_FACE) { listColour(rp, P * (COL.near[rp].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; }   // a face: its own rock
-      else if (m00 === m10 && m00 === m01 && m00 === m11) { const rr = MAT_RAMP[m00]; listColour(rr, P * (COL.near[rr].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; }
+      else if (m00 === m10 && m00 === m01 && m00 === m11) { const rr = MAT_RAMP[m00]; listColour(rr, P * (COL.near[rr].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; ramp[i] = rr; }
       else {
         r = g = b = 0;
         // Each material's share of the point is the bilinear weight of its cells; raising the shares to
@@ -3941,9 +4014,10 @@ function paintCells(t) {
         if (only !== -2 || m10 !== WA) n = addShare(only === WA ? WA : m10, w10, n);
         if (only !== -2 || m01 !== WA) n = addShare(only === WA ? WA : m01, w01, n);
         if (only !== -2 || m11 !== WA) n = addShare(only === WA ? WA : m11, w11, n);
-        let sum = 0;
-        for (let q = 0; q < n; q++) { const w = shareW[q] * shareW[q]; shareW[q] = w * w; sum += shareW[q]; }
+        let sum = 0, lead = 0;
+        for (let q = 0; q < n; q++) { const w = shareW[q] * shareW[q]; shareW[q] = w * w; sum += shareW[q]; if (shareW[q] > shareW[lead]) lead = q; }
         for (let q = 0; q < n; q++) { const rr = MAT_RAMP[shareM[q]], w = shareW[q] / sum; listColour(rr, P * (COL.near[rr].length - 1), 0); r += tmpC[0] * w; g += tmpC[1] * w; b += tmpC[2] * w; }
+        ramp[i] = MAT_RAMP[shareM[lead]];   // (its letter is the leading ground's, where the ray meets it, not the march step's)
       }
       if (d < 36 && bloomOpen > 0) {   // a flower here? (they close after dusk)
         const gx = fx + 0.5, gz = fz + 0.5, cx = Math.floor(gx), cz = Math.floor(gz), cm = wMat[(cz & MASK) * W + (cx & MASK)];
@@ -3998,26 +4072,41 @@ function paintCells(t) {
     const below = y - hr, q = rayQ[y], tw = depth[i];
     let ym = hr - below;
     for (let it = 0; it < 3; it++) {
-      const yy = Math.max(0, Math.round(ym));
-      if (yy >= y) break;
-      const D = kind[x * RH + yy] === K.SKY ? Infinity : depth[x * RH + yy];
+      // (the nearer of the two rows it lies between: where a cliff meets the sky, taking whichever row
+      // it rounds to makes the mirror hop between the cliff and the sky from frame to frame)
+      const y1 = Math.max(0, Math.floor(ym));
+      if (y1 >= y) break;
+      const y2 = Math.min(y - 1, y1 + 1), j1 = x * RH + y1, j2 = x * RH + y2;
+      const d1 = kind[j1] === K.SKY ? Infinity : depth[j1], d2 = kind[j2] === K.SKY ? Infinity : depth[j2], D = d1 < d2 ? d1 : d2;
       if (!(D > tw)) break;
       ym = (vHor - q * (2 * tw / D - 1) * fz) / rayH - 0.5;
     }
-    const wave = Math.sin(x * 0.45 + y * 0.3 + t * 2.1) * (0.6 + below * 0.012);   // broad and gentle, or the edge of a reflection frays into a comb
-    // (a mirror row above the top of the screen takes the top row: the water near your feet still
-    // mirrors the sky above, instead of stopping at a line)
-    const yr = Math.max(0, Math.round(ym + wave));
-    if (yr >= RH) continue;
-    let rr = 0, rg = 0, rb = 0, n = 0;
-    for (let dxc = -1; dxc <= 1; dxc++) {
-      const xx = x + dxc;
+    // The ripple is fixed to the water (to the point this ray meets), not to the screen, so it stays put
+    // as you walk, broad and gentle (a quick one frays the edge of a reflection into a comb); and the
+    // mirror is read between rows, blended, so it glides rather than jumping a row at a time. (A
+    // mirror row above the top of the screen takes the top row: the water near your feet still
+    // mirrors the sky above, instead of stopping at a line.)
+    const pw = rayP[x], wxw = vCamX + (vFx + vRx * pw) * tw, wzw = vCamZ + (vFz + vRz * pw) * tw;
+    const wave = Math.sin(wxw * 0.8 + wzw * 0.5 + t * 1.7) * (0.3 + below * 0.0045) + Math.sin(wxw * 0.31 - wzw * 0.74 + t * 1.1) * (0.18 + below * 0.0025);
+    const yf = Math.max(0, ym + wave), y0 = Math.floor(yf), fy = yf - y0;
+    if (y0 >= RH) continue;
+    // (this column read between its two rows, the columns either side at the nearer one; a sample
+    // that cannot be mirrored, because it is water or stands in front of the water, is made up by the
+    // sky at that height for its own share, so losing one moves the colour a little, not all the way)
+    let rr = 0, rg = 0, rb = 0, n = 0, lost = 0;
+    const yn = fy < 0.5 ? y0 : Math.min(RH - 1, y0 + 1);
+    for (let q = 0; q < 4; q++) {
+      const xx = q < 2 ? x : q === 2 ? x - 1 : x + 1;
       if (xx < xm0 || xx >= xm1) continue;
-      const j = xx * RH + yr;
-      if (kind[j] !== K.SKY && (depth[j] < depth[i] || (flags[j] & F_WATER))) continue;
-      rr += rayCol[j * 3]; rg += rayCol[j * 3 + 1]; rb += rayCol[j * 3 + 2]; n++;
+      const yy = q === 0 ? y0 : q === 1 ? Math.min(RH - 1, y0 + 1) : yn, w = q === 0 ? 1 - fy : q === 1 ? fy : 1, j = xx * RH + yy;
+      if (w <= 0) continue;
+      if (kind[j] !== K.SKY && (depth[j] < depth[i] - 2 || (flags[j] & F_WATER))) { lost += w; continue; }   // (a cliff's foot at the water's edge still counts as behind it)
+      rr += rayCol[j * 3] * w; rg += rayCol[j * 3 + 1] * w; rb += rayCol[j * 3 + 2] * w; n += w;
     }
-    if (!n) { listColour(R.sky, skyPosRow[Math.max(0, Math.min(RH - 1, yr))] * (nSky - 1), 0); rr = tmpC[0]; rg = tmpC[1]; rb = tmpC[2]; n = 1; }
+    if (lost > 0 || n <= 0) {
+      listColour(R.sky, skyPosRow[Math.min(RH - 1, y0)] * (nSky - 1), 0);
+      const w = n > 0 ? lost : Math.max(lost, 1); rr += tmpC[0] * w; rg += tmpC[1] * w; rb += tmpC[2] * w; n += w;
+    }
     // water is dark in itself and takes its colour from what it mirrors (a blend of the two would
     // only grey out: blue water and an orange cliff make grey)
     const a = 0.82 - 0.3 * Math.min(1, below / Math.max(1, RH - hr)), o = i * 3;
@@ -4047,9 +4136,13 @@ function paintCells(t) {
     }
     if (!letter) { G[pi] = 0; FG[pi] = bg; continue; }
     // a shade lighter on dark ground, darker on light, fading into the distance
-    const fade = 1 - Math.min(1, fogAt(depth[kk]) * 1.25), L = r * 0.3 + g * 0.59 + b * 0.11;
-    const s = 1 + (L > 150 ? -0.16 : 0.24) * fade;
-    G[pi] = letter; FG[pi] = packF(r * s + (s > 1 ? 6 * fade : 0), g * s + (s > 1 ? 6 * fade : 0), b * s + (s > 1 ? 6 * fade : 0));
+    // (turning over gradually around mid brightness: a letter flipping between darker and lighter as
+    // its colour wavers about a threshold blinks)
+    // (and letters fade out with distance: far land is smooth paint, text is for up close, and far off
+    // it only crawled as the view moved)
+    const fade = (1 - Math.min(1, fogAt(depth[kk]) * 1.25)) * (1 - smoothstep(60, 160, depth[kk])), L = r * 0.3 + g * 0.59 + b * 0.11;
+    const s = 1 + (0.24 - 0.4 * smoothstep(125, 175, L)) * fade, up = s > 1 ? (s - 1) * 25 : 0;
+    G[pi] = letter; FG[pi] = packF(r * s + up, g * s + up, b * s + up);
   }
   // 4. firelight in the air, and birds
   const SH = cellH >> 1;

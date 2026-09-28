@@ -11,7 +11,7 @@ const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/scenes.json'), 'ut
 const sc = cfg.scenes.find(s => s.name === (args[0] || 'vista'));
 const { server, port } = await startServer();
 const { browser, page } = await launch({ timeControl: false, jsFlags });
-await page.goto(`http://127.0.0.1:${port}/index.html?seed=${cfg.seed}`);
+await page.goto(`http://127.0.0.1:${port}/${process.env.PAGE || "index.html"}?seed=${cfg.seed}&threads=0`);   // (drawn on the main thread, so the profile sees the renderer; PAGE= to profile another copy)
 await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
 const c = sc.cam, cam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
 const setup = async () => page.evaluate(({ seed, view, cam, hour, ground, merchants }) => {

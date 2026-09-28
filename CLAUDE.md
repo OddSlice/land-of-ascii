@@ -4,7 +4,9 @@ A first-person explorer drawn as a mosaic of text glyphs. The whole game is `ind
 
 Read `docs/phase1.md` first. It explains how a frame is drawn, the workers, the tests, measured speed and the open issues.
 
-**Phase 2 is in progress: read `docs/phase2-world.md` before working on it.** It is the brief: varied land (regions, terrain, weather, bridges), villages and towns, people and animals, how the tests change once world generation changes, and the order of work (a design pass, then land, settlements, people and animals, finish), with a commit and screenshots after each step. `docs/phase2.md` records each step as it is built: what, the numbers, the tests, the speed.
+**Phase 3 is in progress: read `docs/phase3.md`.** It is Martin's direction after phase 2's second step (third person, a bigger and more open world after Ocarina of Time, no flicker, gear that shows on your hero, then settlements), the plan in five steps, and each step as it is built.
+
+**Phase 2's brief is `docs/phase2-world.md`**, and its steps are recorded in `docs/phase2.md` (steps 1 and 2 built; its settlements become phase 3's step 5). It is the brief: varied land (regions, terrain, weather, bridges), villages and towns, people and animals, how the tests change once world generation changes, and the order of work (a design pass, then land, settlements, people and animals, finish), with a commit and screenshots after each step. `docs/phase2.md` records each step as it is built: what, the numbers, the tests, the speed.
 
 ## How index.html is laid out
 
@@ -17,7 +19,7 @@ In file order:
 5. **`renderCore()`**, the whole renderer:
    - colour model;
    - glyph atlas;
-   - the march (it bands rock faces into strata, `STRATA_*`);
+   - the march: it samples the ground where each ray crosses the lines of the height grid (`ddNext`, spacings `DD_*` matched to the height averaging `mipLevel`), so its samples are fixed to the ground; walls are drawn by `wallAt`, rock is banded by steepness (`STRATA_*`);
    - 3D solids (`rasterPrim`, the tree builder `buildPlant`, the merchant rig `buildMerchant`);
    - ground marks;
    - reflections;
@@ -65,7 +67,7 @@ node tools/find-views.mjs --write              # re-aim the region views and the
 node tools/map.mjs [seed...]     # region maps -> shots/phase2/map-<seed>.png
 node tools/palette.mjs           # the ground's ramps, day/dusk/night -> shots/phase2/palette.png
 node tools/sheet.mjs --out x.png --cols 2 --scale 0.5 a.png "Label" b.png "Label"   # contact sheets
-node tools/flicker.mjs road 60 0.117 0 painted   # blinking pixels per frame while the camera walks (time frozen)
+node tools/flicker.mjs road 60 0.117 0 painted   # blinking pixels per frame while the camera walks (time frozen; 4th arg turns; PAGE=other.html to compare a copy)
 ```
 
 Test harness notes:
@@ -91,11 +93,14 @@ Test harness notes:
     - cleaner ground (walls, material edges, shores, reflections);
     - bridges (`buildBridges`);
     - weather from the seed and the day (rain, snow, dawn valley fog), with fireflies and auroras at night.
-  - Next is step 3: settlements.
+  - Its step 3 (settlements) moved to phase 3.
+- **Phase 3 is under way**, following `docs/phase3.md`.
+  - **Step 1 (a steady picture) is built:** the march samples points fixed to the ground; drawing choices depend on the land, not on screen rows; letters come from where each ray lands and fade out far off; water mirrors blend; thin plant parts are at least 2.4 rays across. Flicker is 3–10 times lower walking, about half turning, at the same speed.
+  - Next: step 2, a bigger and more open world.
 - **Speed on Martin's Mac** (M1 Max, painted look, ten scenes): Chromium 5.7–7.5 ms a frame, Firefox 7.3–9.9 ms, WebKit 6.5–14.1 ms (its colour stage varies a lot between runs), all at 60 fps. A world generates in about 0.5 s.
 - **Rough edges:**
+  - turning still crawls a little (detail sliding across the pixels);
   - roads at a shallow angle still step at close range;
   - cliff faces right in front of you are blocky, with a break at the horizon line;
   - palm fronds are tubes up close, and canopies look faceted;
-  - tower corners and hill crests still shimmer a little in motion;
   - merchant faces and outfits are simple.
