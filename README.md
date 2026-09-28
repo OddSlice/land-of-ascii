@@ -1,17 +1,19 @@
 # Land of Ascii
 
-An explorer drawn as a mosaic of text characters: a seeded world of terrain, rivers, castles, villages, roads, forests, travelling merchants, torches and campfires, which you can walk, fly and trade in. You walk it as a hero seen from behind, as in Ocarina of Time, or through their eyes. Every cell of the screen is one glyph in two colours from a hand-built palette; the trees and merchants are real 3D solids.
+**▶ Play it in your browser: https://oddslice.github.io/land-of-ascii/**
 
-Land of Ascii started as v2 of [Text Voxel](https://github.com/OddSlice/text-voxel): phase 1 rebuilt the renderer and took over v1's simulation (fixes are listed in `tools/lib/v2-fixes.mjs`). Phase 2 gives it a world of its own: see [docs/phase2-world.md](docs/phase2-world.md).
+A desktop browser with a keyboard and mouse works best. Click to start, WASD to walk, the mouse to look around, V to switch between your hero and your own eyes. Press R for a whole new world.
 
-**Play:** open `index.html` (no build, no dependencies). The pictures below are from phase 1; phase 2 is giving every seed a new world, and its pictures are in [docs/phase2.md](docs/phase2.md). v1 stays live for comparison: https://oddslice.github.io/text-voxel/.
+An explorer drawn as a mosaic of text characters: a seeded world of terrain, rivers, castles, villages, roads, forests, travelling merchants, torches and campfires, which you can walk, fly and trade in. You walk it as a hero seen from behind, as in Ocarina of Time, or through their eyes, and what you buy from the merchants shows on your hero. Every cell of the screen is one glyph from a hand-built palette; the trees, the merchants and your hero are real 3D solids.
 
 | | |
 |---|---|
-| ![Merchant on the lake road, 18:00](shots/road.png) | ![A merchant walking toward you](shots/merchant.png) |
-| ![Campfire at the stone circle, 22:30](shots/fire.png) | ![The castle gate at night](shots/gate.png) |
+| ![Your hero in the open field](shots/phase3/step3/hero.png) | ![A village, chimneys smoking](shots/phase3/step5/village.png) |
+| ![The village at night: windows glow, torches in the square](shots/phase3/step5/village-night.png) | ![At night, the lantern lights the way](shots/phase3/step4/hero-night.png) |
 
-![v1 and v2, the same camera and hour](shots/compare-road.png)
+![What you buy shows on your hero](shots/phase3/step4/sheet-gear.png)
+
+Land of Ascii started as v2 of [Text Voxel](https://github.com/OddSlice/text-voxel): phase 1 rebuilt the renderer and took over v1's simulation (fixes are listed in `tools/lib/v2-fixes.mjs`). Phase 2 gave it a world of its own, and phase 3 your hero in a bigger world: see the docs below. It is one self-contained `index.html`: no build, no dependencies, so you can also just open the file. v1 stays live for comparison: https://oddslice.github.io/text-voxel/.
 
 ## Controls
 
