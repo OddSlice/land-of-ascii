@@ -117,3 +117,84 @@ So walking flickers 3 to 10 times less, and turning about twice as little.
 - **Turning** still crawls a little: detail slides across the pixels as the view turns.
 - **In the marsh**, pool shores and small flowers far off still flicker a little.
 - **Walking through a palm's crown** at head height flashes its fronds by. The third-person camera (step 3) sits above them.
+
+## Step 2: a bigger, more open world
+
+Shots: `shots/phase3/step2/` (sheets: `sheet-regions`, `sheet-classic`, `sheet-aerials`, `sheet-more` for bridges and weather, `sheet-maps`).
+
+### What changed
+
+- **The world is 1024 cells across**, four times the area (`W`, one of v1's constants, through a listed fix).
+- **Its landforms are twice as wide and 1.7 times as tall** (`LAND`, `LIFT`).
+  - Mountains reach 238 (they were 140).
+  - The climate, the regions and their borders, mesas and washes, coasts, beaches, sea cliffs, forests, the patches of rough and dry ground, and the valleys the dawn fog fills all grow with the land.
+  - The base terrain uses `fbmLand` (the helpers' `fbm`, twice as wide).
+  - Small things keep their size: marsh hummocks, a rock's ragged edge, a terrace's 7-unit step.
+- **Landmarks are spread out.** There are as many castles, towers, ruins and stone circles as before in four times the land, so they stand about 2.7 times further apart.
+  - Roads reach twice as far, 440 instead of 220 (listed fix).
+  - There are four rivers instead of two (listed fix).
+- **Open fields.** Grassland is smoothed toward the lie of the land much more (0.7, was 0.45), into broad green fields after Hyrule Field. It has fewer dry patches, the odd lone tree, and few groves.
+- **Walking is a jog, 5.5 cells a second** (was 7), and sprinting 9.5 (was 12), so crossing the world takes about three minutes on foot. Flying is faster: 70 (was 45).
+- **Bolder colours**, after Ocarina of Time:
+
+  | Ground | Colour |
+  |---|---|
+  | Fields | vivid yellow-green |
+  | Rough grass | its own deeper green |
+  | Dry grass | golden |
+  | Canopies | richer greens |
+  | Pines | deep teal |
+  | Red rock | a saturated orange canyon |
+  | Water | a brighter lake blue |
+  | Sand | warm |
+  | Sky | a little more saturated |
+
+  Dusk and night keep their hues with the same ramps a little more saturated.
+- **Where you start** (`spawnAt`, listed fix): in front of the biggest castle's gate, at the furthest spot up to 20 cells out from which you can walk straight to the gate. v1's 14 cells out could land in a gully between badland terraces.
+- **A terrace's face is its rock rim**, not the grass on its top (`wallAt` prefers a rock cell among the higher ones). Before this, golden streaks ran down the red walls.
+
+### Bugs the bigger world found
+
+- **v1's road finder** took a row of its half-size grid to be 256 cells, which was only true of a 512 world. It drew every road as a straight line from one edge of the map to the other, and every crossing of water became a bridge (188 of them). It also gave up after 80,000 steps. Both are fixed through listed fixes.
+- **Lighting a four-times-bigger world** took 20-40 ms, done every 0.2 s, and stuttered the view. It is now worked out a slice at a time over 12 frames (about 2 ms each) into a second buffer, then swapped in. The sun's view comes first, then every cell's light. The rows of each slice are whole numbers: a first try with fractional rows made every read slow, taking 500 ms. With the clock running, the worst frame gap is 23 ms (it was 42).
+
+### Numbers (seed 42)
+
+| | Before (phase 3, step 1) | After |
+|---|---|---|
+| World | 512 × 512 | 1024 × 1024 |
+| Highest peak | 140 | 238 |
+| Plants | 8,677 | about 33,700 |
+| Generating a world | 0.5 s | 2.3 s |
+| Memory | about 70 MB | about 130 MB |
+| Bridges | 1 | 4 (and 15 on the five test seeds) |
+
+### Tests
+
+All pass, with the worlds re-recorded.
+
+- **v1's movement** stays bit-identical on the bigger world. v1's page runs at 1024 with ten listed fixes: map size, rivers, speeds, road reach, the road finder, and the spawn. It is given the spawn rule, as it is given `deckAt`.
+- **The "never stuck" check** now tells walking into a cliff (a rise too high to step up right ahead) apart from being stuck.
+- **The tools** read the world's size from the game (`TV.defs.W`) instead of assuming 512.
+
+### Flicker and speed
+
+- **Flicker on the new land, walking:**
+
+  | Walk | Blinking per frame |
+  |---|---|
+  | The open field | 0.005% |
+  | The boardwalk | 0.020% |
+  | The castle valley | 0.031% |
+  | The badlands | 0.066% |
+
+- **Speed**, measured while Martin's Chrome ran the game at full tilt in the background, which slowed every browser by about 40% in earlier comparisons:
+  - Chromium: 8.4-12.5 ms a frame.
+  - Firefox: 12.3-17.1 ms, 45-55 fps.
+  - ⚠️ Firefox is below 60 fps while the machine is that busy. It needs a measurement on an idle machine.
+
+### Still open
+
+- **A new world takes 2.3 s to generate** with nothing on screen. A "building the world" message would help.
+- **The golden tops of badland terraces meet the rock in a scalloped edge.**
+- **The sea-cliffs, bridge and weather scenes are placed by hand** for seed 42 (and 31337's boardwalk).

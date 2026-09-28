@@ -31,7 +31,7 @@ const { server, port } = await startServer();
 const { browser, page: p1 } = await launch();
 const v1Fixed = applyFixes(fs.readFileSync(path.join(ROOT, 'reference/v1-index.html'), 'utf8'));
 await p1.route('**/reference/v1-index.html*', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: v1Fixed }));
-await p1.addInitScript(() => { window.deckAt = () => -Infinity; });   // (v1's own world has no bridges; v2's, taken below, brings its decks)
+await p1.addInitScript(() => { window.deckAt = () => -Infinity; window.spawnAt = s => s.half + 14; });   // (v1's own world has no bridges and starts as v1 did; v2's, taken below, brings its decks, and the session starts where v2 does)
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await p2.addInitScript(TIME_CONTROL);
 p2.on('pageerror', e => console.error('[v2 pageerror]', e.message));
@@ -129,7 +129,7 @@ const WORLD_FOR_V1 = () => {
     structs: w.structs.map(s => ({ type: s.type, variant: s.variant, cx: s.cx, cz: s.cz, half: s.half, baseY: s.baseY, x0: s.x0, z0: s.z0, radius: s.radius, anchor: s.anchor,
       tpl: { sx: s.tpl.sx, sy: s.tpl.sy, sz: s.tpl.sz, spans: s.tpl.spans, topSolid: Array.from(s.tpl.topSolid) } })),
     merchants: w.merchants.map(m => ({ name: m.name, greeting: m.greeting, goods: m.goods, robe: m.robe, cells: m.cells, cum: Array.from(m.cum), total: m.total, s: m.s, dir: m.dir, walked: m.walked, x: m.x, y: m.y, z: m.z, seg: m.seg })),
-    bridges: w.bridges.map(b => ({ cx: b.s.cx, cz: b.s.cz, x0: b.s.x0, z0: b.s.z0, sx: b.s.tpl.sx, sz: b.s.tpl.sz, alongX: b.alongX, deck: Array.from(b.deck) })),
+    bridges: w.bridges.map(b => ({ cx: b.s.cx, cz: b.s.cz, x0: b.s.x0, z0: b.s.z0, sx: b.s.tpl.sx, sz: b.s.tpl.sz, alongX: b.alongX, deck: Array.from(b.deck) })), W: window.TV.defs.W,
   };
 };
 const TAKE_WORLD = d => {
@@ -138,7 +138,7 @@ const TAKE_WORLD = d => {
   w.structs = d.structs.map(s => ({ ...s, tpl: { ...s.tpl, topSolid: Uint8Array.from(s.tpl.topSolid) } }));
   w.merchants = d.merchants.map(m => ({ ...m, cum: Float32Array.from(m.cum) }));
   // v1 with the merchant fix applied asks for the deck under a merchant: the same lookup as v2's deckAt
-  const W = 512, wrapDelta = v => v > W / 2 ? v - W : v < -W / 2 ? v + W : v;
+  const W = d.W, wrapDelta = v => v > W / 2 ? v - W : v < -W / 2 ? v + W : v;
   window.deckAt = (x, z) => {
     for (const b of d.bridges) {
       const lx = Math.floor(b.cx + wrapDelta(x - b.cx) - b.x0), lz = Math.floor(b.cz + wrapDelta(z - b.cz) - b.z0);
@@ -200,10 +200,15 @@ for (const [secs, keys, turn, action] of SCRIPT) {
     const below = states[1][i][states[1][i].length - 1];
     if (!(below <= 1e-6) && !fell) fell = { step: steps + i, below };
   }
-  // a walking segment of a second or more with movement keys held must get somewhere
+  // a walking segment of a second or more with movement keys held must get somewhere, unless a wall
+  // or a rise too high to step up stands right ahead (walking into a cliff is not being stuck)
   const moving = keys.some(k => ['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(k));
   const first = states[1][0], last = states[1][n - 1];
-  if (moving && secs >= 1 && last[8] === 1 && Math.hypot(last[0] - first[0], last[2] - first[2]) < 0.1) stuck.push(`${secs} s of ${keys.join('+')} at step ${steps}`);
+  if (moving && secs >= 1 && last[8] === 1 && Math.hypot(last[0] - first[0], last[2] - first[2]) < 0.1) {
+    const rise = await p2.evaluate(() => { const TV = window.TV, c = TV.cam; return TV.groundAt(c.x + Math.cos(c.yaw) * 0.9, c.z + Math.sin(c.yaw) * 0.9, 1e9) - TV.player.feetY; });
+    if (rise > 1.05) console.log(`  (${secs} s of ${keys.join('+')} at step ${steps}: against a rise of ${rise.toFixed(1)} ahead, not stuck)`);
+    else stuck.push(`${secs} s of ${keys.join('+')} at step ${steps}`);
+  }
   steps += n;
 }
 if (firstDiff) fail(`session diverges at step ${firstDiff.step}, field ${firstDiff.field}: v1 ${firstDiff.v1} v2 ${firstDiff.v2}`);
@@ -215,12 +220,12 @@ else console.log('  never stuck');
 
 // ---- 3. walks through every gate and door ----
 console.log('3. gate and door walks, seed 42');
-const walks = await p2.evaluate(() => window.TV.world.structs.map((s, i) => ({ i, type: s.type, cx: s.cx, cz: s.cz, half: s.half, z0: s.z0, sz: s.tpl.sz })).filter(s => s.type === 'castle' || s.type === 'tower'));
+const walks = await p2.evaluate(() => window.TV.world.structs.map((s, i) => ({ i, type: s.type, cx: s.cx, cz: s.cz, half: s.half, z0: s.z0, sz: s.tpl.sz, W: window.TV.defs.W })).filter(s => s.type === 'castle' || s.type === 'tower'));
 for (const s of walks) {
   const res = [];
   for (const page of [p1, p2]) {
     res.push(await page.evaluate(s => {
-      const TV = window.TV, W = 512;
+      const TV = window.TV, W = s.W;
       TV.clock.scale = 0; TV.setMode('walk');
       for (const k of Object.keys(TV.keys)) TV.keys[k] = false;
       // stand three cells outside the south-facing entrance, facing north, and walk in
@@ -248,10 +253,10 @@ for (const s of walks) {
 console.log('4. bridge walks, every seed');
 for (const seed of SEEDS) {
   const res = await p2.evaluate(seed => {
-    const TV = window.TV, W = 512, w = TV.world, out = [], STEP = 1.05;
+    const TV = window.TV, W = TV.defs.W, w = TV.world, out = [], STEP = 1.05;
     if (w.seed !== seed) TV.regenerate(seed);
     TV.clock.scale = 0;
-    const wrap = d => ((d % W) + W * 1.5) % W - W / 2, ctr = c => [(c & 511) + 0.5, (c >> 9) + 0.5];
+    const wrap = d => ((d % W) + W * 1.5) % W - W / 2, ctr = c => [(c % W) + 0.5, Math.floor(c / W) + 0.5];
     for (const b of w.bridges) {
       const s = b.s, deck = c => { const [x, z] = ctr(c), d = TV.deckAt(x, z); return d > -Infinity && d >= TV.groundAt(x, z, -1e9) - 0.05 ? d : null; };
       let path = null;

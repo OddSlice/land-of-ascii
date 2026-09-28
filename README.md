@@ -35,6 +35,7 @@ In the address: `?seed=42` for a given world, `?look=mosaic`, and `?weather=rain
 
 - **[docs/phase2-world.md](docs/phase2-world.md)**: the phase 2 brief (in progress). Varied land, villages and towns, people and animals, and the tests that change with the world.
 - **[docs/phase2.md](docs/phase2.md)**: phase 2 as it is built. Step 1: eight regions, terrain shaped per region, new ground materials, rock strata ([pictures](shots/phase2/sheet-regions.png)). Then the painted look, shadows and water mirrors ([mosaic and painted side by side](shots/phase2/sheet-looks-1.png)). Step 2, the land: plants for every region, bridges, and weather with fireflies and auroras at night ([regions](shots/phase2/step2/sheet-regions.png), [bridges](shots/phase2/step2/sheet-bridges.png), [weather](shots/phase2/step2/sheet-weather.png)).
+- **[docs/phase3.md](docs/phase3.md)**: phase 3, your hero in a bigger world. Step 1: a steady picture (flicker cut 3–10 times). Step 2: a world four times the size, with open fields, landforms twice as big and bolder colours ([regions](shots/phase3/step2/sheet-regions.png), [aerials](shots/phase3/step2/sheet-aerials.png)).
 - **[docs/phase1.md](docs/phase1.md)** covers the build:
   - how a frame is drawn, and the 3D merchants and trees;
   - the render workers;

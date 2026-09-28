@@ -96,8 +96,9 @@ Test harness notes:
   - Its step 3 (settlements) moved to phase 3.
 - **Phase 3 is under way**, following `docs/phase3.md`.
   - **Step 1 (a steady picture) is built:** the march samples points fixed to the ground; drawing choices depend on the land, not on screen rows; letters come from where each ray lands and fade out far off; water mirrors blend; thin plant parts are at least 2.4 rays across. Flicker is 3–10 times lower walking, about half turning, at the same speed.
-  - Next: step 2, a bigger and more open world.
-- **Speed on Martin's Mac** (M1 Max, painted look, ten scenes): Chromium 5.7–7.5 ms a frame, Firefox 7.3–9.9 ms, WebKit 6.5–14.1 ms (its colour stage varies a lot between runs), all at 60 fps. A world generates in about 0.5 s.
+  - **Step 2 (a bigger, more open world) is built:** 1024 cells across, landforms twice as wide and 1.7 times as tall (`LAND`, `LIFT`, `fbmLand`), landmarks spread out, open green fields, walking at 5.5, bolder colours after Ocarina of Time, lighting worked out over 12 frames (`lightBegin`/`lightSlice`), v1's road finder fixed for the bigger grid, a spawn you can walk from (`spawnAt`).
+  - Next: step 3, third person.
+- **Speed on Martin's Mac** (M1 Max, painted look): on the 512 world, Chromium 5.7–7.5 ms a frame, Firefox 7.3–9.9 ms, WebKit 6.5–14.1 ms. The 1024 world has not been measured on an idle machine yet: with Chrome busy in the background it ran Chromium 8.4–12.5 ms, Firefox 12.3–17.1 ms. A world generates in about 2.3 s (0.5 s on the 512 world).
 - **Rough edges:**
   - turning still crawls a little (detail sliding across the pixels);
   - roads at a shallow angle still step at close range;

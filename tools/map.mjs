@@ -27,7 +27,7 @@ await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0
 fs.mkdirSync(path.resolve(ROOT, dir), { recursive: true });
 for (const seed of seeds) {
   const url = await page.evaluate(({ seed, hour, scale, REGION_COLOURS, MAT_RAMP_NAMES }) => {
-    const TV = window.TV, w = TV.world, D = TV.defs, W = 512, N = W * W;
+    const TV = window.TV, w = TV.world, D = TV.defs, W = D.W, N = W * W;
     if (w.seed !== seed) TV.regenerate(seed);
     TV.setHour(hour);
     const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];

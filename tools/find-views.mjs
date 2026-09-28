@@ -22,7 +22,7 @@ const { browser, page } = await launch();
 await page.goto(`http://127.0.0.1:${port}/index.html?seed=${seed}&threads=0`);
 await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
 const scenes = await page.evaluate(({ seed, hour, aerialOnly, classic }) => {
-  const TV = window.TV, w = TV.world, B = TV.defs.BIOME, NAMES = TV.defs.BIOME_NAMES, W = 512, M = W - 1;
+  const TV = window.TV, w = TV.world, B = TV.defs.BIOME, NAMES = TV.defs.BIOME_NAMES, W = TV.defs.W, M = W - 1;
   if (w.seed !== seed) TV.regenerate(seed);
   const idx = (x, z) => ((Math.floor(z) & M) * W) + (Math.floor(x) & M);
   const wrapD = d => d > W / 2 ? d - W : d < -W / 2 ? d + W : d;
@@ -193,7 +193,7 @@ const scenes = await page.evaluate(({ seed, hour, aerialOnly, classic }) => {
       if (!best || score > best.score) best = { score, x, z, a };
     }
     out.push({ name: `aerial-${seed}`, title: `Seed ${seed} from the air, ${clock}`, seed, hour, t: 1000, view: 700,
-      cam: { x: wrap(best.x + 0.5), y: 190, z: wrap(best.z + 0.5), yaw: deg(best.a), pitch: -330 } });
+      cam: { x: wrap(best.x + 0.5), y: 330, z: wrap(best.z + 0.5), yaw: deg(best.a), pitch: -330 } });   // (above the highest peaks)
   }
   return out;
 }, { seed, hour, aerialOnly, classic });
