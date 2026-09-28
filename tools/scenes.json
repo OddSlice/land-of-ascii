@@ -889,6 +889,66 @@
         "pitch": 0,
         "ground": true
       }
+    },
+    {
+      "name": "chapel",
+      "title": "Inside a village chapel: the iconostasis, the Royal Doors open onto the altar, candle stands (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 468.5,
+        "y": 26.65,
+        "z": 275.6,
+        "yaw": -90,
+        "pitch": -30
+      }
+    },
+    {
+      "name": "chapel-night",
+      "title": "The chapel at night, by candlelight (22:00)",
+      "seed": 42,
+      "hour": 22,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 468.5,
+        "y": 26.65,
+        "z": 275.6,
+        "yaw": -90,
+        "pitch": -30
+      }
+    },
+    {
+      "name": "chapel-frescoes",
+      "title": "Frescoes: saints on lapis blue above a painted hanging (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 468.5,
+        "y": 26.65,
+        "z": 274.2,
+        "yaw": 180,
+        "pitch": 40
+      }
+    },
+    {
+      "name": "chapel-outside",
+      "title": "The chapel from above: the drum, the dome and its cross, the apse (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 452,
+        "y": 48,
+        "z": 292,
+        "yaw": -57,
+        "pitch": -260
+      }
     }
   ]
 }

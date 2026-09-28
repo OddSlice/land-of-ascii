@@ -34,3 +34,33 @@ The plan, agreed the same day ("go"), one commit with screenshots per step:
   - H folds it away (remembered in the browser).
 - **The start card** shows the main keys the same way, and on a touch screen says that the game needs a keyboard and a mouse.
 - **The stats box** (top left) has the legend's darker panel, so its labels read over bright ground.
+
+## Step 1a: the church (in the village chapels)
+
+Shots: `shots/phase4/step1/` (`sheet-chapel`).
+
+The church comes first, because the castles will be built round it (step 1b). It first stands in the villages: every village chapel is now a small Orthodox church (`buildChapel`).
+
+### What changed
+
+- **Walls two layers thick:**
+  - outside, stone striped with brick (a course of brick every third), as in Byzantine and Bulgarian churches;
+  - inside, frescoes up to the windows, and a starry vault above.
+- **A drum** rises through the tiled roof over the nave. It is windowed and open below, so from the nave you look up into it. A smooth dome (gold or lead) and a gold Orthodox cross (three bars, the lowest slanting) stand on it.
+- **A rounded apse** behind holds the altar.
+- **The iconostasis** closes the sanctuary off from the nave: four icons, the Royal Doors between them, a row of small icons and a gilded crest.
+- **Candles:** two candle stands before the iconostasis, and a horos (a ring chandelier of candles) hung on chains from the drum. They burn by day too, since a church is dark inside, and light the room.
+- **New materials:** brick, marble (the floor, checkered with stone), fresco, icon, gilding and the starry vault, with day, dusk and night colours.
+- **Painted walls** (`paintedWall`). The colour of each ray where it meets a fresco or an icon comes from where it lands on the wall, so both looks show the figures:
+  - frescoes: a painted hanging in folds, ochre bands, and saints on lapis blue (a robe in folds, a face, a gold halo);
+  - icons: figures on gold in gilded frames, a row of large ones and a row of small ones.
+
+  A fresco is lit by the room and the candles without turning orange. Frescoes and icons always stand on the floor, so their figures are placed by height above the foot of the wall.
+- **Solids:** domes are a new kind of solid (`K.DOME`); candle stands and chandeliers are drawn with the lights (`candlesAt`). A candle's flame has no halo of its own at night; its stand's light warms the room.
+- **Speed:** a thin solid (a chain, a candle) that passes the lens is no longer drawn over the whole screen. Standing right under a chandelier, drawing the solids fell from 8.4 ms to 2.0 ms.
+
+### Numbers
+
+- Inside the chapel: 7.4 ms a frame (7.7 ms facing a frescoed wall). The village around it: 9.5 ms. ⚠️ Measured with Chrome busy in the background.
+- Workers and the main thread give byte-identical frames in both looks.
+- Tests: all pass, with the world checksums re-recorded. The house walks go into every chapel (and every other house) on every test seed.

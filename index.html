@@ -145,8 +145,9 @@ const SUBSTEP = 0.3;            // longest horizontal move checked in one go: th
 const DAY_SECONDS = 240;                  // one full in-game day in real seconds
 const START_HOUR = 9;
 
-const MAT = { WATER: 0, GRASS: 1, ROCK: 2, SNOW: 3, HAZE: 4, STONE: 5, WOOD: 6, LEAF: 7, ROAD: 8, GRASS2: 9, SAND: 10, REDROCK: 11, DRYGRASS: 12, MUD: 13, REEDS: 14, PLASTER: 15, TILES: 16, THATCH: 17, GLASS: 18 };
-const MAT_COUNT = 19;   // (15 and up are only ever buildings' walls and roofs: phase 3's settlements)
+const MAT = { WATER: 0, GRASS: 1, ROCK: 2, SNOW: 3, HAZE: 4, STONE: 5, WOOD: 6, LEAF: 7, ROAD: 8, GRASS2: 9, SAND: 10, REDROCK: 11, DRYGRASS: 12, MUD: 13, REEDS: 14, PLASTER: 15, TILES: 16, THATCH: 17, GLASS: 18,
+  BRICK: 19, MARBLE: 20, FRESCO: 21, ICON: 22, GILD: 23, STARS: 24 };
+const MAT_COUNT = 25;   // (15 and up are only ever buildings: phase 3's settlements, phase 4's churches)
 const ROBE_COUNT = 4;
 
 // Regions. Every cell of land belongs to one, picked from its climate and height; where two meet
@@ -167,7 +168,7 @@ const DEFAULT_CELL = 1;
 const RAYS_X = 2, RAYS_Y = 4;
 const NEAR_SMOOTH = 26;                   // nearer than this, terrain is sampled bilinearly (no flat blocks at your feet)
 // What a ray hit, recorded per ray and read by the cell stage.
-const K = { SKY: 0, TERRAIN: 1, WALL: 2, TOP: 3, UNDER: 4, TREE: 5, CONIFER: 6, BUSH: 7, TRUNK: 8, BOULDER: 9, MERCHANT: 10, CLOUD: 12, FLAME: 13, LOGS: 14, SUN: 16, MOON: 17, PALM: 18, CACTUS: 19, REED: 20, NONE: 255 };
+const K = { SKY: 0, TERRAIN: 1, WALL: 2, TOP: 3, UNDER: 4, TREE: 5, CONIFER: 6, BUSH: 7, TRUNK: 8, BOULDER: 9, MERCHANT: 10, CLOUD: 12, FLAME: 13, LOGS: 14, SUN: 16, MOON: 17, PALM: 18, CACTUS: 19, REED: 20, DOME: 21, NONE: 255 };
 const PART = { STAFF: 1, LANTERN: 2, BOOT: 3, LEG: 4, BELT: 5, ROBE: 6, HAND: 8, SLEEVE: 9, SKIN: 10, EYE: 11, BRIM: 12, CROWN: 13, PACK: 14, CLOAK: 15, STEEL: 16, GEAR: 17, SHIELD: 18, CAP: 19 };
 // What you have bought, as it shows on your hero: hero.gear holds these bits, and the tunic's colour in bits 12-13.
 const GEAR = { CLOAK: 1, BOOTS: 2, LANTERN: 4, ROPE: 8, KETTLE: 16, FLASK: 32, MAP: 64, CAP: 128, SWORD: 256, SHIELD: 512 };
@@ -179,7 +180,8 @@ const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8, F_FACE = 16, F_FL
 // Three keyframes, blended by the clock. Each carries the lighting constants the world is shaded
 // with and the hand-built colour ramps everything is drawn in. Every ramp runs dark to light and
 // is hue-shifted: shadows lean cool and lights lean warm. A ramp has the same length in all three.
-const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack', 'sand', 'redrock', 'drygrass', 'mud', 'reeds', 'birch', 'palm', 'cactus', 'dead', 'bloomR', 'bloomY', 'bloomV', 'aurora', 'firefly', 'rain', 'plaster', 'tiles', 'thatch', 'glass'];
+const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack', 'sand', 'redrock', 'drygrass', 'mud', 'reeds', 'birch', 'palm', 'cactus', 'dead', 'bloomR', 'bloomY', 'bloomV', 'aurora', 'firefly', 'rain', 'plaster', 'tiles', 'thatch', 'glass',
+  'brick', 'marble', 'fresco', 'gild'];
 const R = {};
 RAMP_NAMES.forEach((n, i) => { R[n] = i; });
 const KEYFRAMES = {
@@ -226,6 +228,8 @@ const KEYFRAMES = {
       rain: ['#7f8c99', '#a7b4c0', '#cfd8e0'],
       plaster: ['#6f6556', '#a0927a', '#cbbd9f', '#e9ddbf', '#f7efd8'], tiles: ['#4a1d19', '#7c3024', '#a9462e', '#cc663c', '#e48c55'],
       thatch: ['#4b3b1f', '#7b6231', '#a88c46', '#caab5c', '#e2c97a'], glass: ['#1c2330', '#2e3a50', '#485a76', '#6d84a6'],
+      brick: ['#4a1e16', '#7a3222', '#a64a30', '#c8683f', '#dc8a5a'], marble: ['#6f6c6a', '#9e9a94', '#c8c4bb', '#e6e2d8', '#f6f3ec'],
+      fresco: ['#0c1a3a', '#15295a', '#1f3b7a', '#2e5596', '#4a74b4'], gild: ['#4a3410', '#7a5a1c', '#b08a2c', '#dcb43e', '#f6e08a'],
     },
   },
   dusk: {
@@ -271,6 +275,8 @@ const KEYFRAMES = {
       rain: ['#5e6674', '#8a93a2', '#b4bcc8'],
       plaster: ['#2a2230', '#4d3c45', '#7d6060', '#b58a70', '#e8b484'], tiles: ['#241620', '#4a2226', '#7a3428', '#a8502e', '#d27440'],
       thatch: ['#241c26', '#4a3a30', '#7a5e3a', '#a8804a', '#d4a460'], glass: ['#141526', '#22233a', '#363a55', '#525a78'],
+      brick: ['#2a1620', '#4e2226', '#7a3426', '#a44c30', '#cc6c40'], marble: ['#2a2230', '#4d3c45', '#7d6064', '#b58a78', '#e8b48c'],
+      fresco: ['#0e1030', '#1a1a48', '#2a2a64', '#3e3c80', '#5a549c'], gild: ['#3a2418', '#6a4420', '#9a6a2c', '#c89440', '#eec070'],
     },
   },
   night: {
@@ -316,6 +322,8 @@ const KEYFRAMES = {
       rain: ['#2c3440', '#48525e', '#6a7684'],
       plaster: ['#080a11', '#121724', '#212a3a', '#344156', '#4e5c74'], tiles: ['#08070c', '#120d14', '#1f161f', '#2e2230', '#433344'],
       thatch: ['#08080c', '#121218', '#1f1e24', '#2e2c32', '#433f44'], glass: ['#05070d', '#0a0f1a', '#121a2a', '#1d2a40'],
+      brick: ['#08070c', '#120d14', '#1d1419', '#2c1f26', '#3f2d36'], marble: ['#080a11', '#121724', '#212a3a', '#344156', '#4e5c74'],
+      fresco: ['#04060e', '#080d1c', '#0e162e', '#162244', '#22325e'], gild: ['#0a0908', '#16120c', '#262014', '#3a3020', '#544630'],
     },
   },
 };
@@ -1313,8 +1321,8 @@ function placeStructures(rng) {
 // - Every house faces the square (or the green) with its gable end, the door in it.
 // - After dark the windows glow, a lamp lights each room, and the torches burn (settlementLights).
 //   Chimneys smoke (world.chimneys, drawn by the renderer).
-Object.assign(VOX, { PLASTER: 3, TILES: 4, THATCH: 5, GLASS: 6 });
-VOX_MAT.push(MAT.PLASTER, MAT.TILES, MAT.THATCH, MAT.GLASS);
+Object.assign(VOX, { PLASTER: 3, TILES: 4, THATCH: 5, GLASS: 6, BRICK: 7, MARBLE: 8, FRESCO: 9, ICON: 10, GILD: 11, STARS: 12 });
+VOX_MAT.push(MAT.PLASTER, MAT.TILES, MAT.THATCH, MAT.GLASS, MAT.BRICK, MAT.MARBLE, MAT.FRESCO, MAT.ICON, MAT.GILD, MAT.STARS);
 const SETTLE = {
   village: { count: 4, size: 46, square: 5, houses: [8, 15], flat: 8 },    // (flat: the most the land under the square may rise)
   hamlet: { count: 6, size: 34, square: 3, houses: [3, 6], flat: 9 },
@@ -1325,16 +1333,67 @@ const HOUSE_KINDS = {
   longhouse: { w: 5, d: [10, 11], h: 3, roofs: [VOX.THATCH], walls: VOX.PLASTER },
   tavern: { w: 7, d: [9], h: 4, roofs: [VOX.TILES], walls: VOX.PLASTER, chimneys: 2, lamp: 1.4 },
   smithy: { w: 5, d: [6], h: 3, roofs: [VOX.TILES], walls: VOX.STONE, lamp: 1.3 },
-  chapel: { w: 5, d: [9], h: 4, roofs: [VOX.TILES], walls: VOX.STONE, chimneys: 0, tower: true },
   barn: { w: 7, d: [9], h: 4, roofs: [VOX.THATCH], walls: VOX.WOOD, chimneys: 0, bigDoor: true, dark: true },
 };
+
+// A village chapel, an Orthodox church in small (phase 4), in the same frame as a house (the door at
+// the highest z). Walls two layers thick: stone striped with brick outside; inside, frescoes up to the
+// windows and a starry vault above. A drum rises through the tiled roof over the nave, windowed and
+// open below, so from the nave you look up into it; a dome and a cross stand on it. A rounded apse
+// behind holds the altar; the iconostasis (four icons, the Royal Doors between them, a gilded crest)
+// closes it off from the nave. Two candle stands before it, a chandelier (horos) hung from the drum.
+function buildChapel(rng) {
+  const hx = 11, hz = 13, H = 5, hy = 14, T = makeTemplate(hx, hy, hz);
+  const striped = y => y % 3 === 0 ? VOX.BRICK : VOX.STONE;
+  const cx = 5.5, dz = 9.5, ax = 5.5, az = 3.5;   // (the drum's middle, the apse's middle)
+  for (let x = 1; x <= 9; x++) for (let z = 3; z <= 12; z++) T.set(x, 0, z, x >= 3 && x <= 7 && z >= 5 && z <= 10 && ((x + z) & 1) ? VOX.MARBLE : VOX.STONE);   // the floor
+  for (let y = 1; y <= H; y++) for (let x = 1; x <= 9; x++) for (let z = 3; z <= 12; z++) {
+    const outer = x === 1 || x === 9 || z === 3 || z === 12, inner = !outer && (x === 2 || x === 8 || z === 4 || z === 11);
+    if (outer) T.set(x, y, z, striped(y)); else if (inner) T.set(x, y, z, y <= 4 ? VOX.FRESCO : VOX.STARS);
+  }
+  for (let k = 0; k <= 5; k++) {   // the roof, stepped, the gables in striped stone
+    const y = H + 1 + k;
+    T.box(k, y, 3, 10 - k, y, 12, VOX.TILES);
+    if (k > 0 && 9 - k >= k + 1) { T.box(k + 1, y, 3, 9 - k, y, 3, striped(y)); T.box(k + 1, y, 12, 9 - k, y, 12, striped(y)); }
+  }
+  for (let x = 2; x <= 8; x++) for (let z = 6; z <= 12; z++) {   // the drum, its ceiling a starry vault, its windows
+    const d = Math.hypot(x + 0.5 - cx, z + 0.5 - dz), a = Math.atan2(z + 0.5 - dz, x + 0.5 - cx);
+    if (d > 2.45) continue;
+    for (let y = H + 1; y <= 12; y++) {
+      if (d < 1.4) T.set(x, y, z, y === 12 ? VOX.STARS : 0);
+      else T.set(x, y, z, (y === 9 || y === 10) && Math.abs(((a / (Math.PI / 4)) % 1 + 1) % 1 - 0.5) > 0.3 ? VOX.GLASS : striped(y));
+    }
+  }
+  for (let x = 1; x <= 9; x++) for (let z = 0; z <= 2; z++) {   // the apse
+    const d = Math.hypot(x + 0.5 - ax, z + 0.5 - az);
+    if (d > 3.1) continue;
+    T.set(x, 0, z, VOX.MARBLE);
+    for (let y = 1; y <= 4; y++) T.set(x, y, z, d > 2 ? striped(y) : 0);
+    T.set(x, 5, z, VOX.TILES);
+    if (d <= 2) T.set(x, 6, z, VOX.TILES);
+  }
+  T.box(4, 1, 3, 6, 3, 4, 0); T.box(4, 0, 3, 6, 0, 4, VOX.MARBLE);   // (the way from the sanctuary into the apse)
+  for (const x of [3, 4, 6, 7]) T.box(x, 1, 7, x, 4, 7, VOX.ICON);     // the iconostasis
+  T.set(5, 4, 7, VOX.GILD); T.box(3, 5, 7, 7, 5, 7, VOX.GILD);          // (over the Royal Doors, and the crest)
+  T.set(5, 1, 1, VOX.MARBLE); T.set(5, 2, 1, VOX.GILD);                 // the altar
+  T.set(1, 4, 8, VOX.GLASS); T.set(2, 4, 8, 0); T.set(9, 4, 8, VOX.GLASS); T.set(8, 4, 8, 0);   // windows either side of the nave
+  T.set(5, 4, 12, VOX.GLASS);                                          // (a window over the door)
+  T.box(5, 0, 11, 5, 3, 12, 0);                                        // the door, on the bare ground
+  return {
+    T, hx, hy, hz, chimneys: [], lamp: null, door: [5.5, 12.5],
+    domes: [[cx, 13, dz, 2.5, rng() < 0.5 ? R.gild : R.stone]],
+    candles: [[3.5, 2.25, 8.5, 7], [7.5, 2.25, 8.5, 7]],
+    horos: [[cx, 4.2, dz, 1.0, 7.8]],
+  };
+}
 
 // One house in its own frame: the ridge runs front to back, the front (with the door) is at the
 // highest z. Returns its voxels, where its chimneys smoke from, and where its door light hangs.
 function buildHouse(kind, rng) {
+  if (kind === 'chapel') return buildChapel(rng);
   const H0 = HOUSE_KINDS[kind], w = H0.w, d = H0.d[(rng() * H0.d.length) | 0], H = H0.h;
   const roof = H0.roofs[(rng() * H0.roofs.length) | 0], walls = H0.walls;
-  const ridge = H + 1 + ((w + 1) >> 1), hx = w + 2, hz = d, hy = ridge + (H0.tower ? 9 : 3);
+  const ridge = H + 1 + ((w + 1) >> 1), hx = w + 2, hz = d, hy = ridge + 3;
   const T = makeTemplate(hx, hy, hz), x0 = 1, x1 = w, z0 = 0, z1 = d - 1, cx = (x0 + x1) >> 1;
   T.box(x0, 0, z0, x1, 0, z1, VOX.STONE);                                     // footing
   T.box(x0 + 1, 0, z0 + 1, x1 - 1, 0, z1 - 1, VOX.WOOD);                      // floor
@@ -1360,13 +1419,7 @@ function buildHouse(kind, rng) {
     T.box(chx, 1, chz, chx, top, chz, VOX.STONE);
     chimneys.push([chx + 0.5, top + 1, chz + 0.5]);
   }
-  if (H0.tower) {                                                             // a bell tower at the back, open at the top, a pointed cap
-    const tt = ridge + 4;
-    T.box(cx - 1, 1, z0, cx + 1, tt, z0 + 2, VOX.STONE);
-    T.box(cx, tt - 2, z0, cx, tt - 1, z0 + 2, 0); T.box(cx - 1, tt - 2, z0 + 1, cx + 1, tt - 1, z0 + 1, 0);
-    T.box(cx - 1, tt + 1, z0, cx + 1, tt + 1, z0 + 2, roof); T.set(cx, tt + 2, z0 + 1, roof); T.set(cx, tt + 3, z0 + 1, roof);
-  }
-  if (!H0.dark && !H0.tower) T.set(x0 + 1, 1, z0 + 1, VOX.WOOD);               // a table in the corner
+  if (!H0.dark) T.set(x0 + 1, 1, z0 + 1, VOX.WOOD);               // a table in the corner
   const lamp = H0.dark ? null : [cx + 0.5, 2.4, (z0 + z1 + 1) / 2, H0.lamp || 1];   // the lamp in the middle of the room
   return { T, hx, hy, hz, chimneys, lamp, door: [cx + 0.5, z1 + 0.5] };
 }
@@ -1386,10 +1439,12 @@ function stampHouse(T, h, X, Z, dir, oy) {
     T.set(X + Math.floor(tx), y + oy, Z + Math.floor(tz), m);
   }
   const at = (p, y) => { const [tx, tz] = tf(p[0], p[p.length === 2 ? 1 : 2]); return [X + tx, y + oy, Z + tz]; };
+  const all = list => (list || []).map(p => [...at(p, p[1]), ...p.slice(3)]);   // (x, y, z, then whatever else they carry)
   return {
     chimneys: h.chimneys.map(c => at(c, c[1])),
     lamp: h.lamp && [...at(h.lamp, h.lamp[1]), h.lamp[3]],
     door: at(h.door, 0), dir,
+    domes: all(h.domes), candles: all(h.candles), horos: all(h.horos),
   };
 }
 
@@ -1483,7 +1538,7 @@ function buildSettlement(size, rng, cx, cz) {
 // other landmark, where the square's plot is fairly flat; villages first.
 function placeSettlements(seed) {
   const rng = mulberry32(seed ^ 0x5e771e), { H, water, biome } = world;
-  world.chimneys = [];
+  world.chimneys = []; world.domes = [];
   const cands = [];
   for (let z = 0; z < W; z += 4) for (let x = 0; x < W; x += 4) cands.push(z * W + x);
   for (let i = cands.length - 1; i > 0; i--) { const j = (rng() * (i + 1)) | 0; const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
@@ -1509,10 +1564,12 @@ function placeSettlements(seed) {
         type: size, variant: size, cx, cz, half, baseY, tpl, x0, z0,
         radius: Math.hypot(tpl.sx, tpl.sz) / 2 + 1,
         anchor: { x: cx, z: (z0 + tpl.sz + 1) & MASK },   // (where the main street leaves, south)
-        houses: b.houses.map(h => ({ kind: h.kind, door: toWorld(h.door), dir: h.dir, lamp: h.lamp && [...toWorld(h.lamp), h.lamp[3]] })),
+        houses: b.houses.map(h => ({ kind: h.kind, door: toWorld(h.door), dir: h.dir, lamp: h.lamp && [...toWorld(h.lamp), h.lamp[3]],
+          candles: h.candles.map(c => [...toWorld(c), c[3]]), horos: h.horos.map(c => [...toWorld(c), c[3], c[4]]) })),
         torches: b.torches.map(toWorld), street: b.street,
       });
       for (const h of b.houses) for (const ch of h.chimneys) world.chimneys.push([...toWorld(ch), rng() * 10]);
+      for (const h of b.houses) for (const dm of h.domes) world.domes.push([...toWorld(dm).map((v, k) => k === 1 ? v : ((v % W) + W) % W), dm[3], dm[4]]);
       placed++;
     }
   }
@@ -1552,6 +1609,10 @@ function settlementLights() {
   for (const s of world.structs) {
     if (!s.houses) continue;
     for (const h of s.houses) if (h.lamp) world.lights.push({ x: wrap(h.lamp[0]), y: h.lamp[1], z: wrap(h.lamp[2]), r: 6, color: [1, 0.72, 0.38], i: 0.9 * h.lamp[3], kind: 'window', phase: 0, size: 0 });
+    for (const h of s.houses) {   // a church's candles: its stands, and its chandelier
+      for (const c of h.candles || []) world.lights.push({ x: wrap(c[0]), y: c[1], z: wrap(c[2]), r: 5, color: [1, 0.74, 0.4], i: 0.75, kind: 'candles', n: c[3], phase: (c[0] * 3.1 + c[2] * 1.7) % 6, size: 0.1 });
+      for (const c of h.horos || []) world.lights.push({ x: wrap(c[0]), y: c[1], z: wrap(c[2]), r: 8, color: [1, 0.76, 0.42], i: 0.85, kind: 'horos', n: 12, rad: c[3], chain: c[4], phase: (c[0] * 2.3 + c[2]) % 6, size: 0.1 });
+    }
     for (const t of s.torches) world.lights.push({ x: wrap(t[0]), y: t[1], z: wrap(t[2]), r: 12, color: [1, 0.62, 0.28], i: 1.1, kind: 'torch', phase: (t[0] * 7.3 + t[2] * 3.1) % 10, size: 0.7 });
   }
 }
@@ -2556,7 +2617,8 @@ function compose() {
 //      meet, the shape that best fits how the rays split; inside one thing, that material's own
 //      marks, or a narrow ░▒▓ band on a seam between two tones, fog layers or lit ground.
 //   3. Compose. The glyph masks are painted into one ImageData.
-const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2, R.sand, R.redrock, R.drygrass, R.mud, R.reeds, R.plaster, R.tiles, R.thatch, R.glass]);
+const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2, R.sand, R.redrock, R.drygrass, R.mud, R.reeds, R.plaster, R.tiles, R.thatch, R.glass,
+  R.brick, R.marble, R.fresco, R.gild, R.gild, R.fresco]);
 // Rock strata: where a face of rock stands across several rows, its rows fall into bands by height,
 // each a step of tone from the next, with crisp edges between them (the band is part of the
 // segment). Red rock is banded strongly, grey rock gently.
@@ -2623,7 +2685,7 @@ function collectLights(t) {
   };
   for (const L of world.lights) {
     const flick = 0.85 + 0.15 * Math.sin(t * 9 + L.phase) * Math.sin(t * 5.3 + L.phase * 2);
-    const strength = L.kind === 'fire' ? Math.max(k, 0.3) : k;
+    const strength = L.kind === 'fire' ? Math.max(k, 0.3) : L.kind === 'candles' || L.kind === 'horos' ? Math.max(k, 0.6) : k;
     if (strength < 0.05) continue;
     add(L.x, L.y, L.z, L.r, L.color, L.i * flick * strength);
   }
@@ -2761,6 +2823,42 @@ function marchHeight(x, z, dist) {
 
 // =====================================================================
 //  RENDER 1a: THE MARCH  (terrain and structures, per ray column)
+// Painted walls (phase 4, the churches): which colour a ray takes where it meets a fresco, an icon
+// or a starry vault, from where on the wall it lands: u along the wall, v up from the foot of the
+// painted stretch (frescoes and the iconostasis always stand on the floor). patR is the ramp, patB how
+// bright the paint is. Rows of saints stand on lapis blue above a painted hanging, between ochre
+// bands; icons are figures on gold in gilded frames, a row of large ones and a row of small ones.
+let patR = 0, patB = 0;
+const ROBE_RAMPS = [R.robe0, R.robe2, R.robe3, R.plaster, R.robe1];
+function paintFigure(du, vv, h, bg, bgB, sc) {   // a standing saint, sc high (head near the top), du across from the middle
+  const fy = vv / sc, fx = du / sc, hd = fx * fx + (fy - 0.84) * (fy - 0.84);
+  if (hd < 0.0042) { patR = R.skin; patB = 0.62; return; }                                        // the face
+  if (hd < 0.0121) { patR = R.gild; patB = 0.84; return; }                                        // the halo
+  if (fy > 0.03 && fy < 0.74 && Math.abs(fx) < 0.16 - fy * 0.02) { patR = ROBE_RAMPS[(h * 5) | 0]; patB = 0.4 + 0.14 * Math.sin(fx * 60 + fy * 9); return; }   // the robe, in folds
+  patR = bg; patB = bgB;
+}
+function paintedWall(m, u, v) {
+  if (m === MAT.STARS) {   // the vaults: gold stars on the blue
+    const sx = Math.floor(u * 1.4), sy = Math.floor(v * 1.4), gx = u * 1.4 - sx - 0.5, gy = v * 1.4 - sy - 0.5;
+    if (hash2(sx, sy, 913) < 0.35 && gx * gx + gy * gy < 0.03) { patR = R.gild; patB = 0.85; } else { patR = R.fresco; patB = 0.36; }
+    return;
+  }
+  if (m === MAT.FRESCO) {
+    if (v < 0.95) { patR = R.robe0; patB = 0.28 + 0.1 * Math.sin(u * 9.4); return; }                 // the painted hanging, in folds
+    if (v < 1.13 || v >= 3.35) { patR = R.redrock; patB = 0.6; return; }                              // ochre bands
+    const c = Math.floor(u / 1.2);
+    return paintFigure(u - (c + 0.5) * 1.2, v - 1.13, hash2(c, 7, 911), R.fresco, 0.36, 2.25);      // saints on lapis blue
+  }
+  // the iconostasis: a dark red base, a row of large icons, a gilded cornice, a row of small ones
+  if (v < 0.45) { patR = R.robe0; patB = 0.26; return; }
+  if (v < 2.55 || (v >= 2.75 && v < 3.55)) {
+    const big = v < 2.55, w = big ? 1 : 0.5, v0 = big ? 0.45 : 2.75, ht = big ? 2.1 : 0.8, c = Math.floor(u / w), lu = u - c * w, lv = v - v0;
+    if (lu < 0.05 || lu > w - 0.05 || lv < 0.05 || lv > ht - 0.05) { patR = R.gild; patB = 0.92; return; }   // the frame
+    return paintFigure(lu - w / 2, lv, hash2(c, big ? 3 : 5, 917), R.gild, 0.6, ht);                  // a figure on gold
+  }
+  patR = R.gild; patB = 0.85;   // the cornices and the crest
+}
+
 // =====================================================================
 function marchRays(t) {
   const { RW, RH } = grid;
@@ -3027,11 +3125,17 @@ function marchRays(t) {
             // near a light, the firelight at the top and bottom of the span, blended down it
             const lTop = perRow ? warmAt(ix + 0.5, wTop, iz + 0.5) : aLit, lBot = perRow ? warmAt(ix + 0.5, wBot, iz + 0.5) : aLit, kL = (lBot - lTop) / (wBot - wTop);
             const glow = m === MAT.GLASS && winGlow > 0;   // (a window after dark: lamplight inside)
+            const painted = m === MAT.FRESCO || m === MAT.ICON || m === MAT.STARS, pLight = 0.4 + 0.9 * aPos;
             for (let r = r0, i = col * RH + r0; r < r1; r++, i++) {
               if (kind[i] !== NONE) continue;
               const hy = camY + rayQ[r] * tt;
               kind[i] = K.WALL; seg[i] = aSeg; ramp[i] = aRamp; pos[i] = aPos; depth[i] = tt; flags[i] = aFlags; u[i] = wallU; v[i] = hy - baseY;
               lit[i] = glow ? winGlow : lTop + (hy - wTop) * kL; left--;
+              if (painted) {   // a fresco, an icon or a vault: its own colours, lit by the room's light and the candles (without turning them orange)
+                paintedWall(m, wallU, hy - wBot);
+                const L = lit[i], pp = patB * pLight + L * 0.45;
+                ramp[i] = patR; pos[i] = pp > 1 ? 1 : pp; lit[i] = L * 0.3; seg[i] = aSeg | (patR << 12);
+              }
             }
             if (r1 >= ybuf) { if (r0 < ybuf) ybuf = r0; } else if (r0 < r1) gaps = true;
             if (camY > wTop) {           // top face, between this cell's far and near projection
@@ -3303,7 +3407,10 @@ function primScreenBox(p) {
     if (xs < sx0) sx0 = xs; if (xs > sx1) sx1 = xs; if (ys < sy0) sy0 = ys; if (ys > sy1) sy1 = ys;
   }
   if (zmax < 0.05) return false;
-  if (zmin < 0.05) { sx0 = -1e3; sx1 = 1e3; sy0 = -1e3; sy1 = 1e3; }   // reaches behind the eye: the whole screen
+  if (zmin < 0.05) {   // reaches behind the eye: the whole screen (unless it is thin, a chain or a candle, all but invisible at the lens)
+    if ((p.type === P_SPHERE ? p.r : p.type === P_ELLIPSOID ? Math.min(p.ex, p.ey, p.ez) : Math.max(p.r, p.r2)) < 0.12) return false;
+    sx0 = -1e3; sx1 = 1e3; sy0 = -1e3; sy1 = 1e3;
+  }
   const { RW, RH, rayW, rayH } = grid, f = vF;
   let x0 = Math.floor((grid.w * 0.5 + sx0 * f) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + sx1 * f) / rayW - 0.5);
   let y0 = Math.floor((vHor - sy1 * f) / rayH - 0.5), y1 = Math.ceil((vHor - sy0 * f) / rayH - 0.5);
@@ -3499,13 +3606,40 @@ function rasterFlame(L, cx, cy, cz, t, li) {
       depth[i] = zc; lit[i] = 0; flags[i] = 0;
     }
   }
-  glows.push({ x: grid.w * 0.5 + xc * k, y: vHor - (base + fh * 0.5) * k, hPx: fh * k, zc, fire: L.kind === 'fire', li });
+  if (L.kind !== 'candle') glows.push({ x: grid.w * 0.5 + xc * k, y: vHor - (base + fh * 0.5) * k, hPx: fh * k, zc, fire: L.kind === 'fire', li });   // (a candle's own light is its stand's pool; no halo each)
 }
 
 // ---- what the sprites are made of ---------------------------------------------------------------
 const glows = [], birdsOnScreen = [], shadowDiscs = [], heroBox = new Float64Array(5);   // (heroBox: x0, x1, y0, y1 in rays, depth)
 let primOrder = new Float64Array(0);
 const pose = { head: 0, look: 0, moving: false };
+// A candle stand (a brass post, a round tray and a cluster of thin candles) or a horos (a brass ring
+// of candles hung on chains under the dome). Their flames go with the other flames.
+function candlesAt(L, x, y, z, li, flames) {
+  const seg = (K.LOGS << 24) | li, cand = (cx, cz, h, k) => {
+    pCapsule(cx, y + 0.02, cz, cx, y + h, cz, 0.022, K.LOGS, seg, R.plaster, LOOK_SOLID).posAdd = 0.15;
+    flames.push([{ size: 0.1, phase: L.phase + k * 1.37, kind: 'candle' }, cx, y + h + 0.07, cz, li]);
+  };
+  if (L.kind === 'candles') {
+    pCapsule(x, y - 1.2, z, x, y, z, 0.045, K.LOGS, seg, R.gild, LOOK_SOLID);
+    pCylinder(x, y - 1.24, z, x, y - 1.18, z, 0.2, K.LOGS, seg, R.gild, LOOK_SOLID);
+    pCylinder(x, y - 0.03, z, x, y + 0.02, z, 0.34, K.LOGS, seg, R.gild, LOOK_SOLID).posAdd = 0.1;
+    for (let k = 0; k < L.n; k++) {
+      const a = k * 2.4 + L.phase, rr = k === 0 ? 0 : 0.13 + 0.1 * (k & 1);
+      cand(x + Math.cos(a) * rr, z + Math.sin(a) * rr, 0.13 + 0.05 * ((k * 7) % 3), k);
+    }
+    return;
+  }
+  const n = L.n, R0 = L.rad;
+  for (let k = 0; k < n; k++) {
+    const a0 = k / n * Math.PI * 2, a1 = (k + 1) / n * Math.PI * 2;
+    pCapsule(x + Math.cos(a0) * R0, y, z + Math.sin(a0) * R0, x + Math.cos(a1) * R0, y, z + Math.sin(a1) * R0, 0.05, K.LOGS, seg, R.gild, LOOK_SOLID).posAdd = 0.1;
+    const a = (k + 0.5) / n * Math.PI * 2;
+    cand(x + Math.cos(a) * R0, z + Math.sin(a) * R0, 0.16, k);
+  }
+  for (let k = 0; k < 3; k++) { const a = k / 3 * Math.PI * 2 + 0.3; pCapsule(x + Math.cos(a) * R0, y, z + Math.sin(a) * R0, x, y + L.chain, z, 0.016, K.LOGS, seg, R.dark, LOOK_SOLID); }
+}
+
 function drawSprites(t, poses) {
   primCount = 0; glows.length = 0; birdsOnScreen.length = 0; shadowDiscs.length = 0;
   const camX = vCamX, camY = vCamY, camZ = vCamZ, fx = vFx, fz = vFz, rx = vRx, rz = vRz;
@@ -3594,15 +3728,33 @@ function drawSprites(t, poses) {
     const a = Math.atan2(wind[1], wind[0]) + 0.3 * Math.sin(t * 2.1 + F[4]), ca = Math.cos(a), sa = Math.sin(a);
     pEllipsoid(dxw + ca * 0.8, y + 2.8, dzw + sa * 0.8, 0.8, 0.45, 0.05, a, K.LOGS, seg + 1, F[3], LOOK_SOLID).posAdd = 0.1;
   }
-  // Campfires and torches: logs or a bracket as solids; the flame itself after the solids.
+  // Church domes: a smooth dome on each drum, and a gold Orthodox cross on a ball on top (three bars,
+  // the lowest slanting).
+  const domes = world.domes;
+  for (let di = 0; di < domes.length; di++) {
+    const D = domes[di], dxw = wrapDelta(D[0] - camX), dzw = wrapDelta(D[2] - camZ), zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
+    if (zc > zoneC || !inView(zc, lat, D[3] + 2)) continue;
+    const y = D[1] - camY, r = D[3], seg = (K.DOME << 24) | (di * 2);
+    pEllipsoid(dxw, y, dzw, r, r * 1.08, r, 0, K.DOME, seg, D[4], LOOK_SOLID).posAdd = 0.06;
+    if (zc > 160) continue;
+    const top = y + r * 1.08, cs = seg + 1;
+    pSphere(dxw, top + 0.1, dzw, 0.13, K.DOME, cs, R.gild, LOOK_SOLID).posAdd = 0.1;
+    pCapsule(dxw, top + 0.15, dzw, dxw, top + 1.45, dzw, 0.05, K.DOME, cs, R.gild, LOOK_SOLID).posAdd = 0.1;
+    pCapsule(dxw - 0.2, top + 1.25, dzw, dxw + 0.2, top + 1.25, dzw, 0.04, K.DOME, cs, R.gild, LOOK_SOLID).posAdd = 0.1;
+    pCapsule(dxw - 0.42, top + 0.98, dzw, dxw + 0.42, top + 0.98, dzw, 0.045, K.DOME, cs, R.gild, LOOK_SOLID).posAdd = 0.1;
+    pCapsule(dxw - 0.26, top + 0.52, dzw, dxw + 0.26, top + 0.7, dzw, 0.04, K.DOME, cs, R.gild, LOOK_SOLID).posAdd = 0.1;
+  }
+  // Campfires and torches: logs or a bracket as solids; the flame itself after the solids. Candle
+  // stands and chandeliers (in the churches): brass, thin candles, a small flame on each.
   const flames = [];
   for (let li = 0; li < world.lights.length; li++) {
     const L = world.lights[li];
     if (L.kind === 'window' || L.kind === 'torch' && light.darkness < 0.05) continue;   // (a house's light is its glowing windows, drawn with the walls)
     const dxw = wrapDelta(L.x - camX), dzw = wrapDelta(L.z - camZ);
     const zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
-    if (zc > zoneC || !inView(zc, lat, 2)) continue;
+    if (zc > zoneC || !inView(zc, lat, L.kind === 'horos' ? L.rad + 1 : 2)) continue;
     const y = L.y - camY, seg = (K.LOGS << 24) | li;
+    if (L.kind === 'candles' || L.kind === 'horos') { if (zc < 70) candlesAt(L, dxw, y, dzw, li, flames); continue; }
     if (L.kind === 'fire') {
       const a = hash2(li, 1, 3) * Math.PI;
       for (let k = 0; k < 3; k++) {
@@ -4396,9 +4548,10 @@ RAMP_LETTER[R.reeds] = LT['|']; RAMP_LETTER[R.mud] = LT['_']; RAMP_LETTER[R.sand
 RAMP_LETTER[R.water] = LT['~']; RAMP_LETTER[R.rock] = LT['%']; RAMP_LETTER[R.redrock] = LT['='];
 RAMP_LETTER[R.snow] = LT['*']; RAMP_LETTER[R.road] = LT[':']; RAMP_LETTER[R.stone] = LT['#']; RAMP_LETTER[R.wood] = LT['+'];
 RAMP_LETTER[R.plaster] = LT['-']; RAMP_LETTER[R.tiles] = LT['w']; RAMP_LETTER[R.thatch] = LT['\\']; RAMP_LETTER[R.glass] = LT['#'];
+RAMP_LETTER[R.brick] = LT['=']; RAMP_LETTER[R.marble] = LT['+']; RAMP_LETTER[R.gild] = LT['*'];
 const KIND_LETTER = new Uint8Array(32);                   // solids, by kind
 KIND_LETTER[K.TREE] = LT['@']; KIND_LETTER[K.BUSH] = LT['&']; KIND_LETTER[K.CONIFER] = LT['^'];
-KIND_LETTER[K.TRUNK] = LT['|']; KIND_LETTER[K.BOULDER] = LT['%']; KIND_LETTER[K.LOGS] = LT['='];
+KIND_LETTER[K.TRUNK] = LT['|']; KIND_LETTER[K.BOULDER] = LT['%']; KIND_LETTER[K.LOGS] = LT['='];   // (domes: no letter, smooth metal)
 KIND_LETTER[K.PALM] = LT.w; KIND_LETTER[K.CACTUS] = LT['!']; KIND_LETTER[K.REED] = LT.i;
 const paint = { glyph: new Uint8Array(0), fg: new Uint32Array(0), bg: new Uint32Array(0) };   // per half cell: top, then bottom
 // Flowers: a scatter fixed to the world over grass and reed beds, each a small round bloom in one of
@@ -5357,7 +5510,7 @@ function workerSource() {
     `const KEYFRAMES = { day: { ramps: ${JSON.stringify(KEYFRAMES.day.ramps)} } };`,
     `const clamp = ${clamp};`, `const smoothstep = ${smoothstep};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`, `const pack = ${pack};`,
     `${hash2}`, `${terrainHeight}`, `${skyState}`,
-    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, chimneys: [], flags: [] };`,
+    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, chimneys: [], flags: [], domes: [] };`,
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
     `const cur = { ambient: 0.38, diffuse: 0.62, lights: 0, stars: 0 }, light = { lx: 0, ly: 1, lz: 0, darkness: 0, faceShade: new Float32Array(6) };`,
     `const wx = { rain: 0, snow: 0, fog: 0, wet: 0, aurora: 0, storm: 0 };`,
@@ -5398,7 +5551,7 @@ function syncWorkers() {
     const pkg = {
       seed: world.seed, H: world.H, mat: world.mat, fogTop: world.fogTop,
       structs: world.structs.map(s => ({ cx: s.cx, cz: s.cz, x0: s.x0, z0: s.z0, baseY: s.baseY, radius: s.radius, half: s.half, type: s.type, tpl: { sx: s.tpl.sx, sy: s.tpl.sy, sz: s.tpl.sz, spans: s.tpl.spans, topSolid: s.tpl.topSolid } })),
-      trees: world.trees, treeBuckets: world.treeBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds, chimneys: world.chimneys, flags: world.flags,
+      trees: world.trees, treeBuckets: world.treeBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds, chimneys: world.chimneys, flags: world.flags, domes: world.domes,
       merchants: world.merchants.map(m => ({ robe: m.robe, x: m.x, y: m.y, z: m.z, walked: m.walked })),
     };
     for (const wk of pool.workers) wk.postMessage({ type: 'world', world: pkg });
