@@ -15,7 +15,7 @@ In file order:
 1. HTML/CSS/HUD markup.
 2. **World and movement constants**, the materials `MAT` and the regions `BIOME`. Then the v2 constants: `CELL_PRESETS`, `RAYS_X/Y`, the ray kinds `K`, merchant parts `PART`, ray flags `F_*`.
 3. **Palettes:** `KEYFRAMES` (day, dusk, night ramps), `blendPalette`, the live tables `COL` and `cur`.
-4. **Simulation:** helpers, noise, world generation (`generateWorld`), then **regions** (phase 2: climate, region weights, shaping per region, the coast, the region per cell, marsh pools, and `paintGround`, which turns regions, slope and height into materials), then rivers, structures, roads, trees (by region), birds, lights, clouds, merchants, sky and lighting. World generation and tree placement are v2's own since phase 2; the rest is still v1's.
+4. **Simulation:** helpers, noise, world generation (`generateWorld`), then **regions** (phase 2: climate, region weights, shaping per region, the coast, the region per cell, marsh pools, and `paintGround`, which turns regions, slope and height into materials), then rivers, structures, **settlements** (phase 3: `placeSettlements`, `buildSettlement`, `buildHouse`; castle flags `castleFlags`), roads, trees (by region), birds, lights, clouds, merchants, sky and lighting. World generation, settlements and tree placement are v2's own since phase 2; the rest is still v1's.
 5. **`renderCore()`**, the whole renderer:
    - colour model;
    - glyph atlas;
@@ -104,7 +104,8 @@ Test harness notes:
   - **Step 2 (a bigger, more open world) is built:** 1024 cells across, landforms twice as wide and 1.7 times as tall (`LAND`, `LIFT`, `fbmLand`), landmarks spread out, open green fields, walking at 5.5, bolder colours after Ocarina of Time, lighting worked out over 12 frames (`lightBegin`/`lightSlice`), v1's road finder fixed for the bigger grid, a spawn you can walk from (`spawnAt`).
   - **Step 3 (third person) is built:** your hero seen from behind and above (`buildHero`), turning to where they walk, with walk and jump poses and wading in water; a camera that rises over ground behind, comes closer before walls and steep slopes, and slides into the eyes when squeezed (`updateHero`, `viewCam`); plants in front of the hero or at the lens see-through; V for your own eyes.
   - **Step 4 (gear on your hero) is built:** what you buy shows (cap, cloak, sword, shield, boots, lantern, rope, kettle, flask, map, tunics in four colours); the lantern lights the ground after dark; eight merchants selling 7 to 9 of 18 goods; 300 gold to start (listed fixes).
-  - Next: step 5, settlements.
+  - **Step 5, part 1 (settlements) is built:** four villages and six hamlets a world, terraced on the hillsides; cottages, longhouses, a tavern, a smithy, a chapel and barns you can walk into; new materials (plaster, tiles, thatch, glass); glowing windows, lamps and torches at night; chimney smoke; flags on castles. Every house door is walked into by the tests.
+  - Next: step 5, part 2 (towns, windmills, fences, fields, pastures, stalls, docks).
 - **Speed on Martin's Mac** (M1 Max, painted look): on the 512 world, Chromium 5.7–7.5 ms a frame, Firefox 7.3–9.9 ms, WebKit 6.5–14.1 ms. The 1024 world has not been measured on an idle machine yet: with Chrome busy in the background it ran Chromium 8.4–12.5 ms, Firefox 12.3–17.1 ms. A world generates in about 2.3 s (0.5 s on the 512 world).
 - **Rough edges:**
   - turning still crawls a little (detail sliding across the pixels);
@@ -113,4 +114,5 @@ Test harness notes:
   - palm fronds are tubes up close, and canopies look faceted;
   - merchant faces and outfits are simple;
   - third person: the camera goes into your eyes on slopes steeper than about 50° and with your back to a wall; looking down steeply stretches upright things a little (the tilt is a shear); a flower at the lens is a big flat blob; the hero's green tunic is close to the fields' green;
-  - gear: nothing to sell and no way to earn gold (v1's trade); what you own is always worn; the things at the belt are small.
+  - gear: nothing to sell and no way to earn gold (v1's trade); what you own is always worn; the things at the belt are small;
+  - settlements: on steep land a village gets few houses and steep grass between its plots; houses have one room.

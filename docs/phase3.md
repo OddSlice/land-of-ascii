@@ -329,3 +329,54 @@ Shots: `shots/phase3/step4/` (sheets: `sheet-gear`, `sheet-tunics`, `sheet-night
 - **Trade is still v1's:** nothing to sell and no way to earn gold.
 - **You cannot take things off:** what you own is worn, and the tunic is the one bought last.
 - **The small things at the belt** (rope, kettle, flask, map) are hard to see from the usual distance.
+
+## Step 5: settlements, part 1
+
+Shots: `shots/phase3/step5/` (sheets: `sheet-village`, `sheet-inside`).
+
+### What changed
+
+- **Every world has four villages and six hamlets** (`placeSettlements`, `buildSettlement`).
+  - A settlement is one landmark, as a castle is: a voxel template holding all its houses. So v1's roads link it to the rest (arriving where its main street leaves, to the south), v1's collision walks you in through its doors, and the renderer draws it like any other landmark.
+  - A village has 5 to 10 houses round a paved square, with a well in the middle, a torch on a post at each corner and a main street south. A hamlet has 1 to 6 round a green.
+- **Houses** (`buildHouse`): cottages, longhouses, a tavern, a smithy (stone), a chapel (stone, with a bell tower) and barns (timber, with a wide door).
+  - Plaster walls with timber corners, and a stepped roof of red tiles or golden thatch over a ceiling.
+  - A chimney, glass windows, and the door in the gable end facing the square.
+  - Inside, a plank floor and a table.
+- **Terraced, like Kakariko.** The land is hilly: over a village-sized square, the ground typically rises 40 to 80 units, so no site is flat enough to level whole. Instead:
+  - the square and every house get their own plot, levelled at the height of the land under it;
+  - a house much higher or lower than the square is left out, so villages keep to the contours.
+- **Every door can be reached.** A way from each door to the square is kept clear. Its ground is a ramp you can walk up and down (v1 allows a rise of 1.5 per cell), and the doorway stands on the bare ground, with no footing to step over.
+- **New materials:** plaster, roof tiles, thatch and window glass, with day, dusk and night colours, and their own letters in the painted look (`-`, `w`, `\`, `#`).
+- **After dark:**
+  - windows glow;
+  - a lamp lights each room;
+  - torches burn in the square.
+
+  The lights are sorted into buckets 8 cells across (32 before), so a ray in a village at night checks only the lamps near it.
+- **Chimneys smoke:** grey puffs rise from every chimney, drift with the wind and thin away (`world.chimneys`).
+- **Flags fly** on the highest roofs of castles and towers, streaming with the wind (`castleFlags`).
+
+### Numbers (the five test seeds)
+
+- Four villages and six hamlets in every world, with 39 to 47 houses in each world.
+- Generating a world takes about 2.4 s (2.3 s before).
+- **Speed:** a village by day costs about the same as the open field, and about 1 ms more at night. ⚠️ Measured while the machine was very busy, so the absolute numbers are high.
+- **Workers and the main thread agree**, byte for byte in both looks, across nine scenes.
+
+### Tests
+
+- **The world checksums are re-recorded:** the settlements are new, and the roads reach them.
+- **v1's movement still agrees exactly** on the new worlds.
+- **House walks.** From three cells outside every house's door, walk in; you must end up inside, on its floor.
+  - Seed 42, in v1 and v2: 47 houses, on the same paths.
+  - Every test seed, in v2: 214 houses.
+
+  The first version of this test caught doors up a bank of 2 to 6 units, ways from a door that ran into another house, and ramps too steep for v1's walking. All three are fixed.
+- **Bridges:** with the new roads, seed 42 has one bridge (a wooden one), and the boardwalks of phase 2 are gone from the test seeds. The bridge scenes moved to the bridges there are (seed 7's stone bridge, seed 42's wooden one), and the merchant scenes now follow merchant 1.
+
+### Still open (part 2)
+
+- **Still to build from the brief:** towns (walled, with a castle), windmills, fences, fields with crop rows, pastures, market stalls and docks.
+- **On steep land:** a village gets fewer houses (5 at the least), and its streets are ramps with steep grass between the plots.
+- **Houses have one room:** no upper floors or stairs yet.

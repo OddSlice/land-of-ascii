@@ -113,8 +113,8 @@ const SUBSTEP = 0.3;            // longest horizontal move checked in one go: th
 const DAY_SECONDS = 240;                  // one full in-game day in real seconds
 const START_HOUR = 9;
 
-const MAT = { WATER: 0, GRASS: 1, ROCK: 2, SNOW: 3, HAZE: 4, STONE: 5, WOOD: 6, LEAF: 7, ROAD: 8, GRASS2: 9, SAND: 10, REDROCK: 11, DRYGRASS: 12, MUD: 13, REEDS: 14 };
-const MAT_COUNT = 15;
+const MAT = { WATER: 0, GRASS: 1, ROCK: 2, SNOW: 3, HAZE: 4, STONE: 5, WOOD: 6, LEAF: 7, ROAD: 8, GRASS2: 9, SAND: 10, REDROCK: 11, DRYGRASS: 12, MUD: 13, REEDS: 14, PLASTER: 15, TILES: 16, THATCH: 17, GLASS: 18 };
+const MAT_COUNT = 19;   // (15 and up are only ever buildings' walls and roofs: phase 3's settlements)
 const ROBE_COUNT = 4;
 
 // Regions. Every cell of land belongs to one, picked from its climate and height; where two meet
@@ -147,7 +147,7 @@ const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8, F_FACE = 16, F_FL
 // Three keyframes, blended by the clock. Each carries the lighting constants the world is shaded
 // with and the hand-built colour ramps everything is drawn in. Every ramp runs dark to light and
 // is hue-shifted: shadows lean cool and lights lean warm. A ramp has the same length in all three.
-const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack', 'sand', 'redrock', 'drygrass', 'mud', 'reeds', 'birch', 'palm', 'cactus', 'dead', 'bloomR', 'bloomY', 'bloomV', 'aurora', 'firefly', 'rain'];
+const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack', 'sand', 'redrock', 'drygrass', 'mud', 'reeds', 'birch', 'palm', 'cactus', 'dead', 'bloomR', 'bloomY', 'bloomV', 'aurora', 'firefly', 'rain', 'plaster', 'tiles', 'thatch', 'glass'];
 const R = {};
 RAMP_NAMES.forEach((n, i) => { R[n] = i; });
 const KEYFRAMES = {
@@ -192,6 +192,8 @@ const KEYFRAMES = {
       aurora: ['#2a6a58', '#46c090', '#9ae8c4', '#c0a8ff'],
       firefly: ['#8a9a30', '#c8e04a', '#f0ff9a'],
       rain: ['#7f8c99', '#a7b4c0', '#cfd8e0'],
+      plaster: ['#6f6556', '#a0927a', '#cbbd9f', '#e9ddbf', '#f7efd8'], tiles: ['#4a1d19', '#7c3024', '#a9462e', '#cc663c', '#e48c55'],
+      thatch: ['#4b3b1f', '#7b6231', '#a88c46', '#caab5c', '#e2c97a'], glass: ['#1c2330', '#2e3a50', '#485a76', '#6d84a6'],
     },
   },
   dusk: {
@@ -235,6 +237,8 @@ const KEYFRAMES = {
       aurora: ['#1e5a4a', '#3ab884', '#8ce0b8', '#b096f0'],
       firefly: ['#7a8a2a', '#c0d848', '#ecff96'],
       rain: ['#5e6674', '#8a93a2', '#b4bcc8'],
+      plaster: ['#2a2230', '#4d3c45', '#7d6060', '#b58a70', '#e8b484'], tiles: ['#241620', '#4a2226', '#7a3428', '#a8502e', '#d27440'],
+      thatch: ['#241c26', '#4a3a30', '#7a5e3a', '#a8804a', '#d4a460'], glass: ['#141526', '#22233a', '#363a55', '#525a78'],
     },
   },
   night: {
@@ -278,6 +282,8 @@ const KEYFRAMES = {
       aurora: ['#0e3a34', '#22b07a', '#6cf0b0', '#a67cff'],
       firefly: ['#6a7a20', '#c4e24a', '#f6ffa0'],
       rain: ['#2c3440', '#48525e', '#6a7684'],
+      plaster: ['#080a11', '#121724', '#212a3a', '#344156', '#4e5c74'], tiles: ['#08070c', '#120d14', '#1f161f', '#2e2230', '#433344'],
+      thatch: ['#08080c', '#121218', '#1f1e24', '#2e2c32', '#433f44'], glass: ['#05070d', '#0a0f1a', '#121a2a', '#1d2a40'],
     },
   },
 };
@@ -485,10 +491,13 @@ function generateWorld(seed) {
   // 5. Landmarks. Castles, towers and ruins level the ground under themselves, so this
   //    has to run before slopes are turned into materials and normals.
   placeStructures(rng);
+  placeSettlements(seed);   // (phase 3: hamlets and villages, before the roads so the roads reach them)
+  castleFlags();
 
   // 6. Roads between the landmarks (may nudge road cells by a little), then trees, which
   //    keep off roads and footprints, then birds.
   buildRoads(rng);
+  settlementStreets();
   buildBridges(seed);
   placeTrees(seed);
   spawnBirds(rng);
@@ -496,6 +505,7 @@ function generateWorld(seed) {
   spawnMerchants(rng);
   placeLights(rng);
   bridgeLights();
+  settlementLights();
 
   // 7. Materials and lighting normals, then what shades the ground (hollows, and whatever stands on it),
   //    and where dawn fog lies.
@@ -1257,6 +1267,261 @@ function placeStructures(rng) {
     }
   }
   world.structs = structs;
+}
+
+// =====================================================================
+//  SETTLEMENTS  (phase 3: hamlets and villages in the open fields)
+// =====================================================================
+// A settlement is one landmark, as a castle is: a voxel template holding all its houses, placed on
+// flat open ground and levelled. So v1's roads link it to the rest (arriving at its south side,
+// where the main street leaves), v1's collision walks you in through its doors, and the renderer
+// draws it like any other landmark.
+// - A hamlet is 3 to 6 houses round a green. A village is 8 to 15 round a paved square with a well
+//   in the middle, a torch on a post at each corner and a paved main street to the south.
+// - Every house faces the square (or the green) with its gable end, the door in it.
+// - After dark the windows glow, a lamp lights each room, and the torches burn (settlementLights).
+//   Chimneys smoke (world.chimneys, drawn by the renderer).
+Object.assign(VOX, { PLASTER: 3, TILES: 4, THATCH: 5, GLASS: 6 });
+VOX_MAT.push(MAT.PLASTER, MAT.TILES, MAT.THATCH, MAT.GLASS);
+const SETTLE = {
+  village: { count: 4, size: 46, square: 5, houses: [8, 15], flat: 8 },    // (flat: the most the land under the square may rise)
+  hamlet: { count: 6, size: 34, square: 3, houses: [3, 6], flat: 9 },
+};
+// w: wall width, d: depth (front to back), h: wall height; roof: tiles or thatch
+const HOUSE_KINDS = {
+  cottage: { w: 5, d: [6, 7], h: 3, roofs: [VOX.THATCH, VOX.TILES], walls: VOX.PLASTER },
+  longhouse: { w: 5, d: [10, 11], h: 3, roofs: [VOX.THATCH], walls: VOX.PLASTER },
+  tavern: { w: 7, d: [9], h: 4, roofs: [VOX.TILES], walls: VOX.PLASTER, chimneys: 2, lamp: 1.4 },
+  smithy: { w: 5, d: [6], h: 3, roofs: [VOX.TILES], walls: VOX.STONE, lamp: 1.3 },
+  chapel: { w: 5, d: [9], h: 4, roofs: [VOX.TILES], walls: VOX.STONE, chimneys: 0, tower: true },
+  barn: { w: 7, d: [9], h: 4, roofs: [VOX.THATCH], walls: VOX.WOOD, chimneys: 0, bigDoor: true, dark: true },
+};
+
+// One house in its own frame: the ridge runs front to back, the front (with the door) is at the
+// highest z. Returns its voxels, where its chimneys smoke from, and where its door light hangs.
+function buildHouse(kind, rng) {
+  const H0 = HOUSE_KINDS[kind], w = H0.w, d = H0.d[(rng() * H0.d.length) | 0], H = H0.h;
+  const roof = H0.roofs[(rng() * H0.roofs.length) | 0], walls = H0.walls;
+  const ridge = H + 1 + ((w + 1) >> 1), hx = w + 2, hz = d, hy = ridge + (H0.tower ? 9 : 3);
+  const T = makeTemplate(hx, hy, hz), x0 = 1, x1 = w, z0 = 0, z1 = d - 1, cx = (x0 + x1) >> 1;
+  T.box(x0, 0, z0, x1, 0, z1, VOX.STONE);                                     // footing
+  T.box(x0 + 1, 0, z0 + 1, x1 - 1, 0, z1 - 1, VOX.WOOD);                      // floor
+  T.box(x0, 1, z0, x1, H, z1, walls);                                         // walls
+  T.box(x0 + 1, 1, z0 + 1, x1 - 1, H, z1 - 1, 0);
+  if (walls === VOX.PLASTER) for (const [x, z] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) T.box(x, 1, z, x, H, z, VOX.WOOD);   // timber corners
+  // the roof: stepped layers over a ceiling, eaves one out each side, the gables filled with wall
+  for (let k = 0; k <= (w + 1) >> 1; k++) {
+    const a = k, b = w + 1 - k, y = H + 1 + k;
+    T.box(a, y, z0, b, y, z1, roof);
+    if (k > 0 && b - a >= 2) { const g = walls === VOX.STONE ? VOX.STONE : walls; T.box(a + 1, y, z0, b - 1, y, z0, g); T.box(a + 1, y, z1, b - 1, y, z1, g); }
+  }
+  const dw = H0.bigDoor ? 1 : 0;
+  T.box(cx - dw, 0, z1, cx + dw, Math.min(3, H), z1, 0);                      // the door (on the bare ground: no footing, so the way up to it can start at the threshold)
+  if (!H0.dark) {                                                             // windows
+    for (let z = z0 + 2; z <= z1 - 2; z += 3) { T.set(x0, 2, z, VOX.GLASS); T.set(x1, 2, z, VOX.GLASS); }
+    T.set(cx, 2, z0, VOX.GLASS);
+    if (w >= 7) { T.set(cx - 2, 2, z1, VOX.GLASS); T.set(cx + 2, 2, z1, VOX.GLASS); }
+  }
+  const chimneys = [], n = H0.chimneys ?? 1;
+  for (let k = 0; k < n; k++) {                                               // chimneys, a hearth at the foot
+    const chx = Math.min(x1 - 1, cx + 1), chz = k === 0 ? z0 + 1 : z1 - 1, top = ridge + 1;
+    T.box(chx, 1, chz, chx, top, chz, VOX.STONE);
+    chimneys.push([chx + 0.5, top + 1, chz + 0.5]);
+  }
+  if (H0.tower) {                                                             // a bell tower at the back, open at the top, a pointed cap
+    const tt = ridge + 4;
+    T.box(cx - 1, 1, z0, cx + 1, tt, z0 + 2, VOX.STONE);
+    T.box(cx, tt - 2, z0, cx, tt - 1, z0 + 2, 0); T.box(cx - 1, tt - 2, z0 + 1, cx + 1, tt - 1, z0 + 1, 0);
+    T.box(cx - 1, tt + 1, z0, cx + 1, tt + 1, z0 + 2, roof); T.set(cx, tt + 2, z0 + 1, roof); T.set(cx, tt + 3, z0 + 1, roof);
+  }
+  if (!H0.dark && !H0.tower) T.set(x0 + 1, 1, z0 + 1, VOX.WOOD);               // a table in the corner
+  const lamp = H0.dark ? null : [cx + 0.5, 2.4, (z0 + z1 + 1) / 2, H0.lamp || 1];   // the lamp in the middle of the room
+  return { T, hx, hy, hz, chimneys, lamp, door: [cx + 0.5, z1 + 0.5] };
+}
+
+// Copy a house into a settlement's template with its door toward dir (0 +z, 1 +x, 2 -z, 3 -x), its
+// footprint's corner at (X, Z); points in the house's frame come out in the settlement's.
+function houseTransform(h, dir) {
+  const { hx, hz } = h;
+  return dir === 0 ? (x, z) => [x, z] : dir === 2 ? (x, z) => [hx - x, hz - z] : dir === 1 ? (x, z) => [z, hx - x] : (x, z) => [hz - z, x];
+}
+function stampHouse(T, h, X, Z, dir, oy) {
+  const { hx, hy, hz } = h, tf = houseTransform(h, dir);
+  for (let x = 0; x < hx; x++) for (let z = 0; z < hz; z++) for (let y = 0; y < hy; y++) {
+    const m = h.T.get(x, y, z);
+    if (!m) continue;
+    const [tx, tz] = tf(x + 0.5, z + 0.5);
+    T.set(X + Math.floor(tx), y + oy, Z + Math.floor(tz), m);
+  }
+  const at = (p, y) => { const [tx, tz] = tf(p[0], p[p.length === 2 ? 1 : 2]); return [X + tx, y + oy, Z + tz]; };
+  return {
+    chimneys: h.chimneys.map(c => at(c, c[1])),
+    lamp: h.lamp && [...at(h.lamp, h.lamp[1]), h.lamp[3]],
+    door: at(h.door, 0), dir,
+  };
+}
+
+// A whole settlement at (cx, cz): the square (or green) first, then houses on plots facing it, row
+// by row. The land here is hilly, so the square and every house get their own plot, levelled at the
+// height of the land under it (level); a house much higher or lower than the square is left out, so
+// villages keep to the contours. Returns the template (its base at baseY) and what stands in it.
+function buildSettlement(size, rng, cx, cz) {
+  const P = SETTLE[size], S = P.size, c = S >> 1, q = P.square, village = size === 'village';
+  const X0 = cx - c, Z0 = cz - c, Hm = world.H;
+  const cell = (tx, tz) => ((Z0 + tz) & MASK) * W + ((X0 + tx) & MASK);
+  const keep = new Uint8Array(S * S), used = new Uint8Array(S * S);
+  const meanOf = (tx0, tz0, tx1, tz1) => { let s = 0, n = 0, mn = Infinity, mx = -Infinity; for (let tz = tz0; tz <= tz1; tz++) for (let tx = tx0; tx <= tx1; tx++) { const h = Hm[cell(tx, tz)]; s += h; n++; if (h < mn) mn = h; if (h > mx) mx = h; } return [s / n, mx - mn]; };
+  // level a plot: the rect and a cell round it flat at h, blended back to the land over 5 more,
+  // leaving plots levelled before alone
+  function level(tx0, tz0, tx1, tz1, h) {
+    for (let tz = tz0 - 6; tz <= tz1 + 6; tz++) for (let tx = tx0 - 6; tx <= tx1 + 6; tx++) {
+      if (tx >= 0 && tz >= 0 && tx < S && tz < S && keep[tz * S + tx]) continue;
+      const d = Math.max(tx0 - tx, tx - tx1, tz0 - tz, tz - tz1, 0), i = cell(tx, tz);
+      Hm[i] = d <= 1 ? h : h + (Hm[i] - h) * Math.min(1, (d - 1) / 5);
+    }
+    for (let tz = tz0 - 1; tz <= tz1 + 1; tz++) for (let tx = tx0 - 1; tx <= tx1 + 1; tx++) if (tx >= 0 && tz >= 0 && tx < S && tz < S) keep[tz * S + tx] = 1;
+  }
+  const [hSq] = meanOf(c - q, c - q, c + q - 1, c + q - 1);
+  level(c - q, c - q, c + q - 1, c + q - 1, hSq);
+  for (let z = c - q; z < c + q; z++) for (let x = c - q; x < c + q; x++) used[z * S + x] = 1;
+  const blocked = new Uint8Array(S * S);   // (the well, the torch posts and every house: no way from a door may run into them)
+  if (village) { for (let z = c - 2; z <= c; z++) for (let x = c - 2; x <= c; x++) blocked[z * S + x] = 1; for (const x of [c - q, c + q - 1]) for (const z of [c - q, c + q - 1]) blocked[z * S + x] = 1; }
+  const street = [];
+  for (let z = c + q; z < S; z++) for (let x = c - 2; x <= c + 2; x++) { used[z * S + x] = 1; if (Math.abs(x - c) <= 1) street.push(cell(x, z)); }   // (the main street stays clear)
+  // which houses: a village has its tavern, chapel and smithy, a barn or two, and homes
+  // (homes before barns, so the best plots go to them; a hamlet's barn comes last of all)
+  const n = P.houses[0] + ((rng() * (P.houses[1] - P.houses[0] + 1)) | 0), kinds = village ? ['tavern', 'chapel', 'smithy'] : [];
+  while (kinds.length < n - 1) kinds.push(rng() < 0.3 ? 'longhouse' : rng() < 0.12 && village ? 'barn' : 'cottage');
+  kinds.push('barn');
+  // plots along each side of the square, two cells back, the door facing it; nearest the middle first
+  const plots = [], gap = 2, front = q + gap;
+  for (let side = 0; side < 4; side++) for (let t = -c + 2; t < c - 2; t++) plots.push([side, t]);
+  for (let i = plots.length - 1; i > 0; i--) { const j = (rng() * (i + 1)) | 0; const tmp = plots[i]; plots[i] = plots[j]; plots[j] = tmp; }
+  plots.sort((a, b) => Math.abs(a[1]) - Math.abs(b[1]));
+  const placed = [];
+  for (const kind of kinds) {
+    const h = buildHouse(kind, rng);
+    for (const [side, t] of plots) {
+      // side 0: north of the square, door south (+z); 1: west, door east; 2: south, door north; 3: east, door west
+      const dir = side, fx = dir === 0 || dir === 2 ? h.hx : h.hz, fz = dir === 0 || dir === 2 ? h.hz : h.hx;
+      let X, Z;
+      if (side === 0) { X = c + t - (fx >> 1); Z = c - front - fz; }
+      else if (side === 2) { X = c + t - (fx >> 1); Z = c + front; }
+      else if (side === 1) { X = c - front - fx; Z = c + t - (fz >> 1); }
+      else { X = c + front; Z = c + t - (fz >> 1); }
+      if (X < 1 || Z < 1 || X + fx > S - 1 || Z + fz > S - 1) continue;
+      let free = true;
+      for (let z = Z - 1; z <= Z + fz && free; z++) for (let x = X - 1; x <= X + fx; x++) if (used[z * S + x]) { free = false; break; }
+      if (!free) continue;
+      // the way from the door: gap cells out to the square, or to the ground beside it
+      const tf = houseTransform(h, dir), [tdx, tdz] = tf(h.door[0], h.door[1]), [ox, oz] = [[0, 1], [1, 0], [0, -1], [-1, 0]][dir];
+      const dcx = Math.floor(X + tdx), dcz = Math.floor(Z + tdz), way = [];
+      for (let k = 1; k <= gap + 1; k++) for (let w = -1; w <= 1; w++) way.push([dcx + ox * k + (ox === 0 ? w : 0), dcz + oz * k + (oz === 0 ? w : 0), k]);
+      if (way.some(([x, z]) => x < 0 || z < 0 || x >= S || z >= S || blocked[z * S + x])) continue;
+      const ex = dcx + ox * (gap + 1), ez = dcz + oz * (gap + 1), onSquare = ex >= c - q && ex < c + q && ez >= c - q && ez < c + q;
+      const endH = onSquare ? hSq : Hm[cell(ex, ez)];
+      const [hP, spread] = meanOf(X, Z, X + fx - 1, Z + fz - 1);
+      if (spread > 9 || Math.abs(hP - hSq) > 6 || Math.abs(hP - endH) > (gap + 1) * MAX_SLOPE * 0.85) continue;   // (not on a cliff, near the square's height, a way to the door you can walk up)
+      level(X, Z, X + fx - 1, Z + fz - 1, hP);
+      for (let z = Z; z < Z + fz; z++) for (let x = X; x < X + fx; x++) { used[z * S + x] = 1; blocked[z * S + x] = 1; }
+      // the way stays clear, its ground a ramp from the threshold to where it leads, and later plots leave it be
+      for (const [x, z, k] of way) { used[z * S + x] = 1; Hm[cell(x, z)] = hP + (endH - hP) * k / (gap + 1); keep[z * S + x] = 1; }
+      placed.push({ kind, h, X, Z, dir, hP });
+      break;
+    }
+  }
+  // the voxels, now that every plot has its height: each part stands on its plot, the template's base below the lowest
+  const baseY = Math.min(hSq, ...placed.map(p => p.hP)) - 1, oyOf = hh => Math.ceil(hh - baseY) - 1;
+  const oq = oyOf(hSq), sy = Math.max(oq + 8, ...placed.map(p => oyOf(p.hP) + p.h.hy)) + 1;
+  const T = makeTemplate(S, sy, S), torches = [], houses = [];
+  if (village) {
+    T.box(c - q, oq, c - q, c + q - 1, oq, c + q - 1, VOX.STONE);                                 // the square
+    T.box(c - 2, oq + 1, c - 2, c, oq + 1, c, VOX.STONE); T.set(c - 1, oq + 1, c - 1, 0); T.set(c - 1, oq, c - 1, 0);   // the well: a ring round a hole
+    T.box(c - 2, oq + 2, c - 1, c - 2, oq + 3, c - 1, VOX.WOOD); T.box(c, oq + 2, c - 1, c, oq + 3, c - 1, VOX.WOOD); T.box(c - 2, oq + 4, c - 1, c, oq + 4, c - 1, VOX.WOOD);
+    for (const [x, z] of [[c - q, c - q], [c + q - 1, c - q], [c - q, c + q - 1], [c + q - 1, c + q - 1]]) {   // torch posts
+      T.box(x, oq + 1, z, x, oq + 2, z, VOX.WOOD);
+      torches.push([x + 0.5, oq + 3.45, z + 0.5]);
+    }
+  }
+  for (const p of placed) houses.push({ kind: p.kind, ...stampHouse(T, p.h, p.X, p.Z, p.dir, oyOf(p.hP)) });
+  return { T, houses, torches, baseY, street };
+}
+
+// Where settlements go: open ground (grassland first, then forest, then anywhere dry), away from every
+// other landmark, where the square's plot is fairly flat; villages first.
+function placeSettlements(seed) {
+  const rng = mulberry32(seed ^ 0x5e771e), { H, water, biome } = world;
+  world.chimneys = [];
+  const cands = [];
+  for (let z = 0; z < W; z += 4) for (let x = 0; x < W; x += 4) cands.push(z * W + x);
+  for (let i = cands.length - 1; i > 0; i--) { const j = (rng() * (i + 1)) | 0; const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
+  const open = [[BIOME.GRASSLAND], [BIOME.GRASSLAND, BIOME.FOREST], [BIOME.GRASSLAND, BIOME.FOREST, BIOME.PINES, BIOME.BADLANDS]];
+  for (const size of ['village', 'hamlet']) {
+    const P = SETTLE[size], half = P.size >> 1, q = P.square + 1;
+    let placed = 0;
+    for (let pass = 0; pass < 4 && placed < P.count; pass++) for (const c of cands) {   // (each pass allows more regions, then rougher ground)
+      if (placed >= P.count) break;
+      const cx = c & MASK, cz = (c / W) | 0;
+      if (!open[Math.min(pass, 2)].includes(biome[c])) continue;
+      if (world.structs.some(s => Math.max(Math.abs(wrapDelta(cx - s.cx)), Math.abs(wrapDelta(cz - s.cz))) < half + s.half + 14)) continue;
+      let ok = true, mn = Infinity, mx = -Infinity;
+      for (let oz = -half; oz <= half && ok; oz += 2) for (let ox = -half; ox <= half; ox += 2) {
+        const i = ((cz + oz) & MASK) * W + ((cx + ox) & MASK);
+        if (water[i] || H[i] < world.seaLevel + 2) { ok = false; break; }
+        if (Math.abs(ox) <= q && Math.abs(oz) <= q) { if (H[i] < mn) mn = H[i]; if (H[i] > mx) mx = H[i]; }
+      }
+      if (!ok || mx - mn > P.flat * (pass < 3 ? 1 : 1.7)) continue;
+      const b = buildSettlement(size, rng, cx, cz), tpl = b.T.finalize(), x0 = cx - (tpl.sx >> 1), z0 = cz - (tpl.sz >> 1), baseY = b.baseY;
+      const toWorld = p => [x0 + p[0], baseY + p[1], z0 + p[2]];
+      world.structs.push({
+        type: size, variant: size, cx, cz, half, baseY, tpl, x0, z0,
+        radius: Math.hypot(tpl.sx, tpl.sz) / 2 + 1,
+        anchor: { x: cx, z: (z0 + tpl.sz + 1) & MASK },   // (where the main street leaves, south)
+        houses: b.houses.map(h => ({ kind: h.kind, door: toWorld(h.door), dir: h.dir, lamp: h.lamp && [...toWorld(h.lamp), h.lamp[3]] })),
+        torches: b.torches.map(toWorld), street: b.street,
+      });
+      for (const h of b.houses) for (const ch of h.chimneys) world.chimneys.push([...toWorld(ch), rng() * 10]);
+      placed++;
+    }
+  }
+}
+// Flags on the highest roofs of castles and towers: a pole standing on a roof (a column whose eight
+// neighbours are as high), up to four a castle and one a tower, the cloth in a colour of each castle's.
+function castleFlags() {
+  const flags = [], colours = [R.robe0, R.robe1, R.robe2, R.drygrass];
+  world.structs.forEach((s, si) => {
+    if (s.type !== 'castle' && s.type !== 'tower') return;
+    const T = s.tpl, top = (x, z) => x < 0 || z < 0 || x >= T.sx || z >= T.sz ? 0 : T.topSolid[x * T.sz + z];
+    let best = 0;
+    for (let i = 0; i < T.topSolid.length; i++) if (T.topSolid[i] > best) best = T.topSolid[i];
+    const cols = [];
+    for (let x = 1; x < T.sx - 1; x++) for (let z = 1; z < T.sz - 1; z++) {
+      const h = top(x, z);
+      if (h < best - 3) continue;
+      let roof = true;
+      for (let oz = -1; oz <= 1 && roof; oz++) for (let ox = -1; ox <= 1; ox++) if (top(x + ox, z + oz) < h) { roof = false; break; }
+      if (roof) cols.push([h, x, z]);
+    }
+    cols.sort((a, b) => b[0] - a[0] || a[1] - b[1] || a[2] - b[2]);
+    const picked = [], most = s.type === 'castle' ? 4 : 1;
+    for (const c of cols) if (picked.length < most && !picked.some(p => Math.max(Math.abs(p[1] - c[1]), Math.abs(p[2] - c[2])) < 5)) picked.push(c);
+    for (const [h, x, z] of picked) flags.push([((s.x0 + x + 0.5) % W + W) % W, s.baseY + h, ((s.z0 + z + 0.5) % W + W) % W, colours[si % colours.length], (si * 3.7 + x) % 6.28]);
+  });
+  world.flags = flags;
+}
+// The main streets are road (buildRoads starts the road map afresh, so this comes after it).
+function settlementStreets() {
+  for (const s of world.structs) if (s.street) for (const c of s.street) if (!world.water[c]) world.road[c] = 1;
+}
+
+// After dark: a lamp in each house (windows glow in the renderer), and the square's torches.
+function settlementLights() {
+  const wrap = v => ((v % W) + W) % W;
+  for (const s of world.structs) {
+    if (!s.houses) continue;
+    for (const h of s.houses) if (h.lamp) world.lights.push({ x: wrap(h.lamp[0]), y: h.lamp[1], z: wrap(h.lamp[2]), r: 6, color: [1, 0.72, 0.38], i: 0.9 * h.lamp[3], kind: 'window', phase: 0, size: 0 });
+    for (const t of s.torches) world.lights.push({ x: wrap(t[0]), y: t[1], z: wrap(t[2]), r: 12, color: [1, 0.62, 0.28], i: 1.1, kind: 'torch', phase: (t[0] * 7.3 + t[2] * 3.1) % 10, size: 0.7 });
+  }
 }
 
 // =====================================================================
@@ -2259,7 +2524,7 @@ function compose() {
 //      meet, the shape that best fits how the rays split; inside one thing, that material's own
 //      marks, or a narrow ░▒▓ band on a seam between two tones, fog layers or lit ground.
 //   3. Compose. The glyph masks are painted into one ImageData.
-const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2, R.sand, R.redrock, R.drygrass, R.mud, R.reeds]);
+const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2, R.sand, R.redrock, R.drygrass, R.mud, R.reeds, R.plaster, R.tiles, R.thatch, R.glass]);
 // Rock strata: where a face of rock stands across several rows, its rows fall into bands by height,
 // each a step of tone from the next, with crisp edges between them (the band is part of the
 // segment). Red rock is banded strongly, grey rock gently.
@@ -2278,7 +2543,7 @@ let sunScreen = null, moonScreen = null;
 
 // The frame's camera, lighting and fog, set at the start of render().
 let vHor = 0, vFx = 1, vFz = 0, vRx = 0, vRz = 1, vCamX = 0, vCamY = 0, vCamZ = 0, vF = 1, vVd = 500, vTanX = 1;
-let shAmb = 0.38, shDiff = 0.62, posLo = 0, posInv = 1, lightsOn = false;
+let shAmb = 0.38, shDiff = 0.62, posLo = 0, posInv = 1, lightsOn = false, winGlow = 0;   // (winGlow: how brightly windows glow, after dark)
 const FOG_LUT = new Float32Array(1025);
 for (let k = 0; k <= 1024; k++) { const u = (k / 1024 - 0.15) / 0.85; FOG_LUT[k] = u <= 0 ? 0 : Math.pow(u, 1.4) * 0.93; }
 const fogAt = d => { const k = d * 1024 / vVd; return k >= 1024 ? 0.93 : FOG_LUT[k | 0]; };
@@ -2306,17 +2571,23 @@ const intT0 = new Float64Array(MAX_INT), intT1 = new Float64Array(MAX_INT), intR
 
 // ---- point lights (torches, campfires, lanterns) ---------------------------------------
 const activeLights = [];
-const lightBuckets = Array.from({ length: TREE_BUCKETS * TREE_BUCKETS }, () => []);   // per 32-cell bucket: the lights that reach it
+// per 8-cell bucket: the lights that reach it (fine, so a ray in a village at night checks only the lamps near it)
+const LIGHT_BUCKET = 8, LIGHT_BUCKETS = W / LIGHT_BUCKET;
+const lightBuckets = Array.from({ length: LIGHT_BUCKETS * LIGHT_BUCKETS }, () => []), litBuckets = [];
 function collectLights(t) {
   activeLights.length = 0;
-  for (const b of lightBuckets) b.length = 0;
-  const k = light.darkness, TB = TREE_BUCKETS;
+  for (const b of litBuckets) lightBuckets[b].length = 0;
+  litBuckets.length = 0;
+  const k = light.darkness, TB = LIGHT_BUCKETS;
   const add = (x, y, z, r, c, i) => {
     const L = { x, y, z, r, cr: c[0], cg: c[1], cb: c[2], i };
     activeLights.push(L);
-    for (let bz = Math.floor((z - r) / TREE_BUCKET); bz <= Math.floor((z + r) / TREE_BUCKET); bz++)
-      for (let bx = Math.floor((x - r) / TREE_BUCKET); bx <= Math.floor((x + r) / TREE_BUCKET); bx++)
-        lightBuckets[((bz % TB + TB) % TB) * TB + ((bx % TB + TB) % TB)].push(L);
+    for (let bz = Math.floor((z - r) / LIGHT_BUCKET); bz <= Math.floor((z + r) / LIGHT_BUCKET); bz++)
+      for (let bx = Math.floor((x - r) / LIGHT_BUCKET); bx <= Math.floor((x + r) / LIGHT_BUCKET); bx++) {
+        const b = ((bz % TB + TB) % TB) * TB + ((bx % TB + TB) % TB);
+        if (lightBuckets[b].length === 0) litBuckets.push(b);
+        lightBuckets[b].push(L);
+      }
   };
   for (const L of world.lights) {
     const flick = 0.85 + 0.15 * Math.sin(t * 9 + L.phase) * Math.sin(t * 5.3 + L.phase * 2);
@@ -2329,8 +2600,8 @@ function collectLights(t) {
 }
 // How much firelight reaches a world position: 0 (none) to 1 (full warm ramp).
 function warmAt(x, y, z) {
-  const TB = TREE_BUCKETS;
-  const list = lightBuckets[((Math.floor(z / TREE_BUCKET) % TB + TB) % TB) * TB + ((Math.floor(x / TREE_BUCKET) % TB + TB) % TB)];
+  const TB = LIGHT_BUCKETS;
+  const list = lightBuckets[((Math.floor(z / LIGHT_BUCKET) % TB + TB) % TB) * TB + ((Math.floor(x / LIGHT_BUCKET) % TB + TB) % TB)];
   if (list.length === 0) return 0;
   let s = 0;
   for (let k = 0; k < list.length; k++) {
@@ -2345,7 +2616,7 @@ function warmAt(x, y, z) {
   s *= 1.105;
   return s > 1 ? 1 : s;
 }
-const hasLightsAt = (x, z) => lightBuckets[((Math.floor(z / TREE_BUCKET) % TREE_BUCKETS + TREE_BUCKETS) % TREE_BUCKETS) * TREE_BUCKETS + ((Math.floor(x / TREE_BUCKET) % TREE_BUCKETS + TREE_BUCKETS) % TREE_BUCKETS)].length > 0;
+const hasLightsAt = (x, z) => lightBuckets[((Math.floor(z / LIGHT_BUCKET) % LIGHT_BUCKETS + LIGHT_BUCKETS) % LIGHT_BUCKETS) * LIGHT_BUCKETS + ((Math.floor(x / LIGHT_BUCKET) % LIGHT_BUCKETS + LIGHT_BUCKETS) % LIGHT_BUCKETS)].length > 0;
 
 // Terrain lighting between cell centres (the near ground has no flat blocks at your feet).
 function smoothShade(x, z) {
@@ -2723,11 +2994,12 @@ function marchRays(t) {
             const r0 = rT < 0 ? 0 : rT, r1 = rB > RH ? RH : rB;
             // near a light, the firelight at the top and bottom of the span, blended down it
             const lTop = perRow ? warmAt(ix + 0.5, wTop, iz + 0.5) : aLit, lBot = perRow ? warmAt(ix + 0.5, wBot, iz + 0.5) : aLit, kL = (lBot - lTop) / (wBot - wTop);
+            const glow = m === MAT.GLASS && winGlow > 0;   // (a window after dark: lamplight inside)
             for (let r = r0, i = col * RH + r0; r < r1; r++, i++) {
               if (kind[i] !== NONE) continue;
               const hy = camY + rayQ[r] * tt;
               kind[i] = K.WALL; seg[i] = aSeg; ramp[i] = aRamp; pos[i] = aPos; depth[i] = tt; flags[i] = aFlags; u[i] = wallU; v[i] = hy - baseY;
-              lit[i] = lTop + (hy - wTop) * kL; left--;
+              lit[i] = glow ? winGlow : lTop + (hy - wTop) * kL; left--;
             }
             if (r1 >= ybuf) { if (r0 < ybuf) ybuf = r0; } else if (r0 < r1) gaps = true;
             if (camY > wTop) {           // top face, between this cell's far and near projection
@@ -3268,11 +3540,33 @@ function drawSprites(t, poses) {
       pEllipsoid(dxw + ox * c.w * 0.5, c.y - camY - oy * c.h * 0.5, dzw + hz, sc * c.w * 0.5, sc * c.h * 0.6, sc * c.w * 0.38, hash2(ci, 3, 5) * 3, K.CLOUD, seg, R.cloud, LOOK_CLOUD);
     }
   }
+  // Chimney smoke: puffs rising from each chimney near enough and drifting with the wind, swelling as
+  // they rise and thinning away.
+  const smoke = world.chimneys;
+  for (let ci = 0; ci < smoke.length; ci++) {
+    const c = smoke[ci], dxw = wrapDelta(c[0] - camX), dzw = wrapDelta(c[2] - camZ), zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
+    if (zc > 160 || !inView(zc, lat, 5)) continue;
+    for (let k = 0; k < 5; k++) {
+      const age = ((t * 0.2 + c[3] + k / 5) % 1 + 1) % 1, r = 0.1 + 0.5 * Math.sin(age * Math.PI);
+      const p = pSphere(dxw + wind[0] * age * 3, c[1] - camY + age * 3.5, dzw + wind[1] * age * 3, r, K.CLOUD, (K.CLOUD << 24) | (4096 + ci * 5 + k), R.stone, LOOK_SOLID);
+      p.posAdd = 0.05 + 0.15 * age - 0.35 * light.darkness;   // (grey at the chimney, paler as it thins; dim after dark)
+    }
+  }
+  // Flags on castle and tower tops, streaming with the wind and swinging a little.
+  const flagList = world.flags;
+  for (let fi = 0; fi < flagList.length; fi++) {
+    const F = flagList[fi], dxw = wrapDelta(F[0] - camX), dzw = wrapDelta(F[2] - camZ), zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
+    if (zc > 320 || !inView(zc, lat, 4)) continue;
+    const y = F[1] - camY, seg = (K.LOGS << 24) | (8192 + fi * 2);
+    pCapsule(dxw, y, dzw, dxw, y + 3.3, dzw, 0.07, K.LOGS, seg, R.dark, LOOK_SOLID);
+    const a = Math.atan2(wind[1], wind[0]) + 0.3 * Math.sin(t * 2.1 + F[4]), ca = Math.cos(a), sa = Math.sin(a);
+    pEllipsoid(dxw + ca * 0.8, y + 2.8, dzw + sa * 0.8, 0.8, 0.45, 0.05, a, K.LOGS, seg + 1, F[3], LOOK_SOLID).posAdd = 0.1;
+  }
   // Campfires and torches: logs or a bracket as solids; the flame itself after the solids.
   const flames = [];
   for (let li = 0; li < world.lights.length; li++) {
     const L = world.lights[li];
-    if (L.kind === 'torch' && light.darkness < 0.05) continue;
+    if (L.kind === 'window' || L.kind === 'torch' && light.darkness < 0.05) continue;   // (a house's light is its glowing windows, drawn with the walls)
     const dxw = wrapDelta(L.x - camX), dzw = wrapDelta(L.z - camZ);
     const zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
     if (zc > zoneC || !inView(zc, lat, 2)) continue;
@@ -4060,6 +4354,7 @@ const LETTERS = {
   'i': ['..#..', '.....', '..#..', '..#..', '..#..'],
   '/': ['....#', '...#.', '..#..', '.#...', '#....'],
   '\\': ['#....', '.#...', '..#..', '...#.', '....#'],
+  '-': ['.....', '.....', '.###.', '.....', '.....'],
 };
 const LETTER_LIST = Object.keys(LETTERS), LT = {};
 LETTER_LIST.forEach((ch, k) => { LT[ch] = k + 1; });   // letter ids: 0 is none
@@ -4068,6 +4363,7 @@ RAMP_LETTER[R.grass] = LT['"']; RAMP_LETTER[R.grass2] = LT["'"]; RAMP_LETTER[R.d
 RAMP_LETTER[R.reeds] = LT['|']; RAMP_LETTER[R.mud] = LT['_']; RAMP_LETTER[R.sand] = LT['.'];
 RAMP_LETTER[R.water] = LT['~']; RAMP_LETTER[R.rock] = LT['%']; RAMP_LETTER[R.redrock] = LT['='];
 RAMP_LETTER[R.snow] = LT['*']; RAMP_LETTER[R.road] = LT[':']; RAMP_LETTER[R.stone] = LT['#']; RAMP_LETTER[R.wood] = LT['+'];
+RAMP_LETTER[R.plaster] = LT['-']; RAMP_LETTER[R.tiles] = LT['w']; RAMP_LETTER[R.thatch] = LT['\\']; RAMP_LETTER[R.glass] = LT['#'];
 const KIND_LETTER = new Uint8Array(32);                   // solids, by kind
 KIND_LETTER[K.TREE] = LT['@']; KIND_LETTER[K.BUSH] = LT['&']; KIND_LETTER[K.CONIFER] = LT['^'];
 KIND_LETTER[K.TRUNK] = LT['|']; KIND_LETTER[K.BOULDER] = LT['%']; KIND_LETTER[K.LOGS] = LT['='];
@@ -4490,6 +4786,7 @@ function renderFrame(t, poses, look) {
   const t0 = performance.now();
   collectLights(t);
   lightsOn = activeLights.length > 0;
+  winGlow = light.darkness > 0.05 ? 0.6 + 0.4 * light.darkness : 0;
   for (let x = 0; x < grid.RW; x++) rayP[x] = ((x + 0.5) * grid.rayW - grid.w * 0.5) / f;
   for (let y = 0; y < grid.RH; y++) { rayQ[y] = -((y + 0.5) * grid.rayH - vHor) / f; rayInvS[y] = rayQ[y] < -1e-6 ? -1 / rayQ[y] : Infinity; }
   if (skyPosRow.length !== grid.RH) skyPosRow = new Float32Array(grid.RH);
@@ -5028,7 +5325,7 @@ function workerSource() {
     `const KEYFRAMES = { day: { ramps: ${JSON.stringify(KEYFRAMES.day.ramps)} } };`,
     `const clamp = ${clamp};`, `const smoothstep = ${smoothstep};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`, `const pack = ${pack};`,
     `${hash2}`, `${terrainHeight}`, `${skyState}`,
-    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null };`,
+    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, chimneys: [], flags: [] };`,
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
     `const cur = { ambient: 0.38, diffuse: 0.62, lights: 0, stars: 0 }, light = { lx: 0, ly: 1, lz: 0, darkness: 0, faceShade: new Float32Array(6) };`,
     `const wx = { rain: 0, snow: 0, fog: 0, wet: 0, aurora: 0, storm: 0 };`,
@@ -5069,7 +5366,7 @@ function syncWorkers() {
     const pkg = {
       seed: world.seed, H: world.H, mat: world.mat, fogTop: world.fogTop,
       structs: world.structs.map(s => ({ cx: s.cx, cz: s.cz, x0: s.x0, z0: s.z0, baseY: s.baseY, radius: s.radius, half: s.half, type: s.type, tpl: { sx: s.tpl.sx, sy: s.tpl.sy, sz: s.tpl.sz, spans: s.tpl.spans, topSolid: s.tpl.topSolid } })),
-      trees: world.trees, treeBuckets: world.treeBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds,
+      trees: world.trees, treeBuckets: world.treeBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds, chimneys: world.chimneys, flags: world.flags,
       merchants: world.merchants.map(m => ({ robe: m.robe, x: m.x, y: m.y, z: m.z, walked: m.walked })),
     };
     for (const wk of pool.workers) wk.postMessage({ type: 'world', world: pkg });

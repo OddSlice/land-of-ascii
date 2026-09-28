@@ -11,7 +11,8 @@
 //      player, camera, merchants and clock must be bit-identical after every step. Along the way
 //      the player never falls through the ground and never gets stuck.
 //   3. Walks: from outside every castle gate and every tower door, walk in; both must end inside the
-//      footprint, on the same path.
+//      footprint, on the same path. Then every house in every settlement: from outside its door,
+//      walk in, onto its floor.
 //   4. Bridges: on every seed, walk across every bridge from one bank to the other, both ways: the
 //      walk must reach the far bank and never drop below the deck on the way (into the river).
 //   5. Weather: each day's plan (rain or snow, dawn fog, aurora) is the same every time for a seed,
@@ -223,7 +224,7 @@ if (stuck.length) fail('stuck: ' + stuck.join('; '));
 else console.log('  never stuck');
 
 // ---- 3. walks through every gate and door ----
-console.log('3. gate and door walks, seed 42');
+console.log('3. gate, door and house walks, seed 42');
 const walks = await p2.evaluate(() => window.TV.world.structs.map((s, i) => ({ i, type: s.type, cx: s.cx, cz: s.cz, half: s.half, z0: s.z0, sz: s.tpl.sz, W: window.TV.defs.W })).filter(s => s.type === 'castle' || s.type === 'tower'));
 for (const s of walks) {
   const res = [];
@@ -247,6 +248,65 @@ for (const s of walks) {
   const ok = res[0].inside && res[1].inside && same;
   if (!ok) fail(`${s.type} ${s.i}: v1 inside=${res[0].inside} (dz ${res[0].dz}), v2 inside=${res[1].inside} (dz ${res[1].dz}), same path=${same}`);
   else console.log(`  ${s.type.padEnd(6)} #${String(s.i).padEnd(2)} walked in: ${res[1].dz} from the centre, eye at ${res[1].y}; identical path`);
+}
+// Every house in every settlement: from three cells outside its door, walk in; you must end up at
+// least a cell and a half inside, on its floor, on the same path in both.
+const homes = await p2.evaluate(() => window.TV.world.structs.map((s, i) => s.houses ? { i, type: s.type, houses: s.houses.map(h => ({ kind: h.kind, door: h.door, dir: h.dir })), W: window.TV.defs.W } : null).filter(Boolean));
+for (const s of homes) {
+  const res = [];
+  for (const page of [p1, p2]) {
+    res.push(await page.evaluate(s => {
+      const TV = window.TV, W = s.W, out = [];
+      TV.clock.scale = 0;
+      for (const h of s.houses) {
+        const [ox, oz] = [[0, 1], [1, 0], [0, -1], [-1, 0]][h.dir], [dx, dy, dz] = h.door;
+        for (const k of Object.keys(TV.keys)) TV.keys[k] = false;
+        TV.setMode('fly');
+        TV.cam.x = ((dx + ox * 3) % W + W) % W; TV.cam.z = ((dz + oz * 3) % W + W) % W; TV.cam.y = dy + 12;
+        TV.cam.yaw = Math.atan2(-oz, -ox); TV.cam.pitch = 0;
+        TV.setMode('walk');   // (settles the feet on whatever is below: the ground in front of the door)
+        TV.keys.KeyW = true;
+        const path = [];
+        for (let i = 0; i < 150; i++) { TV.update(1 / 60); if (i % 30 === 0) path.push([+TV.cam.x.toFixed(4), +TV.cam.y.toFixed(4), +TV.cam.z.toFixed(4)]); }
+        TV.keys.KeyW = false;
+        const wd = v => ((v % W) + W * 1.5) % W - W / 2, inward = -(wd(TV.cam.x - dx) * ox + wd(TV.cam.z - dz) * oz);
+        out.push({ kind: h.kind, inward: +inward.toFixed(2), floor: +(TV.player.feetY - dy - 1).toFixed(2), path });
+      }
+      return out;
+    }, s));
+  }
+  const bad = res[1].map((r, k) => ({ ...r, same: JSON.stringify(r.path) === JSON.stringify(res[0][k].path) })).filter(r => !(r.inward >= 1.5 && Math.abs(r.floor) < 0.3 && r.same));
+  if (bad.length) fail(`${s.type} #${s.i}: ${bad.map(r => `${r.kind} (in ${r.inward}, off the floor by ${r.floor}, same path ${r.same})`).join('; ')}`);
+  else console.log(`  ${s.type.padEnd(7)} #${String(s.i).padEnd(2)} walked into all ${s.houses.length} houses (${[...new Set(s.houses.map(h => h.kind))].join(', ')}); identical paths`);
+}
+
+// And on every seed (v2 alone): into every house of every settlement.
+for (const seed of SEEDS) {
+  const r = await p2.evaluate(seed => {
+    const TV = window.TV, W = TV.defs.W;
+    TV.regenerate(seed); TV.clock.scale = 0;
+    let n = 0, settlements = 0;
+    const bad = [];
+    for (const s of TV.world.structs) {
+      if (!s.houses) continue;
+      settlements++;
+      for (const h of s.houses) {
+        const [ox, oz] = [[0, 1], [1, 0], [0, -1], [-1, 0]][h.dir], [dx, dy, dz] = h.door;
+        for (const k of Object.keys(TV.keys)) TV.keys[k] = false;
+        TV.setMode('fly');
+        TV.cam.x = ((dx + ox * 3) % W + W) % W; TV.cam.z = ((dz + oz * 3) % W + W) % W; TV.cam.y = dy + 12; TV.cam.yaw = Math.atan2(-oz, -ox); TV.cam.pitch = 0;
+        TV.setMode('walk'); TV.keys.KeyW = true;
+        for (let i = 0; i < 150; i++) TV.update(1 / 60);
+        TV.keys.KeyW = false;
+        const wd = v => ((v % W) + W * 1.5) % W - W / 2, inward = -(wd(TV.cam.x - dx) * ox + wd(TV.cam.z - dz) * oz), floor = TV.player.feetY - dy - 1;
+        n++;
+        if (!(inward >= 1.5 && Math.abs(floor) < 0.3)) bad.push(`${h.kind} at ${dx | 0},${dz | 0} (in ${inward.toFixed(2)}, off the floor by ${floor.toFixed(2)})`);
+      }
+    }
+    return { n, settlements, bad };
+  }, seed);
+  if (r.bad.length) fail(`seed ${seed}: ${r.bad.length} of ${r.n} houses could not be walked into: ${r.bad.slice(0, 4).join('; ')}`);
+  else console.log(`  seed ${seed}: walked into all ${r.n} houses of ${r.settlements} settlements`);
 }
 
 // ---- 4. walks across every bridge ----
