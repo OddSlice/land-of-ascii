@@ -12,6 +12,8 @@
 //      the player never falls through the ground and never gets stuck.
 //   3. Walks: from outside every castle gate and every tower door, walk in; both must end inside the
 //      footprint, on the same path.
+//   4. Bridges: on every seed, walk across every bridge from one bank to the other, both ways: the
+//      walk must reach the far bank and never drop below the deck on the way (into the river).
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs [--record]
 import fs from 'node:fs';
@@ -26,6 +28,7 @@ const { server, port } = await startServer();
 const { browser, page: p1 } = await launch();
 const v1Fixed = applyFixes(fs.readFileSync(path.join(ROOT, 'reference/v1-index.html'), 'utf8'));
 await p1.route('**/reference/v1-index.html*', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: v1Fixed }));
+await p1.addInitScript(() => { window.deckAt = () => -Infinity; });   // (v1's own world has no bridges; v2's, taken below, brings its decks)
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await p2.addInitScript(TIME_CONTROL);
 p2.on('pageerror', e => console.error('[v2 pageerror]', e.message));
@@ -123,6 +126,7 @@ const WORLD_FOR_V1 = () => {
     structs: w.structs.map(s => ({ type: s.type, variant: s.variant, cx: s.cx, cz: s.cz, half: s.half, baseY: s.baseY, x0: s.x0, z0: s.z0, radius: s.radius, anchor: s.anchor,
       tpl: { sx: s.tpl.sx, sy: s.tpl.sy, sz: s.tpl.sz, spans: s.tpl.spans, topSolid: Array.from(s.tpl.topSolid) } })),
     merchants: w.merchants.map(m => ({ name: m.name, greeting: m.greeting, goods: m.goods, robe: m.robe, cells: m.cells, cum: Array.from(m.cum), total: m.total, s: m.s, dir: m.dir, walked: m.walked, x: m.x, y: m.y, z: m.z, seg: m.seg })),
+    bridges: w.bridges.map(b => ({ cx: b.s.cx, cz: b.s.cz, x0: b.s.x0, z0: b.s.z0, sx: b.s.tpl.sx, sz: b.s.tpl.sz, alongX: b.alongX, deck: Array.from(b.deck) })),
   };
 };
 const TAKE_WORLD = d => {
@@ -130,6 +134,15 @@ const TAKE_WORLD = d => {
   w.H.set(d.H); w.treeMask.set(d.treeMask);
   w.structs = d.structs.map(s => ({ ...s, tpl: { ...s.tpl, topSolid: Uint8Array.from(s.tpl.topSolid) } }));
   w.merchants = d.merchants.map(m => ({ ...m, cum: Float32Array.from(m.cum) }));
+  // v1 with the merchant fix applied asks for the deck under a merchant: the same lookup as v2's deckAt
+  const W = 512, wrapDelta = v => v > W / 2 ? v - W : v < -W / 2 ? v + W : v;
+  window.deckAt = (x, z) => {
+    for (const b of d.bridges) {
+      const lx = Math.floor(b.cx + wrapDelta(x - b.cx) - b.x0), lz = Math.floor(b.cz + wrapDelta(z - b.cz) - b.z0);
+      if (lx >= 0 && lx < b.sx && lz >= 0 && lz < b.sz) return b.deck[b.alongX ? lx : lz];
+    }
+    return -Infinity;
+  };
 };
 const START = () => { const TV = window.TV, c = TV.cam, p = TV.player; return { cam: { x: c.x, y: c.y, z: c.z, yaw: c.yaw, pitch: c.pitch }, player: { mode: p.mode, feetY: p.feetY, vy: p.vy, grounded: p.grounded }, hours: TV.clock.hours }; };
 const SET_START = st => { const TV = window.TV; Object.assign(TV.cam, st.cam); Object.assign(TV.player, st.player); TV.clock.hours = st.hours; };
@@ -222,6 +235,62 @@ for (const s of walks) {
   const ok = res[0].inside && res[1].inside && same;
   if (!ok) fail(`${s.type} ${s.i}: v1 inside=${res[0].inside} (dz ${res[0].dz}), v2 inside=${res[1].inside} (dz ${res[1].dz}), same path=${same}`);
   else console.log(`  ${s.type.padEnd(6)} #${String(s.i).padEnd(2)} walked in: ${res[1].dz} from the centre, eye at ${res[1].y}; identical path`);
+}
+
+// ---- 4. walks across every bridge ----
+// Along the road over each bridge: where the deck is out in the open (not under the bank), walk it end
+// to end both ways; and the road on either side must be within a step of the deck, so you can get on
+// and off. (Whether the road beyond is walkable is up to the road: in rugged country it can climb a
+// cliff next to a bridge.)
+console.log('4. bridge walks, every seed');
+for (const seed of SEEDS) {
+  const res = await p2.evaluate(seed => {
+    const TV = window.TV, W = 512, w = TV.world, out = [], STEP = 1.05;
+    if (w.seed !== seed) TV.regenerate(seed);
+    TV.clock.scale = 0;
+    const wrap = d => ((d % W) + W * 1.5) % W - W / 2, ctr = c => [(c & 511) + 0.5, (c >> 9) + 0.5];
+    for (const b of w.bridges) {
+      const s = b.s, deck = c => { const [x, z] = ctr(c), d = TV.deckAt(x, z); return d > -Infinity && d >= TV.groundAt(x, z, -1e9) - 0.05 ? d : null; };
+      let path = null;
+      for (const cells of w.roads) {
+        const k0 = cells.findIndex(c => deck(c) !== null && TV.deckAt(...ctr(c)) === deck(c) && w.bridges.indexOf(b) === w.bridges.findIndex(bb => bb.s === s) && (() => { const [x, z] = ctr(c), lx = Math.floor(s.cx + wrap(x - s.cx) - s.x0), lz = Math.floor(s.cz + wrap(z - s.cz) - s.z0); return lx >= 0 && lx < s.tpl.sx && lz >= 0 && lz < s.tpl.sz; })());
+        if (k0 < 0) continue;
+        let k1 = k0; while (k1 + 1 < cells.length && deck(cells[k1 + 1]) !== null) k1++;
+        path = cells.slice(Math.max(0, k0 - 1), Math.min(cells.length, k1 + 2));
+        break;
+      }
+      if (!path) { out.push({ variant: s.variant, L: b.L, dir: 1, ok: false, why: 'no road over it' }); continue; }
+      // getting on and off: the road cell either side against the deck next to it, where the road
+      // there was walkable without the bridge (in rugged country a road can come down a cliff)
+      const ends = [[path[0], path[1]], [path[path.length - 1], path[path.length - 2]]].map(([off, on]) => {
+        const [x, z] = ctr(off), g = TV.deckAt(x, z) > -Infinity ? Math.max(TV.groundAt(x, z, -1e9), TV.deckAt(x, z)) : TV.groundAt(x, z, -1e9);
+        const road = g - TV.groundAt(...ctr(on), -1e9);
+        return road <= STEP ? +(g - deck(on)).toFixed(2) : 0;
+      });
+      for (const dir of [1, -1]) {
+        const cells = (dir > 0 ? path : path.slice().reverse()).slice(1, -1);
+        [TV.cam.x, TV.cam.z] = ctr(cells[0]); TV.cam.pitch = 0;
+        TV.setMode('fly'); TV.cam.y = deck(cells[0]) + 1.6; TV.setMode('walk');
+        for (const k of Object.keys(TV.keys)) TV.keys[k] = false;
+        let k = 1, lowest = Infinity;
+        // follow the road cell by cell, as a merchant does: face the next cell, walk, next
+        for (let i = 0; i < 60 * 40 && k < cells.length; i++) {
+          const [tx, tz] = ctr(cells[k]), ddx = wrap(tx - TV.cam.x), ddz = wrap(tz - TV.cam.z);
+          if (Math.hypot(ddx, ddz) < 0.35) { k++; continue; }
+          TV.cam.yaw = Math.atan2(ddz, ddx); TV.keys.KeyW = true;
+          TV.update(1 / 60);
+          const d = TV.deckAt(TV.cam.x, TV.cam.z);
+          if (d > -Infinity) lowest = Math.min(lowest, TV.player.feetY - d);   // on the deck: never below it
+        }
+        TV.keys.KeyW = false;
+        const reached = k >= cells.length;
+        out.push({ variant: s.variant, L: b.L, dir, ok: reached && lowest > -0.05 && ends.every(e => e <= STEP), reached, lowest: +lowest.toFixed(3), ends, at: [Math.round(TV.cam.x), Math.round(TV.cam.z)], k, n: cells.length });
+      }
+    }
+    return out;
+  }, seed);
+  for (const r of res) if (!r.ok) fail(`seed ${seed}: ${r.variant} bridge (${r.L} long), walking ${r.dir > 0 ? 'forward' : 'back'}: ${r.why || `reached=${r.reached} (cell ${r.k} of ${r.n}, at ${r.at}), lowest ${r.lowest} against the deck, road either side ${r.ends.join(' / ')} above it`}`);
+  console.log(`  seed ${seed}: ${res.filter(r => r.dir > 0).map(r => r.variant + ' ' + r.L).join(', ') || 'no bridges'}${res.length && res.every(r => r.ok) ? ': walked across both ways on the deck; on and off within a step' : ''}`);
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

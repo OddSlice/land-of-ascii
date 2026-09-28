@@ -1,6 +1,6 @@
 {
   "seed": 42,
-  "note": "Fixed cameras. seed: the world (default: the top-level seed). yaw in degrees (v1 convention: 0 = +x, -90 = -z/north), pitch is v1's horizon shift in pixels at 1440x900, t is page time in ms (birds, clouds, flames), view is the view distance (default 500). ground:true puts the eye 1.55 + y above whatever is under the camera. Re-aim with node tools/find-views.mjs after world generation changes (--classic for the six phase-1 scenes, --aerial-only --seed N for aerials).",
+  "note": "Fixed cameras. seed: the world (default: the top-level seed). yaw in degrees (v1 convention: 0 = +x, -90 = -z/north), pitch is v1's horizon shift in pixels at 1440x900, t is page time in ms (birds, clouds, flames), view is the view distance (default 500). ground:true puts the eye 1.55 + y above whatever is under the camera. Re-aim with node tools/find-views.mjs after world generation changes (--classic for the six phase-1 scenes, --aerial-only --seed N for aerials). A scene with fixed: true was placed by hand and is left alone by find-views.",
   "scenes": [
     {
       "name": "vista",
@@ -9,10 +9,10 @@
       "hour": 9.5,
       "t": 1000,
       "cam": {
-        "x": 186,
-        "y": 62.13,
-        "z": 434,
-        "yaw": 90,
+        "x": 255.64,
+        "y": 58.36,
+        "z": 102.64,
+        "yaw": -135,
         "pitch": -165
       }
     },
@@ -25,16 +25,16 @@
       "merchants": [
         {
           "i": 0,
-          "s": 70,
+          "s": 74,
           "dir": 1,
           "walked": 3.3
         }
       ],
       "cam": {
-        "x": 220.29,
+        "x": 218.49,
         "y": 0.2,
         "z": 40.5,
-        "yaw": -7.6,
+        "yaw": 0,
         "pitch": 10,
         "ground": true
       }
@@ -62,16 +62,16 @@
       "merchants": [
         {
           "i": 0,
-          "s": 70,
+          "s": 74,
           "dir": 1,
           "walked": 3.3
         }
       ],
       "cam": {
-        "x": 235.42,
+        "x": 234.15,
         "y": 0,
-        "z": 33.58,
-        "yaw": 135,
+        "z": 34.85,
+        "yaw": 135.1,
         "pitch": 0,
         "ground": true
       }
@@ -85,16 +85,16 @@
       "merchants": [
         {
           "i": 0,
-          "s": 70,
+          "s": 74,
           "dir": 1,
           "walked": 3.3
         }
       ],
       "cam": {
-        "x": 235.42,
+        "x": 234.15,
         "y": 0,
-        "z": 33.58,
-        "yaw": 135,
+        "z": 34.85,
+        "yaw": 135.1,
         "pitch": 0,
         "ground": true
       }
@@ -211,10 +211,10 @@
       "hour": 10.5,
       "t": 1000,
       "cam": {
-        "x": 36.5,
+        "x": 33.5,
         "y": 1,
-        "z": 369.5,
-        "yaw": -135,
+        "z": 315.5,
+        "yaw": -157.5,
         "pitch": -90,
         "ground": true
       }
@@ -226,13 +226,13 @@
       "hour": 10.5,
       "t": 1000,
       "cam": {
-        "x": 16.5,
-        "y": 4,
-        "z": 272.5,
-        "yaw": -22.5,
-        "pitch": -20,
-        "ground": true
-      }
+        "x": 474.6,
+        "y": 24,
+        "z": 272.1,
+        "yaw": -22.4,
+        "pitch": -30
+      },
+      "fixed": true
     },
     {
       "name": "aerial-42",
@@ -272,9 +272,9 @@
       "t": 1000,
       "view": 700,
       "cam": {
-        "x": 192.5,
+        "x": 160.5,
         "y": 190,
-        "z": 0.5,
+        "z": 64.5,
         "yaw": -45,
         "pitch": -330
       }
@@ -316,10 +316,10 @@
       "hour": 18.4,
       "t": 1000,
       "cam": {
-        "x": 36.5,
+        "x": 33.5,
         "y": 1,
-        "z": 369.5,
-        "yaw": -135,
+        "z": 315.5,
+        "yaw": -157.5,
         "pitch": -90,
         "ground": true
       }
@@ -352,6 +352,48 @@
         "yaw": 0,
         "pitch": 50,
         "ground": true
+      }
+    },
+    {
+      "name": "bridge",
+      "title": "The boardwalk over the bay, 10:00",
+      "seed": 42,
+      "hour": 10,
+      "t": 1000,
+      "cam": {
+        "x": 330,
+        "y": 15,
+        "z": 100,
+        "yaw": -105,
+        "pitch": -60
+      }
+    },
+    {
+      "name": "bridge-night",
+      "title": "The same, 21:30, lanterns lit",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "cam": {
+        "x": 330,
+        "y": 15,
+        "z": 100,
+        "yaw": -105,
+        "pitch": -60
+      }
+    },
+    {
+      "name": "bridge-stone",
+      "title": "A stone bridge over a stream (seed 31337), 10:00",
+      "seed": 31337,
+      "hour": 10,
+      "t": 1000,
+      "cam": {
+        "x": 488,
+        "y": 20,
+        "z": 496,
+        "yaw": 160,
+        "pitch": -60
       }
     }
   ]

@@ -71,7 +71,13 @@ export async function launch({ width = 1440, height = 900, browser = 'chromium',
   const b = await pw[browser].launch(launchOptions(browser, jsFlags));
   const page = await b.newPage({ viewport: { width, height }, deviceScaleFactor: dpr });
   page.on('pageerror', e => console.error('[pageerror]', e.message));
-  page.on('console', m => { if (m.type() === 'error' || m.type() === 'warning') console.error('[console]', m.text()); });
+  page.on('console', m => {
+    if (m.type() !== 'error' && m.type() !== 'warning') return;
+    console.error('[console]', m.text());
+    // a worker that dies falls back to the main thread silently, so the pictures still come out
+    // right: fail the run instead, or a broken worker build goes unnoticed
+    if (m.text().includes('render worker failed')) { console.error('FAIL: a render worker crashed'); process.exitCode = 1; }
+  });
   if (timeControl) await page.addInitScript(TIME_CONTROL);
   return { browser: b, page };
 }

@@ -13,6 +13,11 @@ FIXES.push({
   from: "  helpEl.textContent = `${move} · ${look}\\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance`;",
   to: "  helpEl.textContent = `${move} · ${look}\\nF ${player.mode === 'walk' ? 'fly mode' : 'walk mode'} · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look`;",
 });
+FIXES.push({
+  why: 'merchants cross bridges on the deck: where a road crosses water, phase 2 builds a bridge over it (v1 walked them through the ford)',
+  from: '  m.y = terrainHeight(m.x, m.z);\n  m.seg = lo;',
+  to: '  m.y = Math.max(terrainHeight(m.x, m.z), deckAt(m.x, m.z));   // (on a bridge, its deck)\n  m.seg = lo;',
+});
 export function applyFixes(text) {
   for (const f of FIXES) {
     if (!text.includes(f.from)) throw new Error('fix no longer applies: ' + f.why);

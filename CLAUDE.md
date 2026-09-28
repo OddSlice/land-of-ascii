@@ -49,14 +49,14 @@ In file order:
 You need Node 18+ and Playwright (`npm i -g playwright`, plus `npx playwright install` for Firefox and WebKit). On Martin's Mac the harness uses the Playwright inside the global `@playwright/cli`, whose Chromium, Firefox and WebKit are installed.
 
 ```sh
-node tools/test-sim.mjs          # worlds (deterministic, as recorded, sane, every region), v1's movement on v2's world, gate/door walks (--record)
+node tools/test-sim.mjs          # worlds (deterministic, as recorded, sane, every region), v1's movement on v2's world, gate/door walks, bridge walks (--record)
 node tools/check-verbatim.mjs    # the v1 code v2 still runs is unchanged except for v2-fixes.mjs
 node tools/shoot.mjs [scene...]  # screenshots of tools/scenes.json scenes -> shots/  (--dir shots/phase2, --threads 0, --dpr 2, --cells 0..3)
 node tools/shoot.mjs --cam x,y,z,yawDeg,pitch --hour 21 [--ground] [--seed 7] --out shots/x.png
 node tools/bench-v2.mjs          # frame timings (--threads 0, --browser firefox|webkit, --look painted|mosaic)
 node tools/profile-v2.mjs road   # CPU profile of a scene
 node tools/probe.mjs road 'expr' # evaluate an expression in the page after showing a scene
-node tools/find-views.mjs --write              # re-aim the region views and the aerial (--seed N, --aerial-only, --classic for phase 1's six)
+node tools/find-views.mjs --write              # re-aim the region views and the aerial (--seed N, --aerial-only, --classic for phase 1's six); scenes marked fixed: true are left alone
 node tools/map.mjs [seed...]     # region maps -> shots/phase2/map-<seed>.png
 node tools/palette.mjs           # the ground's ramps, day/dusk/night -> shots/phase2/palette.png
 node tools/sheet.mjs --out x.png --cols 2 --scale 0.5 a.png "Label" b.png "Label"   # contact sheets
@@ -66,6 +66,7 @@ node tools/flicker.mjs road 60 0.117 0 painted   # blinking pixels per frame whi
 Test harness notes:
 
 - Tests freeze page time (`__setNow` / `__step` in `tools/lib/harness.mjs`) and wait for the workers with `TV.whenIdle()`.
+- A render worker that crashes falls back to the main thread without a visible sign, so the harness fails any run in which one does.
 - Scenes in `tools/scenes.json` may carry their own `seed` and `view` (view distance). `TV.defs` exposes the palettes, materials and regions to the tools.
 - Pointer lock makes headless Chromium crawl (v1 drops to 4 fps), so tests never lock the pointer.
 
@@ -77,11 +78,13 @@ Test harness notes:
   - one simulation fix (NaN heights);
   - docs and screenshots.
 - **Phase 2 is under way**, following `docs/phase2-world.md`.
-  - **Step 1 (design pass) is built**: regions, terrain shaping, five new ground materials, rock strata, trees by region, castles in clearings. See `docs/phase2.md`. It waits on Martin's confirmation of the regions and the palette.
-  - Martin's review of step 1 (Glyphmoor as the reference) led to the painted look, shadows and hollows, steadier ground and water mirrors; see "After step 1" in `docs/phase2.md`. The review's confirmation is still open.
-  - Next is step 2 (land): materials' own marks, plants per region, bridges, weather.
-- **Speed on Martin's Mac** (M1 Max, painted look, ten scenes): Chromium 5.4–7.4 ms a frame, Firefox 6.3–9.6 ms, WebKit 6.4–12.8 ms, all at 60 fps or more. A world generates in about 0.47 s.
+  - **Step 1 (design pass) is built**: regions, terrain shaping, five new ground materials, rock strata, trees by region, castles in clearings. See `docs/phase2.md`. Martin confirmed the regions and the palette on 28 Sep.
+  - Martin's review of step 1 (Glyphmoor as the reference) led to the painted look, shadows and hollows, steadier ground and water mirrors; see "After step 1" in `docs/phase2.md`. He confirmed it: the painted look stays the default, and the living-world items are left to be iterated on.
+  - Step 2 (land), part 1 is built: plants by region (palms, cacti, reeds, birches, snow pines, meadow flowers), cleaner ground (walls, material edges, shores, reflections) and bridges (`buildBridges`). See "Step 2, part 1" in `docs/phase2.md`. Next: weather (rain, snow, dawn fog) and night life (fireflies, auroras).
+- **Speed on Martin's Mac** (M1 Max, painted look, ten scenes): Chromium 5.7–7.5 ms a frame, Firefox 7.3–9.9 ms, WebKit 6.5–14.1 ms (its colour stage varies a lot between runs), all at 60 fps. A world generates in about 0.5 s.
 - **Rough edges:**
-  - distant ridges shimmer slightly in motion (heights aren't filtered at distance);
-  - canopies look faceted up close;
+  - roads at a shallow angle still step at close range;
+  - cliff faces right in front of you are blocky, with a break at the horizon line;
+  - palm fronds are tubes up close, and canopies look faceted;
+  - tower corners and hill crests still shimmer a little in motion;
   - merchant faces and outfits are simple.

@@ -204,6 +204,7 @@ if (write) {
   const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
   for (const s of scenes) {
     const k = cfg.scenes.findIndex(o => o.name === s.name);
+    if (k >= 0 && cfg.scenes[k].fixed) { console.log(`kept ${s.name}: placed by hand (fixed)`); continue; }
     if (k >= 0) cfg.scenes[k] = s; else cfg.scenes.push(s);
   }
   fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');

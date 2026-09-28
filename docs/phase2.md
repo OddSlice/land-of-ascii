@@ -275,3 +275,108 @@ Every scene holds 60 fps in all three browsers. Workers and the main thread give
   - chimney smoke, lit windows, fireflies, auroras;
   - weather (step 2), villages you can enter (step 3), people and animals (step 4).
 - **A much larger world** would need generation streamed around the player, per the comment thread. That is a phase of its own.
+
+## Step 2, part 1: plants, cleaner ground, bridges
+
+Martin's answer to the step 1 review (28 Sep): the painted look stays the default, the regions and palette are confirmed, and the living-world items are in my hands, to be iterated on. Step 2 (land) is being built in two commits. This first one covers plants by region, a round of fixes to how the ground is drawn, and bridges. Weather and night life come next. Shots: `shots/phase2/step2/` (sheets: `sheet-regions`, `sheet-bridges`, `sheet-classic`, `sheet-light`, `sheet-aerials`, `sheet-maps`, and `sheet-fixes` for before and after).
+
+### Plants by region
+
+Every region now grows its own plants (`REGION_TREES`, `placeTrees`, `buildPlant`):
+
+- **Beaches:** palms with a bending trunk, eight fronds arching out and down, and coconuts. Far off, five strokes.
+- **Badlands:** saguaro cacti where it is hottest, dry shrubs, the odd dead tree.
+- **Marsh:** clumps of reeds, thick along the water. Each clump is seven thin leaning stalks, mostly green, two with a cattail.
+- **Forest and grassland:** birches (white bark with dark bands) among the broadleaf trees where it is cool.
+- **Snowy peaks:** sparse, small snow-dusted pines, and pine forest turns to them near the snow line.
+- **Meadows:** flowers in patches, in red, yellow, violet and white. They are painted on the ground within 36 cells, only on gentle ground, and they close after dusk.
+
+Seed 42 has 8,677 plants: 3,084 pines, 1,543 broadleaf trees, 1,056 snow pines, 953 bushes, 776 reed clumps, 573 birches, 358 shrubs, 195 palms, 100 cacti, 91 dead trees and 63 boulders.
+
+### Cleaner ground
+
+Close-ups showed several faults; each was traced to its cause:
+
+- **Grey spikes of sand up a mesa's side.**
+  - The beach shaping flattened every shore toward the sea, so where a mesa stood by the water it dragged a steep ramp of sand up its side.
+  - Now only land already low gets flattened into beach: a mesa or a hill by the water keeps its shape and rises straight from the sand.
+  - Sand lies only on gentle ground. Steeper beach ground is dune grass, and the steepest is rock.
+- **The foot of every wall painted in the colour of the ground in front of it.**
+  - The far march joins its steps with ramps, and a row takes its colour from where it meets the ramp, so a wall's lower part showed sand or water in spikes that shifted as the steps slid.
+  - Now a step whose ground climbs (or falls) steeply is taken as flat ground, a sheer face and flat ground beyond, with the face found by halving the step (`wallAt`).
+  - The face is the side of the highest cell around it and is lit by the light averaged around it. Heights blend between cell centres, so half of every wall stands over the cell below; without this, faces over water turned blue.
+- **Stepped edges between materials** (roads, sand, grass).
+  - Each material's share of a point is now the bilinear weight of its cells, raised to the fourth power, so the edge follows the line where two shares meet.
+  - A diagonal road stays straight instead of zigzagging.
+- **Jagged shores.**
+  - Water takes a point where its share leads and the ground lies at the water's level, so shores are smooth curves.
+  - A bank or a cliff standing in the water never turns to water.
+- **Reflections:**
+  - The wave that sways them is broader and gentler, so the edge of a reflection no longer frays into a comb.
+  - Water near your feet keeps mirroring the sky above instead of stopping at a line.
+- **The render workers crashed** (a helper they were not given), and the pictures still came out right because the main thread took over. The test harness now fails any run in which a worker crashes.
+
+### Bridges
+
+Where a road crosses water, a bridge replaces v1's ford (`buildBridges`, `crossBridge`):
+
+- **The deck:**
+  - It runs straight along the axis the road mostly crosses on.
+  - It is two lanes wide, spanning the water and one dry cell (an abutment) either side.
+  - It sits just above the road where the road steps on and off, sloping between them in whole voxels, never more than a step apart, with a gentle hump over a short span.
+- **Three kinds:**
+  - stone (a parapet each side and piers across the full width);
+  - wood (posts every other cell and trestle legs);
+  - over a long crossing, a low boardwalk (posts every third cell).
+- **Lanterns** stand on the posts next to both ends and light up at night.
+- **The road** is rerouted along the deck, so merchants cross on it. v1's merchant code puts them on the deck through one listed fix: `m.y` now takes the deck height where there is one (`deckAt`). Where a road steps on or off from the side, the edge is left open.
+- **The water** under a bridge is water again, not a strip of road. A second road crossing next to a bridge uses it.
+
+| Seed | Bridges | Left as fords |
+|---|---|---|
+| 42 | a boardwalk, 45 long | none |
+| 7 | wood, 8 | none |
+| 1234 | wood 7, stone 3, stone 5, wood 10, wood 5 | 3 shallow diagonal crossings at the coast |
+| 99991 | a boardwalk, 91 long; wood, 3 | 1 |
+| 31337 | stone, 4 | none |
+
+### Scenes
+
+- Re-aimed for the new world.
+- New: `bridge` and `bridge-night` (the seed 42 boardwalk, day and by lantern light) and `bridge-stone`.
+- `region-sea-cliffs` is placed by hand: out over the water, looking back at the cliffs. `fixed: true` keeps `find-views` from moving it.
+
+### Tests
+
+All pass. The worlds are re-recorded after the deliberate changes: beach rule, sand, mud, plants, snow pines and bridges.
+
+- **Bridge walks (new, test 4):**
+  - On every seed, follow the road over each bridge cell by cell, both ways, where the deck is in the open.
+  - The walk must get across without ever dropping below the deck.
+  - The road either side must be within a step of the deck, wherever the road there was walkable before the bridge. In rugged country a road can come down a cliff next to a bridge, which the bridge cannot help.
+- **v1's movement** on v2's world stays bit-identical, merchants included. v1's page is given the same `deckAt` as v2.
+- **The verbatim check** also retires v1's tree constants (v1 906–910) along with tree placement (911–958), since the plant kinds (`SPRITE`) are now v2's own. The merchant-deck fix is the third listed fix.
+
+### Speed
+
+M1 Max, six workers, 1440×900, painted look, ten scenes including the boardwalk by day and night.
+
+| | Frame |
+|---|---|
+| Chromium | 5.7–7.5 ms |
+| Firefox | 7.3–9.9 ms |
+| WebKit | 6.5–14.1 ms |
+
+- **All three hold 60 fps.**
+- **Workers and the main thread give byte-identical frames in both looks.**
+- ⚠️ **WebKit's colour stage varies a lot from run to run.** The same forest scene measured 9.3 ms in one run and 2.4 ms in the next, and switching off flowers or the new edge blend made no consistent difference. It looks like how WebKit schedules its workers, but it needs watching.
+
+### Next, and open
+
+- **Weather:** rain, snow in cold places, dawn fog in the valleys. **Night life:** fireflies, auroras.
+- **Close-up rough edges:**
+  - roads at a shallow angle still step at close range (drawing roads from their centre line would fix it);
+  - cliff faces right in front of you are blocky, with a break at the horizon line;
+  - palm fronds are tubes up close;
+  - tower corners still shimmer.
+- **Beaches are fewer on rugged seeds** (seed 1234: 0.8% of the land), since steep shores now keep their shape.

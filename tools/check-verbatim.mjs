@@ -3,8 +3,8 @@
 // byte for byte. (tools/test-sim.mjs shows the movement code also behaves the same.)
 // Retired in phase 2, because the world is now v2's own: the materials, the world state and
 // generateWorld (v1 118-119, 261-360: regions, terrain shaping, coasts and marsh pools), tree
-// placement (v1 911-958: forests by region) and the lighting update (v1 1100-1126: shadows and
-// hollows).
+// placement and its constants (v1 906-958: plants by region) and the lighting update (v1 1100-1126:
+// shadows and hollows).
 //   node tools/check-verbatim.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,7 +19,6 @@ const SECTIONS = [   // [first line, last line, what]
   [361, 453, 'rivers'],
   [454, 775, 'structures'],
   [776, 905, 'roads'],
-  [906, 910, 'tree constants'],
   [959, 1099, 'birds, lights, clouds, merchants, sky'],
   [1223, 1306, 'camera and input (up to the cell-size key)'],
   [1311, 1321, 'view distance, resize'],

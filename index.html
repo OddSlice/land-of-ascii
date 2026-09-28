@@ -131,9 +131,9 @@ const DEFAULT_CELL = 1;
 const RAYS_X = 2, RAYS_Y = 4;
 const NEAR_SMOOTH = 26;                   // nearer than this, terrain is sampled bilinearly (no flat blocks at your feet)
 // What a ray hit, recorded per ray and read by the cell stage.
-const K = { SKY: 0, TERRAIN: 1, WALL: 2, TOP: 3, UNDER: 4, TREE: 5, CONIFER: 6, BUSH: 7, TRUNK: 8, BOULDER: 9, MERCHANT: 10, CLOUD: 12, FLAME: 13, LOGS: 14, SUN: 16, MOON: 17, NONE: 255 };
+const K = { SKY: 0, TERRAIN: 1, WALL: 2, TOP: 3, UNDER: 4, TREE: 5, CONIFER: 6, BUSH: 7, TRUNK: 8, BOULDER: 9, MERCHANT: 10, CLOUD: 12, FLAME: 13, LOGS: 14, SUN: 16, MOON: 17, PALM: 18, CACTUS: 19, REED: 20, NONE: 255 };
 const PART = { STAFF: 1, LANTERN: 2, BOOT: 3, LEG: 4, BELT: 5, ROBE: 6, HAND: 8, SLEEVE: 9, SKIN: 10, EYE: 11, BRIM: 12, CROWN: 13, PACK: 14 };
-const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8, F_FACE = 16;   // per-ray flags (F_FACE: on a banded face of rock)
+const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8, F_FACE = 16, F_FLOWER = 32;   // per-ray flags (F_FACE: on a banded face of rock; F_FLOWER: a bloom, painted look)
 
 // =====================================================================
 //  PALETTES  (the art stays, the palette follows the sun)
@@ -141,7 +141,7 @@ const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8, F_FACE = 16;   //
 // Three keyframes, blended by the clock. Each carries the lighting constants the world is shaded
 // with and the hand-built colour ramps everything is drawn in. Every ramp runs dark to light and
 // is hue-shifted: shadows lean cool and lights lean warm. A ramp has the same length in all three.
-const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack', 'sand', 'redrock', 'drygrass', 'mud', 'reeds'];
+const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack', 'sand', 'redrock', 'drygrass', 'mud', 'reeds', 'birch', 'palm', 'cactus', 'dead', 'bloomR', 'bloomY', 'bloomV'];
 const R = {};
 RAMP_NAMES.forEach((n, i) => { R[n] = i; });
 const KEYFRAMES = {
@@ -176,6 +176,13 @@ const KEYFRAMES = {
       drygrass: ['#383a2c', '#62603a', '#8f8647', '#bcae5e'],
       mud: ['#241f26', '#3b3130', '#584736', '#76603f'],
       reeds: ['#1c2c2e', '#2f4a42', '#4f6e52', '#7e9866'],
+      birch: ['#5e5a62', '#9a958f', '#cfcac0', '#f0ede4'],
+      palm: ['#1c3a28', '#2c6030', '#4a8c34', '#79b842', '#b0d85a'],
+      cactus: ['#1f3a30', '#2f5a3c', '#4a7c48', '#6e9e58'],
+      dead: ['#2e2626', '#4e433e', '#766a5e', '#a0927e'],
+      bloomR: ['#6e1e3a', '#b8324a', '#e8606a', '#ffa0a0'],
+      bloomY: ['#7a5a14', '#c8961e', '#f2c83a', '#fff08a'],
+      bloomV: ['#3e2a6e', '#6a48b0', '#9a7ae0', '#c8b2ff'],
     },
   },
   dusk: {
@@ -209,6 +216,13 @@ const KEYFRAMES = {
       drygrass: ['#221d2a', '#403630', '#6a5836', '#98803e'],
       mud: ['#17121e', '#281d24', '#3d2c2a', '#584030'],
       reeds: ['#161a28', '#262f34', '#3e4a40', '#62684c'],
+      birch: ['#342c40', '#5e5264', '#94807c', '#c8aa98'],
+      palm: ['#171a24', '#262e2a', '#3e4a2e', '#627036', '#8e9640'],
+      cactus: ['#1a1c26', '#2c3430', '#465038', '#646c42'],
+      dead: ['#1c161c', '#352a2c', '#564236', '#7a6048'],
+      bloomR: ['#3e1630', '#782640', '#b04a52', '#e0807a'],
+      bloomY: ['#4a3018', '#8a5a22', '#c48a36', '#eab35a'],
+      bloomV: ['#2a1c46', '#4a3272', '#7656a0', '#a488c8'],
     },
   },
   night: {
@@ -242,6 +256,13 @@ const KEYFRAMES = {
       drygrass: ['#070a0d', '#0f1416', '#1a211e', '#283026'],
       mud: ['#040508', '#08090d', '#0e1114', '#15191b'],
       reeds: ['#04090c', '#091316', '#0f1f21', '#182d2c'],
+      birch: ['#10141e', '#1e2432', '#323a4c', '#4c566a'],
+      palm: ['#03080a', '#071310', '#0c2018', '#153024', '#204234'],
+      cactus: ['#04090b', '#0a1514', '#12221e', '#1c302a'],
+      dead: ['#07080b', '#101217', '#1a1d24', '#262a32'],
+      bloomR: ['#140a14', '#241020', '#3a1a2c', '#52283a'],
+      bloomY: ['#12100c', '#221c14', '#36301e', '#4c442c'],
+      bloomV: ['#0c0a1a', '#16122c', '#221c40', '#322a58'],
     },
   },
 };
@@ -424,11 +445,13 @@ function generateWorld(seed) {
   // 6. Roads between the landmarks (may nudge road cells by a little), then trees, which
   //    keep off roads and footprints, then birds.
   buildRoads(rng);
+  buildBridges(seed);
   placeTrees(seed);
   spawnBirds(rng);
   spawnClouds(rng);
   spawnMerchants(rng);
   placeLights(rng);
+  bridgeLights();
 
   // 7. Materials and lighting normals, then what shades the ground (hollows, and whatever stands on it).
   paintGround();
@@ -650,7 +673,9 @@ function shapeCoast(seed) {
     const o = i * BIOME_COUNT, keep = 1 - regionW[o + BIOME.MARSH];
     const score = valueNoise(x / 64, z / 64, W / 64, seed + 5001) * 0.65 + smoothstep(4, 16, lowH[i] - seaLevel) * 0.35;
     const cliff = smoothstep(0.36, 0.42, score);
-    const wBeach = (1 - cliff) * (1 - smoothstep(BEACH_DEPTH - 2, BEACH_DEPTH + 4, d)) * keep;
+    // (only low ground becomes beach: a mesa or a hill by the water keeps its shape and rises from the
+    // sand, where flattening it would drag a steep ramp of sand up its side)
+    const wBeach = (1 - cliff) * (1 - smoothstep(BEACH_DEPTH - 2, BEACH_DEPTH + 4, d)) * (1 - smoothstep(3, 8, H[i] - seaLevel)) * keep;
     const wCliff = cliff * (1 - smoothstep(4, 12, d)) * keep;
     const wc = wBeach + wCliff;
     if (wc <= 0) continue;
@@ -723,11 +748,11 @@ function paintGround() {
       else if (water[i]) mat[i] = MAT.WATER;
       else if ((h > snowLine + (heat[i] - 0.5) * 20 || b === BIOME.PEAKS) && slope < (b === BIOME.PEAKS ? 2.5 : 4)) mat[i] = MAT.SNOW;   // the peaks are snowy wherever snow can lie; steep faces stay bare
       else if (b === BIOME.BADLANDS) mat[i] = washMask[i] && slope < 1.6 ? MAT.SAND : patch > 0.62 && slope < 1.6 ? MAT.DRYGRASS : MAT.REDROCK;
-      else if (slope > 4.5 || (b === BIOME.PEAKS && h > rockLine) || (b === BIOME.CLIFFS && seaDist[i] < 5)) mat[i] = heat[i] > HOT_AT && (b === BIOME.BEACH || b === BIOME.CLIFFS) ? MAT.REDROCK : MAT.ROCK;
-      else if (b === BIOME.BEACH) mat[i] = MAT.SAND;
+      else if (slope > (b === BIOME.BEACH ? 2.5 : 4.5) || (b === BIOME.PEAKS && h > rockLine) || (b === BIOME.CLIFFS && seaDist[i] < 5)) mat[i] = heat[i] > HOT_AT && (b === BIOME.BEACH || b === BIOME.CLIFFS) ? MAT.REDROCK : MAT.ROCK;
+      else if (b === BIOME.BEACH) mat[i] = slope < 1.2 ? MAT.SAND : heat[i] > 0.5 ? MAT.DRYGRASS : MAT.GRASS2;   // sand lies only on gentle ground; steeper dunes are grassed
       else if (b === BIOME.MARSH) {
         const wet = water[zr + ((x + 1) & MASK)] || water[zr + ((x - 1) & MASK)] || water[zp + x] || water[zm + x];
-        mat[i] = wet || patch > 0.52 ? MAT.REEDS : patch > 0.38 ? MAT.MUD : MAT.GRASS2;
+        mat[i] = wet || patch > 0.5 ? MAT.REEDS : fbm(x, z, seed + 779, 3) > 0.6 ? MAT.MUD : MAT.GRASS2;   // mud in patches of its own (a band of one noise would wind like a road)
       }
       else if (b === BIOME.GRASSLAND && (damp[i] < 0.12 || patch < 0.3)) mat[i] = MAT.DRYGRASS;
       else if (b === BIOME.PINES || b === BIOME.PEAKS) mat[i] = patch > 0.45 ? MAT.GRASS : MAT.GRASS2;
@@ -1285,31 +1310,224 @@ function buildRoads(rng) {
 }
 
 // =====================================================================
+//  BRIDGES  (where a road crosses water, a bridge instead of v1's ford)
+// =====================================================================
+// Each run of water along a road becomes a bridge: a straight deck along the axis the road mostly
+// crosses on, from dry ground on one bank to dry ground on the other, wide enough for the road with
+// a parapet or rail posts each side. The deck climbs from one bank's height to the other's (a short
+// one humps a little in the middle), piers stand in the water, and the road is rerouted along the
+// deck so merchants walk across it. A long crossing (a road over a bay) is a low boardwalk on
+// trestles. The water under a bridge is water again, not road.
+const BRIDGE_LONG = 12;        // a crossing of more water cells than this is a boardwalk
+const BRIDGE_MAX = 120;        // longer than this and the road keeps its ford
+function buildBridges(seed) {
+  const { water, road } = world;
+  world.bridges = []; world.bridgeSkips = [];   // (the crossings left as fords, and why: for the tools)
+  const taken = new Int32Array(N).fill(-1);    // which bridge a cell is under (two roads can share a crossing)
+  for (const cells of world.roads) {
+    for (let k = 1; k < cells.length - 1; k++) {
+      if (!water[cells[k]] || water[cells[k - 1]]) continue;
+      let e = k;
+      while (e + 1 < cells.length && water[cells[e + 1]]) e++;
+      if (e + 1 >= cells.length) break;
+      const route = crossBridge(cells, k - 1, e + 1, taken, seed);
+      if (!route) { k = e + 1; continue; }
+      // no strip of road left on the water beside the deck
+      for (let j = k; j <= e; j++) for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) {
+        const c = ((((cells[j] / W) | 0) + oz) & MASK) * W + (((cells[j] & MASK) + ox) & MASK);
+        if (water[c]) road[c] = 0;
+      }
+      cells.splice(k - 1, e - k + 3, ...route);
+      k += route.length - 2;
+    }
+  }
+  for (const b of world.bridges) {   // the river runs under the deck, not a strip of road
+    const s = b.s;
+    for (let lz = 0; lz < s.tpl.sz; lz++) for (let lx = 0; lx < s.tpl.sx; lx++) {
+      const c = ((s.z0 + lz) & MASK) * W + ((s.x0 + lx) & MASK);
+      if (water[c]) road[c] = 0;
+    }
+  }
+  // Where a road crosses a bridge's edge (stepping on or off from the side), the edge is left open:
+  // no parapet or post there, just the deck. A lantern whose post went moves to the rail opposite,
+  // or goes.
+  for (const cells of world.roads) for (const c of cells) {
+    const h = bridgeCell((c & MASK) + 0.5, ((c / W) | 0) + 0.5);
+    if (!h) continue;
+    const { b, i, j } = h, T = b.s.tpl;
+    if (j !== 0 && j !== b.width - 1) continue;
+    const lx = b.alongX ? i : j, lz = b.alongX ? j : i, top = Math.round(b.deck[i] - b.s.baseY);
+    for (let y = top; y < T.sy; y++) T.set(lx, y, lz, 0);
+    b.dirty = true;
+  }
+  for (const b of world.bridges) {
+    if (b.dirty) { b.s.tpl.finalize(); delete b.dirty; }
+    const T = b.s.tpl, lanterns = [];
+    for (const [i, j] of [[1, 0], [b.L - 2, b.width - 1]]) for (const jj of [j, b.width - 1 - j]) {
+      const lx = b.alongX ? i : jj, lz = b.alongX ? jj : i, top = Math.round(b.deck[i] - b.s.baseY);
+      if (T.get(lx, top + 1, lz)) { lanterns.push([b.alongX ? b.s.x0 + i : b.s.x0 + jj, b.alongX ? b.s.z0 + jj : b.s.z0 + i, b.deck[i]]); break; }
+    }
+    b.lanterns = lanterns;
+  }
+}
+
+// The bridge whose footprint holds (x, z), with the cell along it (i) and across it (j).
+function bridgeCell(x, z) {
+  for (const b of world.bridges) {
+    const s = b.s, lx = Math.floor(s.cx + wrapDelta(x - s.cx) - s.x0), lz = Math.floor(s.cz + wrapDelta(z - s.cz) - s.z0);
+    if (lx >= 0 && lx < s.tpl.sx && lz >= 0 && lz < s.tpl.sz) return { b, i: b.alongX ? lx : lz, j: b.alongX ? lz : lx };
+  }
+  return null;
+}
+
+// The road's way over the water between path cells ia and ib (the dry cells either side): over the
+// bridge already there, or over a new one. Returns the path's new cells from ia to ib, along the
+// middle of the deck, or null (the road keeps its ford).
+function crossBridge(cells, ia, ib, taken, seed) {
+  const { H, water } = world;
+  const skip = why => { world.bridgeSkips.push({ at: [cells[ia] & MASK, (cells[ia] / W) | 0], why }); return null; };
+  const A = cells[ia], B = cells[ib];
+  let under = -1, all = true;
+  for (let j = ia + 1; j < ib; j++) { const t = taken[cells[j]]; if (t >= 0) under = t; else all = false; }
+  if (under >= 0) return all || near(world.bridges[under], A, B) ? routeOver(world.bridges[under], A, B) : skip('beside another bridge');
+
+  // the deck runs along the axis the road mostly crosses on, its two lanes between where the road
+  // meets the water and where it leaves, over the water and one dry cell (an abutment) either side
+  const ax = A & MASK, az = (A / W) | 0;
+  const bx = wrapDelta((B & MASK) - ax), bz = wrapDelta(((B / W) | 0) - az), alongX = Math.abs(bx) >= Math.abs(bz);
+  const uB = alongX ? bx : bz, vB = alongX ? bz : bx, vW = Math.floor(vB / 2);
+  const cellAt = (u, v) => alongX ? (((az + v) & MASK) * W + ((ax + u) & MASK)) : (((az + u) & MASK) * W + ((ax + v) & MASK));
+  const wet = u => water[cellAt(u, vW)] || water[cellAt(u, vW + 1)];
+  let uW0 = Infinity, uW1 = -Infinity, run = 0, wl = Infinity;
+  for (let u = Math.min(0, uB) - 3; u <= Math.max(0, uB) + 3; u++) if (wet(u)) { uW0 = Math.min(uW0, u); uW1 = Math.max(uW1, u); }
+  if (uW0 > uW1) return skip('no water under the lanes');
+  for (let u = uW0; u <= uW1; u++) for (const v of [vW, vW + 1]) { const c = cellAt(u, v); if (water[c]) { run++; wl = Math.min(wl, H[c]); } }
+  const uMin = uW0 - 1, uMax = uW1 + 1, L = uMax - uMin + 1, width = 4, vLo = vW - 1;
+  if (wet(uMin) || wet(uMax)) return skip('no dry end');
+  if (L > BRIDGE_MAX) return skip('too long');
+  for (let u = uMin; u <= uMax; u++) for (let v = vLo; v < vLo + width; v++) {
+    const t = taken[cellAt(u, v)];
+    if (t >= 0) return near(world.bridges[t], A, B) ? routeOver(world.bridges[t], A, B) : skip('overlaps a bridge');   // a road crossing beside a bridge uses it
+  }
+
+  // the deck: just above the road where it steps on (at A) and where it steps off (at B), sloping
+  // between them and level beyond, in whole voxels, each within a voxel of the next (a step you can
+  // walk up)
+  const TA = H[A] + 0.2, TB = H[B] + 0.2, iA = clamp(-uMin, 0, L - 1), iB = clamp(uB - uMin, 0, L - 1);
+  const long = run > BRIDGE_LONG * 2, style = long ? 'boardwalk' : hash2(ax, az, seed + 71) < 0.4 ? 'stone' : 'wood';
+  const nA = Math.ceil(TA - (wl - 1.5)), baseY = TA - nA, lv = new Int32Array(L);
+  let ok = false;
+  for (const hump of long ? [0] : style === 'stone' ? [0.9, 0] : [0.5, 0]) {
+    for (let i = 0; i < L; i++) {
+      const f = iB !== iA ? clamp((i - iA) / (iB - iA), 0, 1) : 0;
+      lv[i] = Math.max(2, Math.round(TA + (TB - TA) * f + hump * Math.sin(Math.PI * f) - baseY));
+    }
+    for (let i = 1; i < L; i++) lv[i] = clamp(lv[i], lv[i - 1] - 1, lv[i - 1] + 1);
+    for (let i = L - 2; i >= 0; i--) lv[i] = clamp(lv[i], lv[i + 1] - 1, lv[i + 1] + 1);
+    if (Math.abs(baseY + lv[iA] - TA) < 0.6 && Math.abs(baseY + lv[iB] - TB) < 0.6) { ok = true; break; }
+  }
+  if (!ok) return skip('banks too far apart in height');
+
+  let top = 0;
+  for (let i = 0; i < L; i++) top = Math.max(top, lv[i]);
+  const sx = alongX ? L : width, sz = alongX ? width : L, T = makeTemplate(sx, top + 3, sz);
+  const M = style === 'stone' ? VOX.STONE : VOX.WOOD, pierEvery = style === 'wood' ? 2 : 3;
+  const put = (i, j, y0, y1) => T.box(alongX ? i : j, y0, alongX ? j : i, alongX ? i : j, y1, alongX ? j : i, M);
+  for (let i = 0; i < L; i++) {
+    const d = lv[i] - 1, end = i === 0 || i === L - 1, post = i === 1 || i === L - 2;
+    put(i, 0, d, d); put(i, width - 1, d, d);
+    for (let j = 1; j < width - 1; j++) put(i, j, style === 'stone' ? d - 1 : d, d);
+    // parapets (stone), or posts (wood: every other cell; boardwalk: every third), none on the
+    // abutments (the road may come on from the side) and taller next to them, for the lanterns
+    if (!end && (style === 'stone' || post || i % pierEvery === 0)) for (const j of [0, width - 1]) put(i, j, d + 1, d + 1 + (post ? 1 : 0));
+    // piers where the deck is over water: stone across the full width, wooden legs under the edges
+    if (!end && i % pierEvery === (pierEvery >> 1) && water[cellAt(uMin + i, vW)]) {
+      if (style === 'stone') put(i, 0, 0, d - 1), put(i, width - 1, 0, d - 1), put(i, 1, 0, d - 2), put(i, width - 2, 0, d - 2);
+      else for (const j of [0, width - 1]) put(i, j, 0, d - 1);
+    }
+  }
+  T.finalize();
+  const fx0 = ax + (alongX ? uMin : vLo), fz0 = az + (alongX ? vLo : uMin);
+  const cx = (fx0 + (sx >> 1)) & MASK, cz = (fz0 + (sz >> 1)) & MASK;
+  const st = {
+    type: 'bridge', variant: style, cx, cz, half: Math.max(sx, sz) >> 1, baseY, tpl: T, x0: cx - (sx >> 1), z0: cz - (sz >> 1),
+    radius: Math.hypot(sx, sz) / 2 + 1, anchor: { x: cx, z: cz },
+  };
+  world.structs.push(st);
+  const deck = new Float32Array(L);
+  for (let i = 0; i < L; i++) deck[i] = baseY + lv[i];
+  const b = { s: st, alongX, deck, L, width, ax, az, uMin, vW, lanterns: [] };
+  world.bridges.push(b);
+  for (let u = uMin; u <= uMax; u++) for (let v = vLo; v < vLo + width; v++) taken[cellAt(u, v)] = world.bridges.length - 1;
+  return routeOver(b, A, B);
+}
+
+// Whether A and B (dry cells either side of the water) are within a few cells of bridge b's lanes.
+function near(b, A, B) {
+  for (const c of [A, B]) {
+    const du = wrapDelta((c & MASK) - b.ax), dv = wrapDelta(((c / W) | 0) - b.az), u = b.alongX ? du : dv, v = b.alongX ? dv : du;
+    const off = Math.max(b.uMin - u, u - (b.uMin + b.L - 1), 0) + Math.max(b.vW - v, v - (b.vW + 1), 0);
+    if (off > 3) return false;
+  }
+  return true;
+}
+
+// A road's cells from A to B over bridge b: onto the deck's first lane, along it, and off to B.
+function routeOver(b, A, B) {
+  const at = c => { const du = wrapDelta((c & MASK) - b.ax), dv = wrapDelta(((c / W) | 0) - b.az); return b.alongX ? [du, dv] : [dv, du]; };
+  const cellAt = (u, v) => b.alongX ? (((b.az + v) & MASK) * W + ((b.ax + u) & MASK)) : (((b.az + u) & MASK) * W + ((b.ax + v) & MASK));
+  const [uA] = at(A), [uB] = at(B), lo = b.uMin, hi = b.uMin + b.L - 1;
+  const u0 = clamp(uA, lo, hi), u1 = clamp(uB, lo, hi), step = u1 >= u0 ? 1 : -1, route = [A];
+  for (let u = u0; u !== u1 + step; u += step) { const c = cellAt(u, b.vW); if (route[route.length - 1] !== c) route.push(c); }
+  if (route[route.length - 1] !== B) route.push(B);
+  return route;
+}
+
+// The deck under (x, z) if it is on a bridge, for whatever walks the roads.
+function deckAt(x, z) {
+  const h = bridgeCell(x, z);
+  return h ? h.b.deck[h.i] : -Infinity;
+}
+
+// A lantern on the post at each end of every bridge.
+function bridgeLights() {
+  for (const b of world.bridges) for (const [x, z, deck] of b.lanterns) {
+    const wx = ((x % W) + W) % W + 0.5, wz = ((z % W) + W) % W + 0.5;
+    world.lights.push({ x: wx, y: deck + 2.3, z: wz, r: 12, color: [1, 0.62, 0.28], i: 1.1, kind: 'torch', phase: hash2(x, z, world.seed + 73) * 10, size: 0.7 });
+  }
+}
+
+// =====================================================================
 //  TREES + BIRDS  (sprites, not voxels)
 // =====================================================================
 const TREE_BUCKET = 32, TREE_BUCKETS = W / TREE_BUCKET;
-const SPRITE = { TREE: 0, CONIFER: 1, BUSH: 2, BOULDER: 3 };
+const SPRITE = { TREE: 0, CONIFER: 1, BUSH: 2, BOULDER: 3, PALM: 4, BIRCH: 5, CACTUS: 6, DEADTREE: 7, SHRUB: 8, REEDS: 9, SNOWPINE: 10 };
+const SPRITE_BLOCKS = [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1];   // which kinds have a trunk you cannot walk through
 
-// Forests come from a broad density noise; how thickly they grow there, and whether with
-// broadleaf trees or pines, is up to the region. Trees keep off water, snow, steep ground, roads
-// and footprints. Per region: the density at which forest begins, the most trees per cell, the
-// odd lone tree anywhere, the share of pines, bushes, and how big the trees grow (old forest is
-// taller). Badlands and marsh get plants of their own in the land step; until then bushes stand
-// in for their shrubs.
+// Plants by region. Forests come from a broad density noise: how thickly they grow there, and with
+// which trees, is up to the region, and every region has its own undergrowth and lone plants.
+// Plants keep off water, snow, steep ground, roads and footprints; those with a trunk keep a cell
+// between them and block walking. Per region: the density at which forest begins, the most trees
+// per cell, the odd lone tree anywhere, the share of pines, bushes, and how big trees grow (old
+// forest is taller).
 const REGION_TREES = [];
 REGION_TREES[BIOME.GRASSLAND] = [0.56, 0.07, 0.003, 0.2, 0.01, 1];
 REGION_TREES[BIOME.FOREST] = [0.28, 0.2, 0.02, 0.1, 0.016, 1.3];
 REGION_TREES[BIOME.PINES] = [0.3, 0.18, 0.02, 0.92, 0.006, 1.35];
 REGION_TREES[BIOME.PEAKS] = [1, 0, 0.01, 1, 0, 0.9];
-REGION_TREES[BIOME.BADLANDS] = [1, 0, 0, 0, 0.006, 1];
-REGION_TREES[BIOME.MARSH] = [1, 0, 0.004, 0, 0.02, 1];
-REGION_TREES[BIOME.BEACH] = [1, 0, 0, 0, 0.002, 1];
+REGION_TREES[BIOME.BADLANDS] = [1, 0, 0, 0, 0, 1];
+REGION_TREES[BIOME.MARSH] = [1, 0, 0.004, 0, 0.015, 1];
+REGION_TREES[BIOME.BEACH] = [1, 0, 0, 0, 0, 1];
 REGION_TREES[BIOME.CLIFFS] = [0.6, 0.05, 0.003, 0.3, 0.008, 1];
 function placeTrees(seed) {
   const { H, water, road, treeMask, snowLine, seaLevel, biome, heat } = world;
   treeMask.fill(0);
   const excl = new Uint8Array(N);
   for (const s of world.structs) {
+    if (s.type === 'bridge') {   // a bridge keeps just its own footprint and a cell round it clear
+      for (let lz = -1; lz <= s.tpl.sz; lz++) for (let lx = -1; lx <= s.tpl.sx; lx++) excl[((s.z0 + lz) & MASK) * W + ((s.x0 + lx) & MASK)] = 1;
+      continue;
+    }
     const r = s.half + (s.type === 'castle' ? 16 : s.type === 'tower' ? 6 : 2);   // castles stand in a clearing, so their gate can be seen coming
     for (let oz = -r; oz <= r; oz++) for (let ox = -r; ox <= r; ox++) excl[((s.cz + oz) & MASK) * W + ((s.cx + ox) & MASK)] = 1;
   }
@@ -1322,25 +1540,46 @@ function placeTrees(seed) {
     const zr = z * W, zm = ((z - 1) & MASK) * W, zp = ((z + 1) & MASK) * W;
     for (let x = 0; x < W; x++) {
       const i = zr + x;
-      const rule = REGION_TREES[biome[i]];
-      if (!rule || excl[i] || water[i] || H[i] < seaLevel + 1.5 || H[i] > snowLine + (heat[i] - 0.5) * 20) continue;
+      const rule = REGION_TREES[biome[i]], low = biome[i] === BIOME.BEACH || biome[i] === BIOME.MARSH;   // sand and marsh lie low: their plants grow almost down to the water
+      const peaks = biome[i] === BIOME.PEAKS, snowAt = snowLine + (heat[i] - 0.5) * 20;   // (the peaks are snowy all over: their few pines stand in it)
+      if (!rule || excl[i] || water[i] || H[i] < seaLevel + (low ? 0.45 : 1.5) || (!peaks && H[i] > snowAt)) continue;
       const slope = Math.max(Math.abs(H[zr + ((x + 1) & MASK)] - H[zr + ((x - 1) & MASK)]), Math.abs(H[zp + x] - H[zm + x])) * 0.5;
-      const rocky = slope > 4.5 || (biome[i] === BIOME.PEAKS && H[i] > rockLine);
+      const rocky = slope > (peaks ? 2.5 : 4.5);   // bare rock, as the ground has it
       const r = hash2(x, z, seed + 99);
       if (rocky) {                                              // boulders on rock
         if (slope <= 6 && r < 0.012) { xs.push(x + 0.5); zs.push(z + 0.5); ys.push(H[i]); sizes.push(0.5 + hash2(x, z, seed + 7) * 0.6); kinds.push(SPRITE.BOULDER); }
         continue;
       }
       if (slope > 3.5) continue;
+      const b = biome[i], sz = hash2(x, z, seed + 7), spaced = !(treeMask[zr + ((x - 1) & MASK)] || treeMask[zm + x] || treeMask[zm + ((x - 1) & MASK)] || treeMask[zm + ((x + 1) & MASK)]);
+      const put = (kind, size) => { if (SPRITE_BLOCKS[kind]) treeMask[i] = 1; xs.push(x + 0.5); zs.push(z + 0.5); ys.push(H[i]); sizes.push(size); kinds.push(kind); };
+      // the regions with plants of their own
+      if (b === BIOME.BADLANDS) {                               // dry shrubs, cacti where it is hottest, the odd dead tree
+        if (r < 0.02) put(SPRITE.SHRUB, 0.35 + sz * 0.3);
+        else if (r < 0.02 + 0.008 * smoothstep(0.66, 0.9, heat[i]) && spaced) put(SPRITE.CACTUS, 0.8 + sz * 0.45);
+        else if (r < 0.03 && spaced) put(SPRITE.DEADTREE, 0.8 + sz * 0.35);
+        continue;
+      }
+      if (b === BIOME.BEACH) {                                  // palms on warm shores
+        if (heat[i] > 0.45 && r < 0.035 && spaced) put(SPRITE.PALM, 0.9 + sz * 0.35);
+        continue;
+      }
+      if (b === BIOME.MARSH) {                                  // reeds thick along the water, thinner away from it
+        const wet = water[zr + ((x + 1) & MASK)] || water[zr + ((x - 1) & MASK)] || water[zp + x] || water[zm + x];
+        if (r < (wet ? 0.16 : 0.035)) { put(SPRITE.REEDS, 0.8 + sz * 0.35); continue; }
+      }
       const dens = fbm(x, z, seed + 4242, 3);
       const p = clamp((dens - rule[0]) * 0.8, 0, rule[1]) + rule[2];
       if (r < p) {
-        if (treeMask[zr + ((x - 1) & MASK)] || treeMask[zm + x] || treeMask[zm + ((x - 1) & MASK)] || treeMask[zm + ((x + 1) & MASK)]) continue;   // keep a cell between trunks
-        treeMask[i] = 1;
-        const conifer = H[i] > rockLine * 0.75 || hash2(x, z, seed + 13) < rule[3];
-        xs.push(x + 0.5); zs.push(z + 0.5); ys.push(H[i]); sizes.push((0.8 + hash2(x, z, seed + 7) * 0.5) * rule[5]); kinds.push(conifer ? SPRITE.CONIFER : SPRITE.TREE);
+        if (!spaced) continue;   // keep a cell between trunks
+        const h2 = hash2(x, z, seed + 13);
+        const conifer = H[i] > rockLine * 0.75 || h2 < rule[3];
+        if (peaks || (conifer && H[i] > snowAt - 14)) { put(SPRITE.SNOWPINE, (0.6 + sz * 0.35) * (peaks ? rule[5] : 0.9)); continue; }   // small, snow-dusted pines on the peaks and up at the snow line
+        // birches among the broadleaf trees where it is cool, and a few among the pines
+        const birch = !conifer ? (b === BIOME.FOREST || b === BIOME.GRASSLAND) && hash2(x, z, seed + 14) < 0.12 + 0.3 * (1 - smoothstep(0.3, 0.6, heat[i])) : b === BIOME.PINES && h2 > 0.94;
+        put(birch ? SPRITE.BIRCH : conifer ? SPRITE.CONIFER : SPRITE.TREE, (0.8 + sz * 0.5) * rule[5] * (birch ? 0.95 : 1));
       } else if (r < p + rule[4]) {                             // bushes between the trees
-        xs.push(x + 0.5); zs.push(z + 0.5); ys.push(H[i]); sizes.push(0.35 + hash2(x, z, seed + 7) * 0.25); kinds.push(SPRITE.BUSH);
+        put(SPRITE.BUSH, 0.35 + sz * 0.25);
       }
     }
   }
@@ -1455,7 +1694,7 @@ function placeMerchant(m) {
   const t = cum[hi] > cum[lo] ? clamp((m.s - cum[lo]) / (cum[hi] - cum[lo]), 0, 1) : 0;
   m.x = ((ax + wrapDelta((b & MASK) - (a & MASK)) * t) % W + W) % W;
   m.z = ((az + wrapDelta(((b / W) | 0) - ((a / W) | 0)) * t) % W + W) % W;
-  m.y = terrainHeight(m.x, m.z);
+  m.y = Math.max(terrainHeight(m.x, m.z), deckAt(m.x, m.z));   // (on a bridge, its deck)
   m.seg = lo;
 }
 
@@ -1514,8 +1753,11 @@ function computeOcclusion() {
   const T = world.trees, under = new Uint8Array(N);
   for (let k = 0; k < T.n; k++) {
     if (T.kind[k] === SPRITE.BOULDER) continue;
-    const s = T.size[k], top = T.y[k] + (T.kind[k] === SPRITE.BUSH ? 0.9 : T.kind[k] === SPRITE.CONIFER ? 3.2 : 3.1) * s;
-    const r = T.kind[k] === SPRITE.CONIFER ? 0.8 * s : 1.1 * s, x0 = Math.floor(T.x[k] - r), z0 = Math.floor(T.z[k] - r);
+    const kd = T.kind[k], s = T.size[k];
+    // how tall each kind stands, and how wide it is up there
+    const top = T.y[k] + s * (kd === SPRITE.BUSH ? 0.9 : kd === SPRITE.SHRUB ? 0.5 : kd === SPRITE.REEDS ? 1.4 : kd === SPRITE.CACTUS ? 2.5 : kd === SPRITE.DEADTREE ? 2.3 : kd === SPRITE.PALM ? 3.7 : kd === SPRITE.BIRCH ? 3.4 : 3.2);
+    const r = s * (kd === SPRITE.CONIFER || kd === SPRITE.SNOWPINE ? 0.8 : kd === SPRITE.CACTUS || kd === SPRITE.REEDS ? 0.35 : kd === SPRITE.DEADTREE || kd === SPRITE.SHRUB ? 0.55 : kd === SPRITE.PALM ? 1.3 : 1.1);
+    const x0 = Math.floor(T.x[k] - r), z0 = Math.floor(T.z[k] - r);
     for (let z = z0; z <= Math.floor(T.z[k] + r); z++) for (let x = x0; x <= Math.floor(T.x[k] + r); x++) {
       const i = (z & MASK) * W + (x & MASK);
       if (top > occ[i]) occ[i] = top;
@@ -1600,7 +1842,7 @@ function renderCore() {
 const FOG0 = 0.16, FOG1 = 0.42, FOG2 = 0.8, WARM_AT = 0.4;
 const fogOfLayer = fog => fog < FOG0 ? 0 : fog < FOG1 ? 1 : fog < FOG2 ? 2 : 3;
 // Figures catch less firelight than the ground (the merchants carry their own lantern).
-const warmth = (lit, kind, pos) => lit * (kind === K.MERCHANT ? 0.35 : kind >= K.TREE && kind <= K.BOULDER ? 0.6 : 1) * (0.55 + 0.45 * pos);
+const warmth = (lit, kind, pos) => lit * (kind === K.MERCHANT ? 0.35 : (kind >= K.TREE && kind <= K.BOULDER) || (kind >= K.PALM && kind <= K.REED) ? 0.6 : 1) * (0.55 + 0.45 * pos);
 const warmX = w => Math.min(1, Math.pow((w - WARM_AT) / (1 - WARM_AT), 0.8)) * (COL.near[R.lit].length - 1);
 const hazeX = (pos, fog) => Math.min(COL.near[R.haze].length - 2, Math.max(0, pos * 1.4 + (fog - FOG1) / (FOG2 - FOG1) * 1.6));
 // The colour lists a cell can be drawn from: every ramp near, every ramp far, the haze, the warm
@@ -1894,6 +2136,7 @@ const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.sto
 // each a step of tone from the next, with crisp edges between them (the band is part of the
 // segment). Red rock is banded strongly, grey rock gently.
 const STRATA_INV = 1 / 1.4, STRATA_POS = [0, -0.2, 0.1, -0.12];
+const WALL_RISE = 1.5, WALL_SLOPE = 3;   // a step whose ground climbs (or falls) more than this, and this steeply, holds a wall
 const STRATA_K = new Float32Array(Object.keys(MAT).length);
 STRATA_K[MAT.REDROCK] = 1; STRATA_K[MAT.ROCK] = 0.35;
 const RAMP_LEN = Uint8Array.from(RAMP_NAMES, n => KEYFRAMES.day.ramps[n].length);
@@ -2138,7 +2381,9 @@ function marchRays(t) {
       if (z < vd * 0.6 && Math.sin(px * 0.31 + t * 1.7) + Math.sin(pz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE;
     }
     const kS = TERRAIN_SEG | m, kR = MAT_RAMP[m], kL = warm ? warmAt(px, h, pz) : 0, kSt = STRATA_K[m];
-    if (kSt && ybuf - row > 2) {   // a face of rock: banded by height, lit from the light averaged over 4×4 cells so its columns agree
+    const rise = lastShZ === zPrev ? h - lastH : 0;
+    if (ybuf - row > 1 && (rise > WALL_RISE || rise < -WALL_RISE) && (rise > 0 ? rise : -rise) > WALL_SLOPE * (z - zPrev)) wallAt(z, row, h, sh, kS, kR, kL, fl);
+    else if (kSt && ybuf - row > 2) {   // a face of rock: banded by height, lit from the light averaged over 4×4 cells so its columns agree
       const kF = posOf(mipShade(px, pz, 2));
       for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
         if (kind[i] !== NONE) continue;
@@ -2163,6 +2408,50 @@ function marchRays(t) {
     }
     lastShZ = z; lastSh = sh; lastH = h;
     ybuf = row;
+  }
+
+  // A wall inside a step (the side of a mesa, a sea cliff, a terrace's riser), or a drop past an edge.
+  // The step's two heights alone would join its ends with a ramp, and each row would take its colour
+  // from wherever it met that ramp: the ground in front of a wall climbed up its foot in spikes that
+  // shifted as the steps slid. Instead, find where the ground crosses the middle of the change (by
+  // halving the step along this column) and take the step as flat ground up to there, a sheer face,
+  // and flat ground beyond; each row takes its colour from the part it really meets.
+  function wallAt(z, row, h, sh, kS, kR, kL, fl) {
+    const lo = zPrev, h0 = lastH, hm = (h0 + h) * 0.5, up = h > h0;
+    let a = lo, b = z;
+    for (let it = 0; it < 6; it++) {
+      const c = (a + b) * 0.5;
+      if ((marchHeight(camX + dx * c, camZ + dz * c, c) < hm) === up) a = c; else b = c;
+    }
+    const tw = (a + b) * 0.5;
+    // the ground before the wall, and the face (read a little past its foot, on its own cell)
+    const tA = (lo + tw) * 0.5, mA = mat[(Math.floor(camZ + dz * tA) & MASK) * W + (Math.floor(camX + dx * tA) & MASK)];
+    let shA = lastSh, flA = 0;
+    if (mA === MAT.WATER) { flA = F_WATER; if (Math.sin((camX + dx * tA) * 0.31 + t * 1.7) + Math.sin((camZ + dz * tA) * 0.23 - t * 1.1) > 0.8) flA |= F_RIPPLE; }
+    const sA = TERRAIN_SEG | mA, rA = MAT_RAMP[mA], pA = posOf(shA);
+    // the face is the side of the highest of the four cells whose heights meet at its middle (the
+    // heights blend between cell centres, so half of every wall stands over the cell below it)
+    const xw = camX + dx * tw - 0.5, zw = camZ + dz * tw - 0.5, x0 = Math.floor(xw), z0 = Math.floor(zw);
+    let cF = -1, hF = -Infinity;
+    for (let k = 0; k < 4; k++) { const ci = ((z0 + (k >> 1)) & MASK) * W + ((x0 + (k & 1)) & MASK); if (H[ci] > hF) { hF = H[ci]; cF = ci; } }
+    // (lit by the light averaged over the cells around the wall, which changes smoothly along it, so
+    // neighbouring columns agree instead of each taking its own cell's light in stripes)
+    const mF = mat[cF], kSt = STRATA_K[mF];
+    const sF = TERRAIN_SEG | mF, rF = MAT_RAMP[mF], pF = posOf(mipShade(xw + 0.5, zw + 0.5, z < 120 ? 1 : 2)), pB = posOf(sh);
+    for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
+      if (kind[i] !== NONE) continue;
+      const q = rayQ[r], tA0 = q < 0 ? (h0 - camY) / q : Infinity;
+      if (tA0 <= tw) {                                  // the ground before it
+        kind[i] = K.TERRAIN; seg[i] = sA; ramp[i] = rA; pos[i] = pA; depth[i] = tA0 > lo ? tA0 : lo; flags[i] = flA;
+      } else if (up && camY + q * tw <= h) {            // the face
+        const band = Math.floor((camY + q * tw) * STRATA_INV) & 3, p = pF + STRATA_POS[band] * kSt;
+        kind[i] = K.TERRAIN; seg[i] = kSt ? sF | (band << 8) : sF; ramp[i] = rF; pos[i] = p < 0 ? 0 : p > 1 ? 1 : p; depth[i] = tw; flags[i] = F_FACE;
+      } else {                                          // the ground beyond
+        const tB = q < 0 ? (h - camY) / q : z;
+        kind[i] = K.TERRAIN; seg[i] = kS; ramp[i] = kR; pos[i] = pB; depth[i] = tB < tw ? tw : tB > z ? z : tB; flags[i] = fl;
+      }
+      lit[i] = kL; left--;
+    }
   }
 
   // Walk the ray cell by cell through one structure's footprint (a 2D DDA), so a one-cell
@@ -2796,7 +3085,84 @@ function buildPlant(i, kind, x, y, z, s, zc) {
     if (zc < 60) shadowDiscs.push([x, z, y, 0.9 * s, zc]);
     return;
   }
-  const leafSeg = ((kind === SPRITE.CONIFER ? K.CONIFER : kind === SPRITE.BUSH ? K.BUSH : K.TREE) << 24) | i;
+  if (kind === SPRITE.PALM) {
+    // A palm: a trunk of four segments bending away from the wind, crowned with drooping fronds
+    // (each an inner and a lower outer leaf) and a couple of coconuts; far off, trunk and crown.
+    const a = hash2(i, 5, 41) * Math.PI * 2, lean = (0.35 + 0.35 * hash2(i, 6, 41)) * s, ca = Math.cos(a), sa = Math.sin(a);
+    const tseg = (K.TRUNK << 24) | i, fseg = (K.PALM << 24) | i, tw = Math.max(0.12 * s, fp * 0.45), nSeg = far ? 1 : 4;
+    let px = x, py = y - 0.2, pz = z;
+    for (let k = 1; k <= nSeg; k++) {
+      const f = k / nSeg, nx = x + ca * lean * f * f, ny = y + 3.6 * s * f, nz = z + sa * lean * f * f;
+      const tr = pCapsule(px, py, pz, nx, ny, nz, tw * (1.1 - 0.3 * f), K.TRUNK, tseg, R.road, LOOK_SOLID); tr.lit = lit * 0.6;
+      px = nx; py = ny; pz = nz;
+    }
+    // Fronds: each a blade arching up and out from the crown, then down to a drooping tip (far off,
+    // one stroke each, out and down).
+    const nF = far ? 5 : 8, bw = Math.max(0.075 * s, fp * 0.5);
+    for (let k = 0; k < nF; k++) {
+      const b = a + k / nF * Math.PI * 2 + hash2(i, k, 43) * 0.5, cb = Math.cos(b), sb = Math.sin(b), len = (0.85 + 0.3 * hash2(i, k, 44)) * s;
+      if (far) { const f = pCapsule(px, py, pz, px + cb * 1.9 * len, py - 0.8 * len, pz + sb * 1.9 * len, Math.max(0.22 * s, fp * 0.5), K.PALM, fseg, R.palm, LOOK_CANOPY); f.lit = lit * 0.6; f.posAdd = jit; continue; }
+      const P = [[0, 0], [0.75, 0.3], [1.45, 0.18], [2.0, -0.35], [2.3, -1.0]];
+      for (let q = 0; q < 4; q++) {
+        const [o0, h0] = P[q], [o1, h1] = P[q + 1];
+        const f = pCapsule(px + cb * o0 * len, py + h0 * len, pz + sb * o0 * len, px + cb * o1 * len, py + h1 * len, pz + sb * o1 * len, Math.max(bw * (1 - q * 0.2), fp * 0.5), K.PALM, fseg, R.palm, LOOK_CANOPY);
+        f.lit = lit * 0.6; f.posAdd = jit + 0.05 - q * 0.05;   // lighter toward the crown, darker at the tips
+      }
+    }
+    if (far) return;
+    for (let k = 0; k < 2; k++) { const nut = pSphere(px + Math.cos(a + k * 2.5) * 0.16 * s, py - 0.2 * s, pz + Math.sin(a + k * 2.5) * 0.16 * s, 0.1 * s, K.TRUNK, tseg, R.wood, LOOK_SOLID); nut.lit = lit * 0.6; }
+    return;
+  }
+  if (kind === SPRITE.CACTUS) {
+    // A saguaro: a column with a round top and one or two arms that turn upward.
+    const seg = (K.CACTUS << 24) | i, rr = Math.max(0.2 * s, fp * 0.5), top = 2.3 * s;
+    const col = pVCone(x, y - 0.2, z, y + top, rr, rr * 0.92, K.CACTUS, seg, R.cactus, LOOK_SOLID); col.lit = lit * 0.6; col.posAdd = jit;
+    const cap = pSphere(x, y + top, z, rr * 0.92, K.CACTUS, seg, R.cactus, LOOK_SOLID); cap.lit = lit * 0.6; cap.posAdd = jit;
+    if (!far) {
+      const arms = hash2(i, 7, 45) < 0.5 ? 1 : 2, a0 = hash2(i, 8, 45) * Math.PI * 2;
+      for (let k = 0; k < arms; k++) {
+        const b = a0 + k * Math.PI * (0.8 + 0.4 * hash2(i, k, 46)), cb = Math.cos(b), sb = Math.sin(b), hy = (1.0 + 0.5 * hash2(i, k, 47)) * s, out = 0.55 * s, ar = rr * 0.7;
+        const e = pCapsule(x + cb * rr * 0.5, y + hy, z + sb * rr * 0.5, x + cb * out, y + hy + 0.12 * s, z + sb * out, ar, K.CACTUS, seg, R.cactus, LOOK_SOLID); e.lit = lit * 0.6; e.posAdd = jit;
+        const u = pVCone(x + cb * out, y + hy + 0.12 * s, z + sb * out, y + hy + (0.6 + 0.35 * hash2(i, k, 48)) * s, ar, ar, K.CACTUS, seg, R.cactus, LOOK_SOLID); u.lit = lit * 0.6; u.posAdd = jit;
+        const ut = pSphere(x + cb * out, y + hy + (0.6 + 0.35 * hash2(i, k, 48)) * s, z + sb * out, ar, K.CACTUS, seg, R.cactus, LOOK_SOLID); ut.lit = lit * 0.6; ut.posAdd = jit;
+      }
+    }
+    return;
+  }
+  if (kind === SPRITE.DEADTREE) {
+    // A dead tree: a pale, leafless trunk and a few bare branches reaching up and out.
+    const seg = (K.TRUNK << 24) | i, bw = Math.max(0.05 * s, fp * 0.45);
+    const tr = pVCone(x, y - 0.3, z, y + 2.3 * s, Math.max(0.13 * s, fp * 0.45), Math.max(0.06 * s, fp * 0.45), K.TRUNK, seg, R.dead, LOOK_SOLID); tr.lit = lit * 0.6;
+    if (!far) for (let k = 0; k < 4; k++) {
+      const b = hash2(i, k, 51) * Math.PI * 2, h = (1.1 + 1.0 * hash2(i, k, 52)) * s, len = (0.55 + 0.45 * hash2(i, k, 53)) * s;
+      const br = pCapsule(x, y + h, z, x + Math.cos(b) * len, y + h + len * 0.8, z + Math.sin(b) * len, bw, K.TRUNK, seg, R.dead, LOOK_SOLID); br.lit = lit * 0.6;
+    }
+    return;
+  }
+  if (kind === SPRITE.SHRUB) {
+    // Dry scrub: a few low, grey-green clumps.
+    const seg = (K.BUSH << 24) | i;
+    for (let k = 0; k < (far ? 1 : 3); k++) {
+      const b = (k + hash2(i, k, 55)) * 2.1, off = k ? 0.45 * s : 0, r0 = (k ? 0.45 : 0.6) * s;
+      const q = pEllipsoid(x + Math.cos(b) * off, y + 0.25 * s, z + Math.sin(b) * off, r0, r0 * 0.6, r0, b, K.BUSH, seg, R.cactus, LOOK_CANOPY); q.lit = lit * 0.6; q.posAdd = jit - 0.05;
+    }
+    return;
+  }
+  if (kind === SPRITE.REEDS) {
+    // A clump of reeds: upright stalks, two with a dark seed head; beyond 60, a tuft.
+    const seg = (K.REED << 24) | i;
+    if (zc > 60) { const q = pEllipsoid(x, y + 0.55 * s, z, 0.45 * s, 0.7 * s, 0.45 * s, 0, K.REED, seg, R.drygrass, LOOK_CANOPY); q.lit = lit * 0.6; q.posAdd = jit; return; }
+    // (thin stalks leaning out a little, most of them green and a few gone to straw)
+    const sw = Math.max(0.022 * s, fp * 0.5);
+    for (let k = 0; k < 7; k++) {
+      const b = hash2(i, k, 57) * Math.PI * 2, r0 = 0.3 * s * hash2(i, k, 58), hgt = (1.0 + 0.6 * hash2(i, k, 59)) * s, lean = 0.12 * s + r0 * 0.4;
+      const x0 = x + Math.cos(b) * r0, z0 = z + Math.sin(b) * r0, x1 = x0 + Math.cos(b) * lean, z1 = z0 + Math.sin(b) * lean;
+      const st = pCapsule(x0, y - 0.1, z0, x1, y + hgt, z1, sw, K.REED, seg, k < 5 ? R.reeds : R.drygrass, LOOK_SOLID); st.lit = lit * 0.6; st.posAdd = jit + 0.12;
+      if (k < 2) { const hw = Math.max(0.05 * s, fp * 0.5), hd = pCapsule(x1 - Math.cos(b) * 0.03 * s, y + hgt - 0.3 * s, z1 - Math.sin(b) * 0.03 * s, x1, y + hgt - 0.05 * s, z1, hw, K.REED, seg, R.wood, LOOK_SOLID); hd.lit = lit * 0.6; }
+    }
+    return;
+  }
+  const leafSeg = ((kind === SPRITE.CONIFER || kind === SPRITE.SNOWPINE ? K.CONIFER : kind === SPRITE.BUSH ? K.BUSH : K.TREE) << 24) | i;
   if (kind === SPRITE.BUSH) {
     const p = pEllipsoid(x, y + 0.42 * s, z, 1.0 * s, 0.62 * s, 1.0 * s, 0, K.BUSH, leafSeg, R.leaf, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit;
     for (let k = 0; k < (lumps ? 2 : 0); k++) {
@@ -2805,21 +3171,28 @@ function buildPlant(i, kind, x, y, z, s, zc) {
     }
     return;
   }
-  if (kind === SPRITE.CONIFER) {
+  if (kind === SPRITE.CONIFER || kind === SPRITE.SNOWPINE) {
     if (!far) { const tw = Math.max(0.09 * s, fp * 0.45); const tr = pVCone(x, y - 0.3, z, y + 1.0 * s, tw, tw, K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
-    const tiers = far ? 2 : 3;
+    const tiers = far ? 2 : 3, snowy = kind === SPRITE.SNOWPINE;
     for (let k = 0; k < tiers; k++) {
       const b = far ? [0.7, 1.9][k] : [0.7, 1.66, 2.56][k], top = far ? [2.6, 3.9][k] : [2.3, 3.1, 3.9][k], r = far ? [0.95, 0.62][k] : [0.95, 0.72, 0.5][k];
       const p = pVCone(x, y + b * s, z, y + top * s, r * s, Math.max(0.03 * s, fp * 0.5), K.CONIFER, leafSeg, R.conifer, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit + 0.1 * k;
+      if (snowy) {   // snow lying on the upper part of each tier
+        const sb = top - (top - b) * 0.4, c = pVCone(x, y + sb * s, z, y + top * s + 0.02, r * 0.44 * s, Math.max(0.03 * s, fp * 0.5), K.CONIFER, leafSeg, R.snow, LOOK_CANOPY); c.lit = lit * 0.6; c.posAdd = 0.1;
+      }
     }
     if (zc < 90) shadowDiscs.push([x, z, y, 0.9 * s, zc]);
     return;
   }
-  if (!far) { const tr = pVCone(x, y - 0.3, z, y + 1.9 * s, Math.max(0.13 * s, fp * 0.45), Math.max(0.07 * s, fp * 0.45), K.TRUNK, (K.TRUNK << 24) | i, R.wood, LOOK_SOLID); tr.lit = lit * 0.6; }
-  const p = pEllipsoid(x, y + 2.45 * s, z, 1.02 * s, 0.95 * s, 1.02 * s, 0, K.TREE, leafSeg, R.leaf, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit;
+  const birch = kind === SPRITE.BIRCH, crownY = birch ? 2.9 : 2.45, leaves = birch ? R.grass : R.leaf;
+  if (!far) {
+    const tr = pVCone(x, y - 0.3, z, y + (birch ? 2.5 : 1.9) * s, Math.max((birch ? 0.09 : 0.13) * s, fp * 0.45), Math.max((birch ? 0.06 : 0.07) * s, fp * 0.45), K.TRUNK, (K.TRUNK << 24) | i, birch ? R.birch : R.wood, LOOK_SOLID); tr.lit = lit * 0.6;
+    if (birch) tr.marks = true;   // (so the painted look can band the bark)
+  }
+  const p = pEllipsoid(x, y + crownY * s, z, (birch ? 0.8 : 1.02) * s, (birch ? 1.1 : 0.95) * s, (birch ? 0.8 : 1.02) * s, 0, K.TREE, leafSeg, leaves, LOOK_CANOPY); p.lit = lit * 0.6; p.posAdd = jit;
   for (let k = 0; k < lumps; k++) {
-    const a = (k + hash2(i, k, 23) * 0.8) * Math.PI * 2 / lumps, rr = (0.62 + 0.16 * hash2(i, k, 29)) * s, off = 0.72 * s;
-    const q = pSphere(x + Math.cos(a) * off, y + (2.3 + (hash2(i, k, 31) - 0.35) * 0.9) * s, z + Math.sin(a) * off, rr, K.TREE, leafSeg, R.leaf, LOOK_CANOPY);
+    const a = (k + hash2(i, k, 23) * 0.8) * Math.PI * 2 / lumps, rr = (0.62 + 0.16 * hash2(i, k, 29)) * s * (birch ? 0.75 : 1), off = (birch ? 0.52 : 0.72) * s;
+    const q = pSphere(x + Math.cos(a) * off, y + (crownY - 0.15 + (hash2(i, k, 31) - 0.35) * 0.9) * s, z + Math.sin(a) * off, rr, K.TREE, leafSeg, leaves, LOOK_CANOPY);
     q.lit = lit * 0.6; q.posAdd = jit;
   }
   if (zc < 90) shadowDiscs.push([x, z, y, 1.15 * s, zc]);
@@ -3048,6 +3421,9 @@ SPRITE_MARKS[K.TREE] = [0.3, ['club', 'leafo', 'club', 'leafpct'].map(n => MK[n]
 SPRITE_MARKS[K.BUSH] = [0.3, ['club', 'leafo'].map(n => MK[n])];
 SPRITE_MARKS[K.CONIFER] = [0.35, [MK.needles]];
 SPRITE_MARKS[K.BOULDER] = [0.35, ['crag', 'pebbles'].map(n => MK[n])];
+SPRITE_MARKS[K.PALM] = [0.3, ['club', 'leafo'].map(n => MK[n])];
+SPRITE_MARKS[K.CACTUS] = [0.3, [MK.needles]];
+SPRITE_MARKS[K.REED] = [0.35, [MK.tufts]];
 const cIdx = new Int32Array(RAYS_X * RAYS_Y), cellOff = new Int32Array(RAYS_X * RAYS_Y);
 // Per cell, between the two passes: the list and position its colour comes from (−1 when the
 // cell is already drawn), and what it needs for marks.
@@ -3316,6 +3692,9 @@ const LETTERS = {
   '&': ['.##..', '#..#.', '.##..', '#..##', '.##.#'],
   '^': ['..#..', '.#.#.', '#...#', '.....', '.....'],
   'v': ['.....', '#...#', '.#.#.', '..#..', '.....'],
+  'w': ['.....', '#...#', '#.#.#', '.#.#.', '.....'],
+  '!': ['..#..', '..#..', '..#..', '.....', '..#..'],
+  'i': ['..#..', '.....', '..#..', '..#..', '..#..'],
 };
 const LETTER_LIST = Object.keys(LETTERS), LT = {};
 LETTER_LIST.forEach((ch, k) => { LT[ch] = k + 1; });   // letter ids: 0 is none
@@ -3327,7 +3706,18 @@ RAMP_LETTER[R.snow] = LT['*']; RAMP_LETTER[R.road] = LT[':']; RAMP_LETTER[R.ston
 const KIND_LETTER = new Uint8Array(32);                   // solids, by kind
 KIND_LETTER[K.TREE] = LT['@']; KIND_LETTER[K.BUSH] = LT['&']; KIND_LETTER[K.CONIFER] = LT['^'];
 KIND_LETTER[K.TRUNK] = LT['|']; KIND_LETTER[K.BOULDER] = LT['%']; KIND_LETTER[K.LOGS] = LT['='];
+KIND_LETTER[K.PALM] = LT.w; KIND_LETTER[K.CACTUS] = LT['!']; KIND_LETTER[K.REED] = LT.i;
 const paint = { glyph: new Uint8Array(0), fg: new Uint32Array(0), bg: new Uint32Array(0) };   // per half cell: top, then bottom
+// Flowers: a scatter fixed to the world over grass and reed beds, each a small round bloom in one of
+// four colours (in reed beds, yellow irises), drawn near the eye and fading out by 28 cells.
+const FLOWER_AT = new Float32Array(Object.keys(MAT).length);
+FLOWER_AT[MAT.GRASS] = 0.45; FLOWER_AT[MAT.GRASS2] = 0.28; FLOWER_AT[MAT.DRYGRASS] = 0.1; FLOWER_AT[MAT.REEDS] = 0.12;
+const BLOOMS = [R.bloomR, R.bloomY, R.bloomV, R.birch];
+const shareM = new Int32Array(4), shareW = new Float32Array(4);   // the materials around a point and their shares
+function addShare(m, w, n) {
+  for (let q = 0; q < n; q++) if (shareM[q] === m) { shareW[q] += w; return n; }
+  shareM[n] = m; shareW[n] = w; return n + 1;
+}
 let rayCol = new Float32Array(0);   // r, g, b per ray
 const listF = [];                   // every colour list as floats, refreshed each frame
 function listColour(l, X, o) {      // the colour at position X along list l, blended between steps, into tmpC[o..o+2]
@@ -3347,14 +3737,14 @@ function mottle(x, z, s) {
 
 function paintCells(t) {
   const { cols, rows, RH, cellW, cellH, c0, c1, rayW, rayH } = grid;
-  const { kind, ramp, pos, depth, lit, flags, refl, reflAmt, u: rU, v: rV, w: rW } = rays, wMat = world.mat, seed = world.seed;
+  const { kind, ramp, pos, depth, lit, flags, refl, reflAmt, u: rU, v: rV, w: rW } = rays, wMat = world.mat, wH = world.H, seed = world.seed;
   for (let l = 0; l < LISTS.length; l++) {
     const L = LISTS[l];
     if (!listF[l] || listF[l].length !== L.length * 3) listF[l] = new Float32Array(L.length * 3);
     const F = listF[l];
     for (let k = 0; k < L.length; k++) { const c = L[k]; F[k * 3] = c & 255; F[k * 3 + 1] = (c >> 8) & 255; F[k * 3 + 2] = (c >> 16) & 255; }
   }
-  const nHaze = COL.near[R.haze].length, nWarm = COL.near[R.lit].length;
+  const nHaze = COL.near[R.haze].length, nWarm = COL.near[R.lit].length, bloomOpen = 1 - Math.min(1, cur.stars * 1.6);
   const glowR = COL.glow & 255, glowG = (COL.glow >> 8) & 255, glowB = (COL.glow >> 16) & 255;
   let sunX = 0, sunY = 0, sunR = 1;
   if (sunScreen) { sunX = sunScreen.x; sunY = sunScreen.y; sunR = sunScreen.r; }
@@ -3381,7 +3771,9 @@ function paintCells(t) {
     }
     let r, g, b;
     const near = 1 - Math.min(1, depth[i] / 90);   // texture fades out with distance
-    if ((k === K.TREE || k === K.BUSH || k === K.CONIFER) && near > 0) {   // leaves in clumps, light and dark
+    if (k === K.TRUNK && rp === R.birch && near > 0) {   // birch bark: dark bands and flecks on white
+      if (hash2(Math.floor(rV[i] * 3.2), Math.floor(rU[i] * 2.5 + rW[i] * 2.5), seed + 61) < 0.3) P -= 0.55 * near;
+    } else if ((k === K.TREE || k === K.BUSH || k === K.CONIFER || k === K.PALM) && near > 0) {   // leaves in clumps, light and dark
       const q = 1.7;
       P += (hash2(Math.floor(rU[i] * q) + Math.floor(rW[i] * q) * 613, Math.floor(rV[i] * q), k + seed) - 0.5) * 0.3 * near;
     } else if (k === K.WALL && rp === R.stone && near > 0) {   // masonry: courses of blocks, each its own shade, joints darker
@@ -3399,13 +3791,56 @@ function paintCells(t) {
       const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
       const a0 = (z0 & MASK) * W, a1 = ((z0 + 1) & MASK) * W, b0 = x0 & MASK, b1 = (x0 + 1) & MASK;
       const m00 = wMat[a0 + b0], m10 = wMat[a0 + b1], m01 = wMat[a1 + b0], m11 = wMat[a1 + b1];
-      if (m00 === m10 && m00 === m01 && m00 === m11) { const rr = MAT_RAMP[m00]; listColour(rr, P * (COL.near[rr].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; }
+      if (flags[i] & F_FACE) { listColour(rp, P * (COL.near[rp].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; }   // a face: its own rock
+      else if (m00 === m10 && m00 === m01 && m00 === m11) { const rr = MAT_RAMP[m00]; listColour(rr, P * (COL.near[rr].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; }
       else {
         r = g = b = 0;
-        // (the blend is narrowed to the middle 40% between cell centres: edges stay crisp but never step)
-        const sx = tx < 0.3 ? 0 : tx > 0.7 ? 1 : (tx - 0.3) * 2.5, sz = tz < 0.3 ? 0 : tz > 0.7 ? 1 : (tz - 0.3) * 2.5;
-        const ms = [m00, m10, m01, m11], ws = [(1 - sx) * (1 - sz), sx * (1 - sz), (1 - sx) * sz, sx * sz];
-        for (let q = 0; q < 4; q++) { const rr = MAT_RAMP[ms[q]]; listColour(rr, P * (COL.near[rr].length - 1), 0); r += tmpC[0] * ws[q]; g += tmpC[1] * ws[q]; b += tmpC[2] * ws[q]; }
+        // Each material's share of the point is the bilinear weight of its cells; raising the shares to
+        // the fourth power hands the point to the leading one except near where two are level. The
+        // edge then follows the line where the shares meet, which runs smoothly across the cells
+        // (a diagonal road stays straight) instead of stepping from cell to cell.
+        const w00 = (1 - tx) * (1 - tz), w10 = tx * (1 - tz), w01 = (1 - tx) * tz, w11 = tx * tz;
+        // At a shore the water takes the point where its share leads and the ground lies at its level
+        // (so the shore follows the same smooth line, and a bank or a cliff above the water never
+        // turns to water); everything else is land.
+        let only = -1;
+        const WA = MAT.WATER;
+        if (m00 === WA || m10 === WA || m01 === WA || m11 === WA) {
+          let sw = 0, lv = -Infinity;
+          if (m00 === WA) { sw += w00; lv = Math.max(lv, wH[a0 + b0]); }
+          if (m10 === WA) { sw += w10; lv = Math.max(lv, wH[a0 + b1]); }
+          if (m01 === WA) { sw += w01; lv = Math.max(lv, wH[a1 + b0]); }
+          if (m11 === WA) { sw += w11; lv = Math.max(lv, wH[a1 + b1]); }
+          if (sw > 0.5 && vCamY + rayQ[y] * d - lv < 0.35) { flags[i] |= F_WATER; only = WA; }
+          else { flags[i] &= ~(F_WATER | F_RIPPLE); only = -2; }
+        }
+        let n = 0;
+        if (only !== -2 || m00 !== WA) n = addShare(only === WA ? WA : m00, w00, n);
+        if (only !== -2 || m10 !== WA) n = addShare(only === WA ? WA : m10, w10, n);
+        if (only !== -2 || m01 !== WA) n = addShare(only === WA ? WA : m01, w01, n);
+        if (only !== -2 || m11 !== WA) n = addShare(only === WA ? WA : m11, w11, n);
+        let sum = 0;
+        for (let q = 0; q < n; q++) { const w = shareW[q] * shareW[q]; shareW[q] = w * w; sum += shareW[q]; }
+        for (let q = 0; q < n; q++) { const rr = MAT_RAMP[shareM[q]], w = shareW[q] / sum; listColour(rr, P * (COL.near[rr].length - 1), 0); r += tmpC[0] * w; g += tmpC[1] * w; b += tmpC[2] * w; }
+      }
+      if (d < 36 && bloomOpen > 0) {   // a flower here? (they close after dusk)
+        const gx = fx + 0.5, gz = fz + 0.5, cx = Math.floor(gx), cz = Math.floor(gz), cm = wMat[(cz & MASK) * W + (cx & MASK)];
+        // (the cheap test first: most cells can have no flower whatever the patch)
+        const hf = FLOWER_AT[cm] > 0 ? hash2(cx, cz, seed + 17) : 1;
+        let fa = hf < FLOWER_AT[cm] ? FLOWER_AT[cm] * smoothstep(0.3, 0.62, mottle(cx * 0.12, cz * 0.12, seed + 23)) : 0;   // in patches
+        if (hf < fa) {   // on gentle ground only (on a steep bank a flower would smear down the slope)
+          const r0 = (cz & MASK) * W, sl = Math.max(Math.abs(wH[r0 + ((cx + 1) & MASK)] - wH[r0 + ((cx - 1) & MASK)]), Math.abs(wH[((cz + 1) & MASK) * W + (cx & MASK)] - wH[((cz - 1) & MASK) * W + (cx & MASK)])) * 0.5;
+          if (sl > 0.9) fa = 0;
+        }
+        if (hf < fa) {
+          const ox = gx - (cx + 0.2 + 0.6 * hash2(cx, cz, seed + 18)), oz = gz - (cz + 0.2 + 0.6 * hash2(cx, cz, seed + 19));
+          if (ox * ox + oz * oz < 0.02 + 0.05 * smoothstep(4, 16, d)) {   // (small at your feet, bigger further off, so they still show)
+            const br = cm === MAT.REEDS ? R.bloomY : BLOOMS[(hf / fa * 4) | 0], fade = (d < 26 ? 1 : (36 - d) / 10) * bloomOpen;
+            listColour(br, Math.min(1, P + 0.1) * (COL.near[br].length - 1), 3);
+            r += (tmpC[3] - r) * fade; g += (tmpC[4] - g) * fade; b += (tmpC[5] - b) * fade;
+            if (fade > 0.5) flags[i] |= F_FLOWER;
+          }
+        }
       }
     } else { listColour(rp, P * (COL.near[rp].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; }
     const w = warmth(lit[i], k, P);   // firelight
@@ -3440,9 +3875,11 @@ function paintCells(t) {
       if (!(D > tw)) break;
       ym = (vHor - q * (2 * tw / D - 1) * fz) / rayH - 0.5;
     }
-    const wave = Math.sin(x * 0.9 + y * 0.35 + t * 2.1) * (0.6 + below * 0.03);
-    const yr = Math.round(ym + wave);
-    if (yr < 0 || yr >= RH) continue;
+    const wave = Math.sin(x * 0.45 + y * 0.3 + t * 2.1) * (0.6 + below * 0.012);   // broad and gentle, or the edge of a reflection frays into a comb
+    // (a mirror row above the top of the screen takes the top row: the water near your feet still
+    // mirrors the sky above, instead of stopping at a line)
+    const yr = Math.max(0, Math.round(ym + wave));
+    if (yr >= RH) continue;
     let rr = 0, rg = 0, rb = 0, n = 0;
     for (let dxc = -1; dxc <= 1; dxc++) {
       const xx = x + dxc;
@@ -3471,7 +3908,7 @@ function paintCells(t) {
     // the letter of the ray nearest the eye among those that agree most (two of four decide)
     const k0 = kind[i0], kk = kind[i1] === k0 || kind[i2] === k0 || kind[i3] === k0 ? i0 : kind[i2] === kind[i3] ? i2 : i1;
     const kd = kind[kk];
-    let letter = kd === K.TERRAIN || kd === K.WALL || kd === K.TOP ? RAMP_LETTER[ramp[kk]] : KIND_LETTER[kd];
+    let letter = flags[kk] & F_FLOWER ? LT['*'] : kd === K.TERRAIN || kd === K.WALL || kd === K.TOP ? RAMP_LETTER[ramp[kk]] : KIND_LETTER[kd];
     if (kd === K.SKY) {
       letter = 0;
       if (starAmt > 0.05 && pos[kk] < 0.85) {
@@ -3606,7 +4043,9 @@ function message(msg, reply) {
     }
   }
 }
-return { setView, renderFrame, message, rays, atlas, cellMark, grid, stats, paint };
+// (for the tools: where on the map a ray landed, from its column and depth)
+const rayAt = (x, r) => { const i = x * grid.RH + r, d = rays.depth[i], pr = rayP[x]; return { x: vCamX + (vFx + vRx * pr) * d, y: vCamY + rayQ[r] * d, z: vCamZ + (vFz + vRz * pr) * d, d, kind: rays.kind[i], flags: rays.flags[i] }; };
+return { setView, renderFrame, message, rays, atlas, cellMark, grid, stats, paint, rayAt };
 }
 
 // =====================================================================
@@ -4069,13 +4508,13 @@ function setupGrid() {
 }
 
 function workerSource() {
-  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, RAMP_NAMES, R };
+  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, F_FLOWER, RAMP_NAMES, R };
   return [
     "'use strict';",
     ...Object.entries(consts).map(([k, v]) => `const ${k} = ${JSON.stringify(v)};`),
     `const NO_FOG = Uint8Array.from(${JSON.stringify(Array.from(NO_FOG))});`,
     `const KEYFRAMES = { day: { ramps: ${JSON.stringify(KEYFRAMES.day.ramps)} } };`,
-    `const clamp = ${clamp};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`, `const pack = ${pack};`,
+    `const clamp = ${clamp};`, `const smoothstep = ${smoothstep};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`, `const pack = ${pack};`,
     `${hash2}`, `${terrainHeight}`, `${skyState}`,
     `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null };`,
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
@@ -4272,7 +4711,7 @@ requestAnimationFrame(frame);
 // Debug handle (used while testing; harmless to leave in)
 window.TV = {
   world, cam, clock, grid, stats, view, light, player, keys, ui,
-  regenerate, setMode, update, updateMerchants, updateNearest, openPanel, closePanel, groundAt,
+  regenerate, setMode, update, updateMerchants, updateNearest, openPanel, closePanel, groundAt, deckAt,
   setHour: h => { clock.hours = h; updateLighting(); },
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
