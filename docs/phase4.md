@@ -115,3 +115,73 @@ Shots: `shots/phase4/step1/` (`sheet-castles`, `sheet-castle-inside`).
 
 - **The walls' insides are plain:** no arcaded galleries yet.
 - **Castles still sit where v1's placement puts them,** bunched in the east. Step 2 spreads them over the world, with a town at each.
+
+## Step 2: a castle to each part of the land, a walled town at its foot
+
+Shots: `shots/phase4/step2/` (`sheet-towns`, `sheet-in-town`, `sheet-wild`, `sheet-maps`; the mosaic look in `mosaic/`).
+
+### What changed
+
+- **A castle to each part of the land** (`placeCastles`). Every site on an eight-cell grid is judged as a castle with a town before its gate. A good site is:
+  - commanding: it stands above the land round it (against the land's mean height within some 40 cells), and above its town;
+  - over a river or a shore where it can be (water 30 to 80 cells off);
+  - dry, and not too rough to level (the land under the castle varies by 30 at most);
+  - with room at its foot for a town: the land falls from the castle to the town's gate no more steeply than a street can climb (0.8 up for 1 along), and strays little from that slope.
+
+  The best sites are taken in turn, each at least 300 cells from every other, up to eight: five to seven a world. The best site with room for it holds the citadel, the next best with room up to three fortresses, and the rest small castles. Before, seed 42's four castles all stood in its eastern half (see `sheet-maps`).
+- **Castles face their towns.** A castle is turned so its gate faces its town, whichever way that lies (`turnTemplate` turns a template and everything riding on it: domes, candles, bells, flags). The gate torches turn with it (`placeLights` is v2's own now; v1's put every torch on the south side).
+- **A walled town at every castle's foot** (`buildTown`), 41 to 55 cells wide and 42 to 50 deep:
+  - a square before the castle's gate, as wide as the town;
+  - the main street, from the square down through the town to the town's gate, climbing with the land;
+  - a market street across the town halfway, opening into a market square with a well where it crosses the main street, torches at its corners;
+  - lanes inside the side walls;
+  - the ground inside the walls levelled to the street's slope (level across the town, falling from the castle to the gate), and blended back to the land outside;
+  - houses packed into the blocks between the streets, each where it fits most snugly against the streets, the walls and the houses already there (so they stand in rows), its door on a street, its plot levelled with the street before its door. The church and the tavern stand on the market, a smithy toward the gate, and homes fill the rest, most of them townhouses: two storeys, timber-framed, windows on both floors, a beam at the storey line. A small castle's town has no church of its own (the castle's chapel serves it);
+  - a wall five high with crenels, a tower at each corner and a gatehouse over the main street with a torch either side, its ends meeting the castle's corners; flags in the castle's colours on its towers;
+  - 8 to 18 houses; windows glow and torches burn at night, chimneys smoke;
+  - fields round it: no trees within 22 cells of its walls.
+- **Where you start:** before the gate of the biggest castle's town, looking up its street to the castle (`spawnAt`, through a listed fix to v1's `spawn`), where the ground behind you is open, so the camera shows you the town.
+- **Watchtowers on the passes** (`placeTowers`). Once the roads are laid, a tower stands beside every road that climbs 8 or more above both its ends, near the top of the climb, 11 to 20 cells off the road, its door toward it. Where fewer than three roads cross passes, the high points of the longest roads get one. Three to five a world, 90 apart at least. A tower's levelling never touches a road, and the way from its door is walkable.
+- **Ruins in the wild** (`placeWild`): ruined churches, first only in forest, pine forest, marsh or badlands, at least 44 cells from any road and 80 from any town or village, 150 apart, turned any way. Standing stones keep 90 apart and off the roads. Neither has a road to it any more: you come upon them.
+- **Villages and hamlets** fill the land between the castles, as before.
+- **Roads** still run between the towns, villages and hamlets (v1's road builder: step 3 redoes them). A castle and its town meet the roads at the town's gate; a road laid twice (the castle and its town both asking for it) is kept once.
+
+### Numbers
+
+- A world generates in 2.1 to 2.4 s, as before.
+- **Speed**, painted look. ⚠️ The Claude app and Chrome were busy in the background.
+
+  | Scene | ms a frame |
+  |---|---|
+  | The citadel's town from outside its gate | 7.5 |
+  | Up the street (third person) | 5.3 |
+  | The market square (third person) | 6.1 |
+  | The citadel and its town at night, from above | 9.0 |
+  | A small castle's town | 7.9 |
+  | The citadel from behind | 8.0 |
+  | A village (third person), for comparison | 5.6 |
+
+- **Workers and the main thread agree**, byte for byte in both looks, on all nine new scenes.
+- **Tests:** all pass, with the world checksums re-recorded.
+  - Gate walks go through every castle gate and tower door, whichever way they face, on the same path in v1 and v2.
+  - House walks go into all 553 houses of every town, village and hamlet on the five test seeds (on seed 42, on the same paths in v1).
+  - The third-person walk from the start goes through the town's gate. It found a camera bug: the camera checked the way back from the hero in quarter-cell steps but not its own spot, so under the gate's arch it could end just inside the ceiling. It checks its own spot now.
+
+### Scenes
+
+- Every scene was re-aimed:
+  - the castle scenes to seed 42's fortress at (360, 224) and its citadel at (40, 808);
+  - the village, tavern and chapel scenes to the village at (828, 884);
+  - the hero scenes to the start, before the citadel's town gate;
+  - the bridge scenes to seeds 31337 and 1234 (seed 7's bridges went with its old roads);
+  - the six classic scenes by `find-views.mjs --classic`, whose vista now looks over a town at its castle.
+- New scenes: `town-citadel`, `town-street`, `town-market`, `town-night`, `town-small`, `tower`, `ruin`.
+- `tools/map.mjs` draws each castle, town, village and hamlet as its footprint, and towers, ruins and stones as dots.
+
+### Still open
+
+- The roads are still v1's, straight in places and with right angles: step 3.
+- Every town has the same plan (a main street, a market street, lanes). On a steep slope the houses' footings show along the street.
+- Watchtowers stand where the roads happen to climb; once step 3's roads go over real passes, they will mean more.
+- Seed 1234 has no site with room for a citadel, so it has fortresses and small castles only.
+- The castle walls' insides are still plain (no galleries).

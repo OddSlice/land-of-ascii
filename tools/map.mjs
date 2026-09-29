@@ -56,12 +56,21 @@ for (const seed of seeds) {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(off, 0, 0, W, W, pad, pad, cw, cw);
     ctx.drawImage(off, W, 0, W, W, pad * 2 + cw, pad, cw, cw);
-    // landmarks: a white square per castle, a dot per tower, ruin or stone circle
+    // landmarks: each castle and town as its footprint (castles white, towns amber, villages and hamlets
+    // cream), a dot per tower (red), ruin (grey) or stone circle (violet)
+    const FOOT = { castle: '#ffffff', town: '#ffb000', village: '#f0e0b0', hamlet: '#f0e0b0' }, DOT = { tower: '#ff4040', ruin: '#9a9a9a', stones: '#c080ff' };
+    ctx.save(); ctx.beginPath(); ctx.rect(pad * 2 + cw, pad, cw, cw); ctx.clip();   // (footprints wrap round the edges)
     for (const s of w.structs) {
-      const big = s.type === 'castle', r = (big ? 4 : 2) * scale;
-      ctx.fillStyle = big ? '#ffffff' : '#f0e0b0';
-      ctx.fillRect(pad * 2 + cw + s.cx * scale - r, pad + s.cz * scale - r, r * 2, r * 2);
+      const X = pad * 2 + cw, Y = pad;
+      if (FOOT[s.type]) {
+        ctx.strokeStyle = FOOT[s.type]; ctx.lineWidth = Math.max(1, scale);
+        for (const ox of [0, -W, W]) for (const oz of [0, -W, W]) ctx.strokeRect(X + (s.x0 + ox) * scale, Y + (s.z0 + oz) * scale, s.tpl.sx * scale, s.tpl.sz * scale);
+      } else if (DOT[s.type]) {
+        const r = 3 * scale; ctx.fillStyle = DOT[s.type];
+        ctx.fillRect(X + s.cx * scale - r, Y + s.cz * scale - r, r * 2, r * 2);
+      }
     }
+    ctx.restore();
     // legend: each region's colour and share of the land
     ctx.font = `${12}px Menlo, monospace`; ctx.textBaseline = 'middle';
     let lx = pad, ly = cw + pad + 22;
@@ -74,7 +83,7 @@ for (const seed of seeds) {
       if (lx > can.width - 180) { lx = pad; ly += 22; }
     });
     ctx.fillStyle = '#8a8478';
-    ctx.fillText(`seed ${seed}   regions (left) · ground at ${String(hour).padStart(2, '0')}:00 with trees, roads and landmarks (right)`, pad, ly + 24);
+    ctx.fillText(`seed ${seed}   regions (left) · ground at ${String(hour).padStart(2, '0')}:00 with trees, roads and landmarks (right): castles white, towns amber, villages cream, towers red, ruins grey, stones violet`, pad, ly + 24);
     return can.toDataURL('image/png');
   }, { seed, hour, scale, REGION_COLOURS, MAT_RAMP_NAMES });
   const out = path.resolve(ROOT, dir, `map-${seed}.png`);

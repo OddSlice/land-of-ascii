@@ -528,18 +528,24 @@ function generateWorld(seed) {
   }
   fillPools(seed);
 
-  // 5. Landmarks. Castles, towers and ruins level the ground under themselves, so this
-  //    has to run before slopes are turned into materials and normals.
-  world.chimneys = []; world.domes = []; world.bells = [];
-  placeStructures(rng);
-  structureExtras();        // (phase 4: the castles' domes, bells, chimneys: from their templates into the world)
+  // 5. Landmarks (phase 4): castles spread over the land, each with a walled town at its foot, then
+  //    villages and hamlets between them. They level the ground under themselves, so this has to run
+  //    before slopes are turned into materials and normals.
+  world.chimneys = []; world.domes = []; world.bells = []; world.structs = [];
+  placeCastles(rng);
   placeSettlements(seed);   // (phase 3: hamlets and villages, before the roads so the roads reach them)
-  castleFlags();
 
-  // 6. Roads between the landmarks (may nudge road cells by a little), then trees, which
-  //    keep off roads and footprints, then birds.
+  // 6. Roads between the towns and villages (may nudge road cells by a little); watchtowers on the passes
+  //    they climb over; out in the wild, off the roads, ruins and standing stones. Then trees, which keep
+  //    off roads and footprints, then birds.
   buildRoads(rng);
+  const laid = new Set();   // (a castle and its town meet the roads at the same place, so a road can be laid twice: keep one)
+  world.roads = world.roads.filter(r => r.length && !laid.has(r[0] + ',' + r[r.length - 1] + ',' + r.length) && laid.add(r[0] + ',' + r[r.length - 1] + ',' + r.length) && laid.add(r[r.length - 1] + ',' + r[0] + ',' + r.length));
   settlementStreets();
+  placeTowers(rng);
+  placeWild(rng);
+  structureExtras();        // (phase 4: the castles' and towers' domes, bells, chimneys: from their templates into the world)
+  castleFlags();
   buildBridges(seed);
   placeTrees(seed);
   spawnBirds(rng);
@@ -1161,114 +1167,17 @@ function buildStones(rng, groundAt) {
 }
 
 // Level the ground for a footprint: flat out to radius r, then blended back to the
-// original terrain over the next 4 cells so the structure sits on a small plateau.
-function flatten(cx, cz, r, y) {
+// original terrain over the next 4 cells so the structure sits on a small plateau. Cells marked in
+// spare (a road) keep their ground.
+function flatten(cx, cz, r, y, spare) {
   const H = world.H, R = r + 4;
   for (let oz = -R; oz <= R; oz++) for (let ox = -R; ox <= R; ox++) {
     const d = Math.max(Math.abs(ox), Math.abs(oz));
     const i = ((cz + oz) & MASK) * W + ((cx + ox) & MASK);
+    if (spare && spare[i]) continue;
     if (d <= r) H[i] = y;
     else { const t = (d - r) / 5; H[i] = y + (H[i] - y) * t; }
   }
-}
-
-// Seeded placement pass. Sites are scanned on a coarse grid in random order; each type has
-// its own flatness tolerance, and every structure keeps a minimum distance from every other.
-function placeStructures(rng) {
-  const { H, water, seaLevel } = world;
-  const castleKinds = [   // (phase 4: castles round a church, in three sizes)
-    { variant: 'small', half: 12, build: rng => buildFortress('small', rng) },
-    { variant: 'fortress', half: 15, build: rng => buildFortress('fortress', rng) },
-    { variant: 'citadel', half: 18, build: rng => buildFortress('citadel', rng) },
-  ];
-  // One of each castle design per world, plus one more at random, in a seeded order.
-  const castleOrder = castleKinds.slice();
-  for (let i = castleOrder.length - 1; i > 0; i--) { const j = (rng() * (i + 1)) | 0; const t = castleOrder[i]; castleOrder[i] = castleOrder[j]; castleOrder[j] = t; }
-  castleOrder.push(castleKinds[(rng() * castleKinds.length) | 0]);
-  const specs = [
-    { type: 'castle', count: 4, half: 12, flat: 7, kinds: castleOrder },
-    { type: 'tower', count: 5, half: 4, flat: 6, build: rng => buildKeep(rng).T },
-    { type: 'ruin', count: 5, half: 8, flat: 12, build: buildRuin },
-    { type: 'stones', count: 10, half: 4, flat: 14, hilltop: true },
-  ];
-  const cands = [];
-  for (let z = 0; z < W; z += 3) for (let x = 0; x < W; x += 3) cands.push(z * W + x);
-  for (let i = cands.length - 1; i > 0; i--) {
-    const j = (rng() * (i + 1)) | 0;
-    const t = cands[i]; cands[i] = cands[j]; cands[j] = t;
-  }
-  const structs = [];
-  let siteMin = 0;
-
-  function siteOk(c, spec, relax) {
-    const cx = c & MASK, cz = (c / W) | 0, r = spec.half + 5, hc = H[c], flat = spec.flat * relax;
-    if (hc < seaLevel + 2) return false;
-    let mn = Infinity, mx = -Infinity;
-    for (let oz = -r; oz <= r; oz++) {
-      const zr = ((cz + oz) & MASK) * W;
-      for (let ox = -r; ox <= r; ox++) {
-        const i = zr + ((cx + ox) & MASK);
-        if (water[i]) return false;
-        const h = H[i];
-        if (h < mn) mn = h;
-        if (h > mx) mx = h;
-        if (mx - mn > flat) return false;
-        if (spec.hilltop && h > hc + 0.01 && Math.max(Math.abs(ox), Math.abs(oz)) <= spec.half + 1) return false;
-      }
-    }
-    siteMin = mn;
-    return true;
-  }
-  function highestNear(c, r) {
-    const cx = c & MASK, cz = (c / W) | 0;
-    let best = c;
-    for (let oz = -r; oz <= r; oz++) for (let ox = -r; ox <= r; ox++) {
-      const i = ((cz + oz) & MASK) * W + ((cx + ox) & MASK);
-      if (H[i] > H[best]) best = i;
-    }
-    return best;
-  }
-  function tooClose(c, half) {
-    const cx = c & MASK, cz = (c / W) | 0;
-    for (const s of structs) {
-      let dx = Math.abs(cx - s.cx); dx = Math.min(dx, W - dx);
-      let dz = Math.abs(cz - s.cz); dz = Math.min(dz, W - dz);
-      if (Math.max(dx, dz) < half + s.half + 12) return true;
-    }
-    return false;
-  }
-
-  for (const spec of specs) {
-    let placed = 0;
-    // Rugged seeds may have no site flat enough at the first tolerance; since the ground gets
-    // levelled anyway, retry with a looser one rather than leave the type out of the world.
-    for (const relax of [1, 2, 3.5]) for (let c of cands) {
-      if (placed >= spec.count) break;
-      const kind = spec.kinds ? spec.kinds[placed] : spec;
-      if (spec.hilltop) c = highestNear(c, 4);
-      if (tooClose(c, kind.half) || !siteOk(c, { ...spec, half: kind.half }, relax)) continue;
-      const cx = c & MASK, cz = (c / W) | 0;
-      let baseY, tpl;
-      if (spec.hilltop) {
-        baseY = siteMin - 1;
-        const x0 = cx - 4, z0 = cz - 4;
-        tpl = buildStones(rng, (lx, lz) => H[((z0 + lz) & MASK) * W + ((x0 + lx) & MASK)] - baseY).finalize();
-      } else {
-        baseY = H[c];
-        flatten(cx, cz, kind.half + 1, baseY);
-        tpl = kind.build(rng).finalize();
-      }
-      // x0/z0 are kept unwrapped relative to the centre; the renderer wraps as needed.
-      const x0 = cx - (tpl.sx >> 1), z0 = cz - (tpl.sz >> 1);
-      structs.push({
-        type: spec.type, variant: kind.variant || spec.type, cx, cz, half: kind.half, baseY, tpl, x0, z0,
-        radius: Math.hypot(tpl.sx, tpl.sz) / 2 + 1,
-        anchor: { x: cx, z: (z0 + tpl.sz + 1) & MASK },   // where a road meets this building: just outside its south (door) side
-      });
-      placed++;
-    }
-  }
-  world.structs = structs;
 }
 
 // =====================================================================
@@ -1296,6 +1205,7 @@ const HOUSE_KINDS = {
   tavern: { w: 7, d: [9], h: 4, roofs: [VOX.TILES], walls: VOX.PLASTER, chimneys: 2, lamp: 1.4 },
   smithy: { w: 5, d: [6], h: 3, roofs: [VOX.TILES], walls: VOX.STONE, lamp: 1.3 },
   barn: { w: 7, d: [9], h: 4, roofs: [VOX.THATCH], walls: VOX.WOOD, chimneys: 0, bigDoor: true, dark: true },
+  townhouse: { w: 5, d: [6, 7], h: 6, roofs: [VOX.TILES], walls: VOX.PLASTER },   // (phase 4: two storeys, in the towns)
 };
 
 // Churches (phase 4), after the Orthodox churches of Bulgaria, in three sizes: a village chapel, a
@@ -1386,6 +1296,7 @@ function buildHouse(kind, rng) {
   T.box(x0, 1, z0, x1, H, z1, walls);                                         // walls
   T.box(x0 + 1, 1, z0 + 1, x1 - 1, H, z1 - 1, 0);
   if (walls === VOX.PLASTER) for (const [x, z] of [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]) T.box(x, 1, z, x, H, z, VOX.WOOD);   // timber corners
+  if (H >= 6) { T.box(x0, 4, z0, x1, 4, z1, VOX.WOOD); T.box(x0 + 1, 4, z0 + 1, x1 - 1, 4, z1 - 1, 0); }   // a beam round an upper storey
   // the roof: stepped layers over a ceiling, eaves one out each side, the gables filled with wall
   for (let k = 0; k <= (w + 1) >> 1; k++) {
     const a = k, b = w + 1 - k, y = H + 1 + k;
@@ -1398,6 +1309,10 @@ function buildHouse(kind, rng) {
     for (let z = z0 + 2; z <= z1 - 2; z += 3) { T.set(x0, 2, z, VOX.GLASS); T.set(x1, 2, z, VOX.GLASS); }
     T.set(cx, 2, z0, VOX.GLASS);
     if (w >= 7) { T.set(cx - 2, 2, z1, VOX.GLASS); T.set(cx + 2, 2, z1, VOX.GLASS); }
+    if (H >= 6) {   // the upper storey's windows, and one over the door
+      for (let z = z0 + 2; z <= z1 - 2; z += 3) { T.set(x0, 5, z, VOX.GLASS); T.set(x1, 5, z, VOX.GLASS); }
+      T.set(cx, 5, z0, VOX.GLASS); T.set(cx, 5, z1, VOX.GLASS);
+    }
   }
   const chimneys = [], n = H0.chimneys ?? 1;
   for (let k = 0; k < n; k++) {                                               // chimneys, a hearth at the foot
@@ -1559,6 +1474,446 @@ function placeSettlements(seed) {
     }
   }
 }
+// =====================================================================
+//  CASTLES AND TOWNS  (phase 4: a castle to each part of the land, a walled town at its foot)
+// =====================================================================
+// Castles are spread over the whole world, at least CASTLE_SPACING apart, each on the best site of its
+// part of the land: commanding (standing above the land round it, and above its town), over a river or a
+// shore where it can be, and with room at its foot for a town. The best site holds the citadel. Each
+// castle is turned so its gate faces its town, which runs from the castle's gate wall down to its own
+// gate, its street climbing to the castle.
+const GATE_DIRS = [[0, 1], [1, 0], [0, -1], [-1, 0]];   // a gate or door facing dir: 0 +z, 1 +x, 2 -z, 3 -x
+// An offset from a middle, from the frame where a gate faces +z into the one where it faces dir (the
+// turn houseTransform gives a house).
+const turnOffset = (dir, dx, dz) => dir === 0 ? [dx, dz] : dir === 1 ? [dz, -dx] : dir === 2 ? [-dx, -dz] : [-dz, dx];
+// A point of a template sx × sz built facing +z, in the same template turned to face dir.
+function turnPoint(sx, sz, dir) {
+  return dir === 0 ? (x, z) => [x, z] : dir === 1 ? (x, z) => [z, sx - x] : dir === 2 ? (x, z) => [sx - x, sz - z] : (x, z) => [sz - z, x];
+}
+// A template turned so that what faced +z faces dir; its extras (points in its frame) turn with it.
+function turnTemplate(T, dir) {
+  if (!dir) return T;
+  const { sx, sy, sz } = T, R = makeTemplate(dir & 1 ? sz : sx, sy, dir & 1 ? sx : sz), tp = turnPoint(sx, sz, dir);
+  for (let x = 0; x < sx; x++) for (let z = 0; z < sz; z++) {
+    const [tx, tz] = tp(x + 0.5, z + 0.5), from = (x * sz + z) * sy;
+    R.vox.set(T.vox.subarray(from, from + sy), (Math.floor(tx) * R.sz + Math.floor(tz)) * sy);
+  }
+  if (T.extras) {
+    R.extras = {};
+    for (const k in T.extras) R.extras[k] = T.extras[k].map(p => { const [x, z] = tp(p[0], p[2]); return [x, p[1], z, ...p.slice(3)]; });
+  }
+  return R;
+}
+
+const CASTLE_SPACING = 300;    // castles stand at least this far apart, so each holds its own part of the land
+const CASTLE_MOST = 8, FORTRESS_MOST = 3;   // (one citadel, up to three fortresses, the rest small castles)
+// A town: wide, how far it reaches past the castle's sides; deep, from the castle's wall out to the
+// town's own gate; square, the depth of the square before the castle's gate.
+const TOWN = {
+  small: { wide: 8, deep: 42, square: 9 },
+  fortress: { wide: 8, deep: 46, square: 10 },
+  citadel: { wide: 9, deep: 50, square: 11 },
+};
+const TOWN_SLOPE = 0.8;        // the steepest a town's street climbs to its castle (rise per cell)
+const TOWN_WALL = 5;           // the town wall's height above the ground
+const hillMean = new Float32Array(N), nearDist = new Float32Array(N);   // (the lie of the land; a distance field, to water or to a road)
+
+// The ground under a castle of this kind at (x, z): dry and not too rough to level. Its floor goes at the
+// mean height.
+function castleFoot(x, z, kind) {
+  const { H, water, seaLevel } = world, hs = FORT[kind].S >> 1;
+  let mn = Infinity, mx = -Infinity, sum = 0, n = 0;
+  for (let oz = -hs - 3; oz <= hs + 3; oz += 3) for (let ox = -hs - 3; ox <= hs + 3; ox += 3) {
+    const i = ((z + oz) & MASK) * W + ((x + ox) & MASK);
+    if (water[i] || H[i] < seaLevel + 3) return null;
+    if (Math.abs(ox) <= hs && Math.abs(oz) <= hs) { const h = H[i]; if (h < mn) mn = h; if (h > mx) mx = h; sum += h; n++; }
+  }
+  return mx - mn > 30 || mx > world.snowLine ? null : { top: sum / n, spread: mx - mn };
+}
+// A town's street, from the castle's gate (tz 0) out to the town's gate (TD - 1): level with the castle's
+// floor across the square, then with the land (drop in all) to the town's gate, and level again under it.
+function townRun(kind) { const P = TOWN[kind]; return P.deep - 5 - P.square; }
+function streetDrop(kind, tz) { return clamp((tz - TOWN[kind].square + 1) / townRun(kind), 0, 1); }
+// How well a town fits before the gate of a castle at (x, z) facing dir, its floor at top: the land there
+// must be dry, fall away from the castle to the town's gate no more steeply than the street may climb,
+// and stray little from the street's slope. 1 is a perfect fit.
+function townFit(x, z, dir, top, kind) {
+  const { H, water, seaLevel } = world, P = TOWN[kind], S = FORT[kind].S, hs = S >> 1, tw = (S + 2 * P.wide) >> 1, TD = P.deep;
+  const [ax, az] = GATE_DIRS[dir], px = Math.abs(az), pz = Math.abs(ax), ts = [], hts = [];
+  let outer = 0, no = 0;
+  for (let t = 0; t < TD; t += 3) for (let u = -tw; u <= tw; u += 3) {
+    const i = ((z + az * (hs + 1 + t) + pz * u) & MASK) * W + ((x + ax * (hs + 1 + t) + px * u) & MASK);
+    if (water[i] || H[i] < seaLevel + 2) return null;
+    ts.push(t); hts.push(H[i]);
+    if (t >= TD - 8 && Math.abs(u) <= 6) { outer += H[i]; no++; }
+  }
+  const drop = top - outer / no;
+  if (drop < -3 || drop > TOWN_SLOPE * townRun(kind)) return null;
+  let dev = 0;
+  for (let k = 0; k < ts.length; k++) dev += (hts[k] - (top - drop * streetDrop(kind, ts[k]))) ** 2;
+  const rms = Math.sqrt(dev / ts.length);
+  return rms > 12 ? null : { fit: 1 - rms / 12, drop };
+}
+// Every cell a castle and its town will level, and the ground blended round them, is dry land.
+function dryAround(x, z, dir, kind) {
+  const { H, water, seaLevel } = world, P = TOWN[kind], S = FORT[kind].S, hs = S >> 1, tw = (S + 2 * P.wide) >> 1;
+  for (let t = -hs - 5; t <= hs + P.deep + 6; t++) for (let u = -tw - 6; u <= tw + 6; u++) {
+    if (t < hs - 5 && Math.abs(u) > hs + 5) continue;   // (beside the castle, behind the town: left as it is)
+    const [dx, dz] = turnOffset(dir, u, t), i = ((z + dz) & MASK) * W + ((x + dx) & MASK);
+    if (water[i] || H[i] < seaLevel + 1) return false;
+  }
+  return true;
+}
+
+function placeCastles(rng) {
+  const { water, biome } = world, hs = FORT.fortress.S >> 1, cands = [];
+  boxBlur(world.H, hillMean, 20); boxBlur(hillMean, hillMean, 20);   // the lie of the land, within some 40 cells
+  distanceField(water, nearDist, 90);
+  // every site judged for a fortress and its town (and checked again for its own size once ranked)
+  for (let z = 0; z < W; z += 8) for (let x = 0; x < W; x += 8) {
+    const c = z * W + x, b = biome[c];
+    if (water[c] || b === BIOME.MARSH || b === BIOME.PEAKS || b === BIOME.BEACH) continue;
+    const foot = castleFoot(x, z, 'fortress');
+    if (!foot) continue;
+    let best = null;
+    for (let dir = 0; dir < 4; dir++) { const t = townFit(x, z, dir, foot.top, 'fortress'); if (t && (!best || t.fit > best.fit)) best = { ...t, dir }; }
+    if (!best) continue;
+    const d = nearDist[c];
+    const score = 0.6 * smoothstep(0, 16, foot.top - hillMean[c]) + 0.5 * smoothstep(2, 16, best.drop)   // commanding: above the land round it, and above its town
+      + 0.4 * (d > hs + 6 ? 1 - smoothstep(30, 80, d) : 0)                                             // over a river or a shore
+      + 0.6 * best.fit + 0.25 * (1 - foot.spread / 30) + 0.05 * rng();                                 // room for its town, little to level
+    cands.push({ x, z, dir: best.dir, score });
+  }
+  cands.sort((a, b) => b.score - a.score);
+  const chosen = [], sizes = ['citadel', 'fortress', 'small'];
+  for (const s of cands) {   // the best sites, far enough apart, each with the biggest castle it has room for
+    if (chosen.length >= CASTLE_MOST) break;
+    if (chosen.some(o => Math.hypot(wrapDelta(o.x - s.x), wrapDelta(o.z - s.z)) < CASTLE_SPACING)) continue;
+    const fits = sizes.map(kind => { const f = castleFoot(s.x, s.z, kind); return f && townFit(s.x, s.z, s.dir, f.top, kind) && dryAround(s.x, s.z, s.dir, kind) ? f.top : null; });
+    if (fits[2] !== null) chosen.push({ ...s, fits });
+  }
+  // their sizes: the citadel on the best site with room for it, fortresses on the next best that have room, the rest small
+  let fortresses = 0;
+  const citadel = chosen.find(s => s.fits[0] !== null);
+  for (const s of chosen) {
+    s.kind = s === citadel ? 'citadel' : fortresses < FORTRESS_MOST && s.fits[1] !== null ? (fortresses++, 'fortress') : 'small';
+    s.top = s.fits[sizes.indexOf(s.kind)];
+  }
+  for (const s of chosen) {
+    const F = FORT[s.kind], hs = F.S >> 1;
+    flatten(s.x, s.z, hs + 1, s.top);
+    const castle = {
+      type: 'castle', variant: s.kind, cx: s.x, cz: s.z, half: hs, baseY: s.top, tpl: turnTemplate(buildFortress(s.kind, rng), s.dir).finalize(),
+      x0: s.x - hs, z0: s.z - hs, radius: Math.hypot(F.S, F.S) / 2 + 1, gate: s.dir, town: world.structs.length + 1,   // (its town comes next)
+    };
+    const town = buildTown(s.kind, rng, castle, world.structs.length);
+    castle.anchor = town.anchor;   // (the road comes to the town's gate; the street climbs on to the castle's)
+    world.structs.push(castle, town);
+  }
+}
+
+// A walled town before a castle's gate, laid out in the frame where the gate faces +z: tx across (the
+// castle's gate in line with the middle, mx), tz from the castle's wall out to the town's own gate at
+// TD - 1. A square lies before the castle's gate, as wide as the town; the main street runs from it out
+// through the town's gate, a market street crosses the town halfway, opening into a market square with a
+// well where the two meet, and lanes run inside the side walls. The ground inside the walls is levelled to the street's slope (level across the town,
+// falling with the land from the castle to the gate) and blended back to the land outside. Houses fill
+// the blocks between the streets: the church and the tavern on the market, a smithy by the gate, homes
+// (two storeys, most of them) from the castle outward; each on a plot levelled with the street before its
+// door (a small castle's chapel serves its town, so a small town has no church of its own). A wall with a
+// tower at each corner and a gatehouse closes the town, its ends meeting the castle's corners. Then it is
+// all turned the way the castle's gate faces.
+const TOWN_HOMES = 40;         // houses a town tries to fit, beyond its church, tavern and smithy
+function buildTown(kind, rng, castle, castleIndex) {
+  const P = TOWN[kind], S = FORT[kind].S, hs = S >> 1, TW = S + 2 * P.wide, TD = P.deep, SQ = P.square, mx = TW >> 1;
+  const { cx, cz, gate: dir, baseY: hTop } = castle, Hm = world.H;
+  const cellOf = (tx, tz) => { const [dx, dz] = turnOffset(dir, tx - mx, hs + 1 + tz); return ((cz + dz) & MASK) * W + ((cx + dx) & MASK); };
+  let outer = 0, no = 0;
+  for (let tz = TD - 8; tz < TD; tz++) for (let tx = mx - 6; tx <= mx + 6; tx++) { outer += Hm[cellOf(tx, tz)]; no++; }
+  const drop = clamp(hTop - outer / no, -3, TOWN_SLOPE * townRun(kind)), streetH = tz => hTop - drop * streetDrop(kind, tz);
+
+  // the plan: streets, and what is built (walls, towers, the gatehouse, the well, posts, houses)
+  const OPEN = 0, STREET = 1, BUILT = 2, plan = new Uint8Array(TW * TD), zc = SQ + ((TD - 1 - SQ) >> 1), wellX = mx + 4;
+  const put = (x0, z0, x1, z1, v) => { for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) plan[z * TW + x] = v; };
+  const planAt = (x, z) => x < 0 || z < 0 || x >= TW || z >= TD ? BUILT : plan[z * TW + x];
+  put(1, 0, TW - 2, SQ - 1, STREET);                                          // the square before the castle
+  put(mx - 2, SQ, mx + 2, TD - 1, STREET);                                    // the main street, out through the gate
+  put(1, zc - 2, TW - 2, zc + 2, STREET); put(mx - 6, zc - 4, mx + 6, zc + 4, STREET);   // the market street, and the market square where it crosses the main street
+  put(1, SQ, 3, TD - 2, STREET); put(TW - 4, SQ, TW - 2, TD - 2, STREET);     // the lanes inside the side walls
+  put(0, 0, 0, TD - 1, BUILT); put(TW - 1, 0, TW - 1, TD - 1, BUILT); put(0, TD - 1, TW - 1, TD - 1, BUILT);
+  put(0, 0, mx - hs - 1, 0, BUILT); put(mx + hs + 1, 0, TW - 1, 0, BUILT);   // (the wall's ends, meeting the castle's corners)
+  const corners = [[0, 0], [TW - 4, 0], [0, TD - 4], [TW - 4, TD - 4]];
+  for (const [x, z] of corners) put(x, z, x + 3, z + 3, BUILT);
+  put(mx - 3, TD - 5, mx + 3, TD - 1, BUILT); put(mx - 1, TD - 5, mx + 1, TD - 1, STREET);   // the gatehouse, its passage
+  put(wellX - 1, zc - 1, wellX + 1, zc + 1, BUILT);
+  const posts = [[mx - 4, SQ - 2], [mx + 4, SQ - 2], [mx - 6, zc - 4], [mx + 6, zc + 4]];
+  for (const [x, z] of posts) put(x, z, x, z, BUILT);
+
+  // the ground: inside the walls the street's slope, round them blended back to the land over six cells
+  // (beside the castle it is the castle's own levelled ground)
+  for (let tz = -6; tz < TD + 6; tz++) for (let tx = -6; tx < TW + 6; tx++) {
+    if (tz < 0 && Math.abs(tx - mx) <= hs + 5) continue;
+    const d = Math.max(-tx, tx - TW + 1, -tz, tz - TD + 1, 0), i = cellOf(tx, tz), h = streetH(clamp(tz, 0, TD - 1));
+    Hm[i] = d === 0 ? h : h + (Hm[i] - h) * Math.min(1, d / 7);
+  }
+  for (let z = zc - 1; z <= zc + 1; z++) for (let x = wellX - 1; x <= wellX + 1; x++) Hm[cellOf(x, z)] = streetH(zc);   // (a level spot for the well)
+
+  // the houses: each tries every place its door could open onto a street (a free plot, three cells of
+  // street before the door) and takes the snuggest, the one most closed in by streets, walls and houses
+  // already there, so they stand in rows and fill the blocks; the church, the tavern and the smithy look
+  // first for their own part of the town
+  const fronts = [];
+  for (let tz = 0; tz < TD; tz++) for (let tx = 0; tx < TW; tx++) {
+    if (plan[tz * TW + tx] !== STREET) continue;
+    for (let d = 0; d < 4; d++) { const [ox, oz] = GATE_DIRS[d]; if (planAt(tx - ox, tz - oz) === OPEN) fronts.push([tx, tz, d, rng()]); }
+  }
+  const kinds = kind === 'small' ? ['tavern', 'smithy'] : ['chapel', 'tavern', 'smithy'];   // (a small castle's chapel serves its town)
+  while (kinds.length < TOWN_HOMES + 3) kinds.push(rng() < 0.6 ? 'townhouse' : rng() < 0.75 ? 'cottage' : 'longhouse');
+  const prefer = {
+    chapel: (x, z) => Math.abs(z - zc) + Math.abs(x - mx) * 0.5,           // on the market, near the middle
+    tavern: (x, z) => (Math.abs(z - zc) + Math.abs(x - wellX)) * 0.2,      // near the market and its well
+    smithy: (x, z) => (TD - z) * 0.3,                                       // towards the gate
+    home: (x, z) => (Math.abs(x - mx) + z) * 0.03,                          // (a little: from the castle and the main street outward)
+  };
+  const placed = [];
+  for (const kind of kinds) {
+    const h = buildHouse(kind, rng), key = prefer[kind] || prefer.home;
+    let best = null;
+    for (const [fx, fz, d, r] of fronts) {
+      const [ox, oz] = GATE_DIRS[d], [tdx, tdz] = houseTransform(h, d)(h.door[0], h.door[1]);
+      const w = d & 1 ? h.hz : h.hx, l = d & 1 ? h.hx : h.hz, X = fx - ox - Math.floor(tdx), Z = fz - oz - Math.floor(tdz);
+      if (X < 1 || Z < 1 || X + w > TW - 1 || Z + l > TD - 1) continue;
+      let free = true;
+      for (let z = Z; z < Z + l && free; z++) for (let x = X; x < X + w; x++) if (plan[z * TW + x] !== OPEN) { free = false; break; }
+      if (!free || ![1, 2, 3].every(k => planAt(fx + ox * (k - 1), fz + oz * (k - 1)) === STREET)) continue;
+      let snug = 0;   // (the cells round its plot that are not open ground)
+      for (let x = X - 1; x <= X + w; x++) snug += (planAt(x, Z - 1) !== OPEN) + (planAt(x, Z + l) !== OPEN);
+      for (let z = Z; z < Z + l; z++) snug += (planAt(X - 1, z) !== OPEN) + (planAt(X + w, z) !== OPEN);
+      const score = 10 * snug / (2 * (w + l + 2)) - key(fx, fz) + 0.5 * r;
+      if (!best || score > best.score) best = { score, X, Z, w, l, d, hP: streetH(fz) };
+    }
+    if (!best) continue;
+    const { X, Z, w, l, d, hP } = best;
+    put(X, Z, X + w - 1, Z + l - 1, BUILT);
+    for (let z = Z; z < Z + l; z++) for (let x = X; x < X + w; x++) Hm[cellOf(x, z)] = hP;   // its plot, level with the street before its door
+    placed.push({ kind, h, X, Z, d, hP });
+  }
+
+  // the voxels, now that the ground is final: the template's base below the lowest ground in and round it
+  let lo = Infinity, hi = -Infinity;
+  for (let tz = -1; tz <= TD; tz++) for (let tx = -1; tx <= TW; tx++) { const h = Hm[cellOf(tx, tz)]; if (h < lo) lo = h; if (h > hi) hi = h; }
+  const baseY = Math.floor(lo) - 2, yOf = h => Math.ceil(h - baseY) - 1;   // (yOf: the voxel whose top meets ground at h)
+  const sy = Math.max(yOf(hi) + TOWN_WALL + 5, ...placed.map(p => yOf(p.hP) + p.h.hy)) + 1;
+  const T = makeTemplate(TW, sy, TD), ST = VOX.STONE, WD = VOX.WOOD, flags = [], torches = [];
+  const around = (tx, tz, pick) => { let m = pick === Math.min ? Infinity : -Infinity; for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) m = pick(m, Hm[cellOf(tx + ox, tz + oz)]); return m; };
+  const footOf = (tx, tz) => Math.max(0, Math.floor(around(tx, tz, Math.min) - baseY) - 1);   // (a wall reaches below the ground either side of it)
+  const crenel = (x, z, y) => { if (((x + z) & 1) === 0) T.set(x, y, z, ST); };
+  // the curtain wall
+  const wall = (x, z) => { const top = yOf(around(x, z, Math.max)) + TOWN_WALL; T.box(x, footOf(x, z), z, x, top, z, ST); crenel(x, z, top + 1); };
+  for (let z = 0; z < TD; z++) { wall(0, z); wall(TW - 1, z); }
+  for (let x = 1; x < TW - 1; x++) { if (Math.abs(x - mx) > 3) wall(x, TD - 1); if (Math.abs(x - mx) > hs) wall(x, 0); }   // (the gatehouse stands in the outer wall)
+  // a tower at each corner, a flag on it
+  for (const [x0, z0] of corners) {
+    let top = 0;
+    for (let x = x0; x < x0 + 4; x++) for (let z = z0; z < z0 + 4; z++) top = Math.max(top, yOf(around(x, z, Math.max)) + TOWN_WALL + 3);
+    for (let x = x0; x < x0 + 4; x++) for (let z = z0; z < z0 + 4; z++) {
+      T.box(x, footOf(x, z), z, x, top, z, ST);
+      if (x === x0 || x === x0 + 3 || z === z0 || z === z0 + 3) crenel(x, z, top + 1);
+    }
+    flags.push([x0 + 2, top + 1, z0 + 2]);
+  }
+  // the gatehouse: a passage three wide under it, its arch's corners, torches either side of it outside
+  const gy = yOf(streetH(TD - 1)), gTop = gy + TOWN_WALL + 2;
+  for (let x = mx - 3; x <= mx + 3; x++) for (let z = TD - 5; z <= TD - 1; z++) {
+    T.box(x, Math.abs(x - mx) <= 1 ? gy + 5 : footOf(x, z), z, x, gTop, z, ST);
+    if (x === mx - 3 || x === mx + 3 || z === TD - 5 || z === TD - 1) crenel(x, z, gTop + 1);
+  }
+  for (const z of [TD - 5, TD - 1]) { T.set(mx - 1, gy + 4, z, ST); T.set(mx + 1, gy + 4, z, ST); }
+  flags.push([mx - 2.5, gTop + 1, TD - 0.5], [mx + 3.5, gTop + 1, TD - 0.5]);
+  torches.push([mx - 2.1, gy + 4.5, TD + 0.4], [mx + 3.1, gy + 4.5, TD + 0.4]);
+  // the well on the market square: a ring round a hole on a plinth, a frame over it
+  const wy = yOf(streetH(zc)) + 1;
+  for (let z = zc - 1; z <= zc + 1; z++) for (let x = wellX - 1; x <= wellX + 1; x++) T.box(x, footOf(x, z), z, x, wy, z, ST);
+  T.box(wellX, wy - 1, zc, wellX, wy, zc, 0);
+  T.box(wellX - 1, wy + 1, zc, wellX - 1, wy + 2, zc, WD); T.box(wellX + 1, wy + 1, zc, wellX + 1, wy + 2, zc, WD); T.box(wellX - 1, wy + 3, zc, wellX + 1, wy + 3, zc, WD);
+  // torches on posts: either side of the way to the castle, and at two corners of the market square
+  for (const [x, z] of posts) { const y = yOf(streetH(z)); T.box(x, y, z, x, y + 2, z, WD); torches.push([x + 0.5, y + 3.45, z + 0.5]); }
+  const houses = placed.map(p => ({ kind: p.kind, ...stampHouse(T, p.h, p.X, p.Z, p.d, yOf(p.hP)) }));
+
+  // turned to face the castle's way, and where it lies
+  T.extras = { flags };
+  const R = turnTemplate(T, dir).finalize(), tp = turnPoint(TW, TD, dir);
+  const [ax0, az0] = turnOffset(dir, -mx, hs + 1), [ax1, az1] = turnOffset(dir, TW - 1 - mx, hs + TD);
+  const tcx = (cx + Math.min(ax0, ax1) + (R.sx >> 1)) & MASK, tcz = (cz + Math.min(az0, az1) + (R.sz >> 1)) & MASK;
+  const x0 = tcx - (R.sx >> 1), z0 = tcz - (R.sz >> 1), wrap = v => ((v % W) + W) % W;
+  const toWorld = p => { const [x, z] = tp(p[0], p[2]); return [wrap(x0 + x), baseY + p[1], wrap(z0 + z)]; };
+  for (const h of houses) for (const ch of h.chimneys) world.chimneys.push([...toWorld(ch), rng() * 10]);
+  for (const h of houses) for (const dm of h.domes) world.domes.push([...toWorld(dm), dm[3], dm[4]]);
+  const street = [];
+  for (let tz = 0; tz < TD; tz++) for (let tx = 0; tx < TW; tx++) if (plan[tz * TW + tx] === STREET) street.push(cellOf(tx, tz));
+  for (let tz = TD; tz < TD + 3; tz++) for (let tx = mx - 1; tx <= mx + 1; tx++) street.push(cellOf(tx, tz));   // (and out to where the road begins)
+  const cellXZ = c => ({ x: c & MASK, z: (c / W) | 0 }), out = cellXZ(cellOf(mx, TD)), road = cellXZ(cellOf(mx, TD + 2));
+  return {
+    type: 'town', variant: kind, cx: tcx, cz: tcz, half: Math.max(R.sx, R.sz) >> 1, baseY, tpl: R, x0, z0,
+    radius: Math.hypot(R.sx, R.sz) / 2 + 1, gate: dir, gatePos: [out.x, out.z], castle: castleIndex,
+    anchor: road,   // (where a road meets it: before its gate)
+    houses: houses.map(h => ({ kind: h.kind, door: toWorld(h.door), dir: (h.dir + dir) & 3, lamp: h.lamp && [...toWorld(h.lamp), h.lamp[3]],
+      candles: h.candles.map(c => [...toWorld(c), c[3]]), horos: h.horos.map(c => [...toWorld(c), c[3], c[4]]) })),
+    torches: torches.map(toWorld), street,
+  };
+}
+
+// =====================================================================
+//  WATCHTOWERS, RUINS AND STANDING STONES  (phase 4: after the roads)
+// =====================================================================
+// A watchtower stands over every road that climbs across a pass, beside its top, its door toward the
+// road; where the roads cross few passes, towers keep watch from the high points of the longest roads.
+// Out in the wild, well away from the roads and the towns, lie ruined churches; standing stones crown
+// hilltops.
+const PASS_RISE = 8;           // a road that climbs this far above both its ends crosses a pass
+const TOWER_MOST = 6, TOWER_LEAST = 3, TOWER_APART = 90;
+function placeTowers(rng) {
+  const { H, water, road } = world, passes = [];
+  for (const cells of world.roads) {
+    if (cells.length < 60) continue;
+    const ends = Math.max(H[cells[0]], H[cells[cells.length - 1]]);
+    let k = 15;
+    for (let j = 15; j < cells.length - 15; j++) if (H[cells[j]] > H[cells[k]]) k = j;
+    const rise = H[cells[k]] - ends;
+    if (rise >= PASS_RISE || cells.length >= 150) passes.push({ cells, k, rise, pass: rise >= PASS_RISE });   // (a pass, or a long road's high point)
+  }
+  passes.sort((a, b) => b.pass - a.pass || b.rise - a.rise);
+  // a tower's site: dry, off the road (the ground its levelling reaches clear of it), not too rough, clear
+  // of every other landmark; and, levelled, a way from the door toward the road you can walk up
+  const siteAt = (x, z, dir) => {
+    let mn = Infinity, mx = -Infinity;
+    for (let oz = -9; oz <= 9; oz++) for (let ox = -9; ox <= 9; ox++) {
+      const i = ((z + oz) & MASK) * W + ((x + ox) & MASK);
+      if (water[i] || H[i] < world.seaLevel + 2 || road[i]) return null;
+      if (Math.abs(ox) <= 3 && Math.abs(oz) <= 3) { mn = Math.min(mn, H[i]); mx = Math.max(mx, H[i]); }
+    }
+    if (mx - mn > 14) return null;
+    for (const s of world.structs) {
+      const d = Math.max(Math.abs(wrapDelta(x - s.cx)), Math.abs(wrapDelta(z - s.cz)));
+      if (d < 4 + s.half + (s.type === 'tower' ? TOWER_APART : 12)) return null;
+    }
+    const y = H[z * W + x], [ox, oz] = GATE_DIRS[dir], level = e => { const h = H[((z + oz * e) & MASK) * W + ((x + ox * e) & MASK)]; return e <= 4 ? y : e <= 8 ? y + (h - y) * (e - 4) / 5 : h; };   // (as flatten leaves it)
+    for (let e = 4; e < 12; e++) if (Math.abs(level(e + 1) - level(e)) > 1) return null;
+    return y;
+  };
+  let placed = 0;
+  for (const { cells, k, pass } of passes) {
+    if (placed >= (pass ? TOWER_MOST : TOWER_LEAST)) continue;
+    let site = null;
+    for (const along of [0, -6, 6, -12, 12]) for (const off of [11, 14, 17, 20]) for (const side of [1, -1]) {   // (beside the top, or a little down either way)
+      const j = clamp(k + along, 5, cells.length - 6);
+      if (site) break;
+      const c = cells[j], x = c & MASK, z = (c / W) | 0, a = cells[j - 5], b = cells[j + 5];
+      let ux = wrapDelta((b & MASK) - (a & MASK)), uz = wrapDelta(((b / W) | 0) - ((a / W) | 0));
+      const l = Math.hypot(ux, uz) || 1; ux /= l; uz /= l;   // (along the road)
+      const sx = Math.round(x - uz * side * off) & MASK, sz = Math.round(z + ux * side * off) & MASK, vx = wrapDelta(x - sx), vz = wrapDelta(z - sz);
+      const dir = Math.abs(vx) > Math.abs(vz) ? (vx > 0 ? 1 : 3) : (vz > 0 ? 0 : 2), baseY = siteAt(sx, sz, dir);   // (its door toward the road)
+      if (baseY !== null) site = { sx, sz, dir, baseY };
+    }
+    if (!site) continue;
+    const { sx, sz, dir, baseY } = site;
+    flatten(sx, sz, 4, baseY);
+    const [ox, oz] = GATE_DIRS[dir];
+    world.structs.push({
+      type: 'tower', variant: 'tower', cx: sx, cz: sz, half: 4, baseY, tpl: turnTemplate(buildKeep(rng).T, dir).finalize(),
+      x0: sx - 3, z0: sz - 3, radius: Math.hypot(7, 7) / 2 + 1, gate: dir, anchor: { x: (sx + ox * 5) & MASK, z: (sz + oz * 5) & MASK },
+    });
+    placed++;
+  }
+}
+
+// Sites are scanned on a coarse grid in random order; each kind has its own flatness tolerance, and
+// keeps its distance from every other landmark (further from its own kind, so they spread over the
+// world) and from the roads. Ruins first look only in the wild (forest, pine forest, marsh, badlands),
+// well away from the towns and villages.
+function placeWild(rng) {
+  const { H, water, seaLevel, biome } = world;
+  distanceField(world.road, nearDist, 64);   // (how far each cell is from a road)
+  const WILD = [BIOME.FOREST, BIOME.PINES, BIOME.MARSH, BIOME.BADLANDS];
+  const specs = [
+    { type: 'ruin', count: 5, half: 8, flat: 12, build: rng => turnTemplate(buildRuin(rng), (rng() * 4) | 0), road: 36, apart: 70, own: 150 },
+    { type: 'stones', count: 10, half: 4, flat: 14, hilltop: true, road: 6, apart: 12, own: 90 },
+  ];
+  const cands = [];
+  for (let z = 0; z < W; z += 3) for (let x = 0; x < W; x += 3) cands.push(z * W + x);
+  for (let i = cands.length - 1; i > 0; i--) {
+    const j = (rng() * (i + 1)) | 0;
+    const t = cands[i]; cands[i] = cands[j]; cands[j] = t;
+  }
+  let siteMin = 0;
+  function siteOk(c, spec, relax) {
+    const cx = c & MASK, cz = (c / W) | 0, r = spec.half + 5, hc = H[c], flat = spec.flat * relax;
+    if (hc < seaLevel + 2 || nearDist[c] < spec.road + spec.half) return false;
+    let mn = Infinity, mx = -Infinity;
+    for (let oz = -r; oz <= r; oz++) {
+      const zr = ((cz + oz) & MASK) * W;
+      for (let ox = -r; ox <= r; ox++) {
+        const i = zr + ((cx + ox) & MASK);
+        if (water[i]) return false;
+        const h = H[i];
+        if (h < mn) mn = h;
+        if (h > mx) mx = h;
+        if (mx - mn > flat) return false;
+        if (spec.hilltop && h > hc + 0.01 && Math.max(Math.abs(ox), Math.abs(oz)) <= spec.half + 1) return false;
+      }
+    }
+    siteMin = mn;
+    return true;
+  }
+  function highestNear(c, r) {
+    const cx = c & MASK, cz = (c / W) | 0;
+    let best = c;
+    for (let oz = -r; oz <= r; oz++) for (let ox = -r; ox <= r; ox++) {
+      const i = ((cz + oz) & MASK) * W + ((cx + ox) & MASK);
+      if (H[i] > H[best]) best = i;
+    }
+    return best;
+  }
+  function tooClose(c, spec) {
+    const cx = c & MASK, cz = (c / W) | 0;
+    for (const s of world.structs) {
+      const d = Math.max(Math.abs(wrapDelta(cx - s.cx)), Math.abs(wrapDelta(cz - s.cz)));
+      const settled = s.type === 'castle' || s.type === 'town' || s.type === 'village' || s.type === 'hamlet';
+      if (d < spec.half + s.half + (s.type === spec.type ? spec.own : settled ? spec.apart + 12 : 12)) return true;
+    }
+    return false;
+  }
+  for (const spec of specs) {
+    let placed = 0;
+    // rugged seeds may have no site flat enough at the first tolerance; the ground gets levelled anyway,
+    // so retry with a looser one rather than leave the kind out of the world
+    for (const relax of [1, 2, 3.5]) for (let c of cands) {
+      if (placed >= spec.count) break;
+      if (spec.hilltop) c = highestNear(c, 4);
+      if (spec.type === 'ruin' && relax < 3.5 && !WILD.includes(biome[c])) continue;
+      if (tooClose(c, spec) || !siteOk(c, spec, relax)) continue;
+      const cx = c & MASK, cz = (c / W) | 0;
+      let baseY, tpl;
+      if (spec.hilltop) {
+        baseY = siteMin - 1;
+        const x0 = cx - 4, z0 = cz - 4;
+        tpl = buildStones(rng, (lx, lz) => H[((z0 + lz) & MASK) * W + ((x0 + lx) & MASK)] - baseY).finalize();
+      } else {
+        baseY = H[c];
+        flatten(cx, cz, spec.half + 1, baseY, world.road);
+        tpl = spec.build(rng).finalize();
+      }
+      // x0/z0 are kept unwrapped relative to the centre; the renderer wraps as needed
+      const x0 = cx - (tpl.sx >> 1), z0 = cz - (tpl.sz >> 1);
+      world.structs.push({
+        type: spec.type, variant: spec.type, cx, cz, half: spec.half, baseY, tpl, x0, z0,
+        radius: Math.hypot(tpl.sx, tpl.sz) / 2 + 1, anchor: { x: cx, z: (z0 + tpl.sz + 1) & MASK },
+      });
+      placed++;
+    }
+  }
+}
+
 // A castle's or tower's extra parts, from its template's own coordinates into the world: domes, bells
 // and chimneys now; its lights (candles, chandeliers, hearth fires) once the world's lights are made.
 function structureExtras() {
@@ -1587,10 +1942,12 @@ function structureLights() {
 
 // Flags on the highest roofs of castles and towers: a pole standing on a roof (a column whose eight
 // neighbours are as high), up to four a castle and one a tower, the cloth in a colour of each castle's.
+// (Phase 4: castles and towns say where their tower tops are, in T.extras.flags.)
 function castleFlags() {
   const flags = [], colours = [R.robe0, R.robe1, R.robe2, R.drygrass];
   world.structs.forEach((s, si) => {
-    if (s.type !== 'castle' && s.type !== 'tower') return;
+    if (s.type !== 'castle' && s.type !== 'tower' && s.type !== 'town') return;
+    const ci = s.castle ?? si;   // (a town flies its castle's colours)
     const T = s.tpl, top = (x, z) => x < 0 || z < 0 || x >= T.sx || z >= T.sz ? 0 : T.topSolid[x * T.sz + z];
     let best = 0;
     for (let i = 0; i < T.topSolid.length; i++) if (T.topSolid[i] > best) best = T.topSolid[i];
@@ -1604,7 +1961,7 @@ function castleFlags() {
     }
     cols.sort((a, b) => b[0] - a[0] || a[1] - b[1] || a[2] - b[2]);
     if (T.extras && T.extras.flags) {   // (phase 4: a castle says where its tower tops are)
-      for (const [x, y, z] of T.extras.flags) flags.push([((s.x0 + x) % W + W) % W, s.baseY + y, ((s.z0 + z) % W + W) % W, colours[si % colours.length], (si * 3.7 + x) % 6.28]);
+      for (const [x, y, z] of T.extras.flags) flags.push([((s.x0 + x) % W + W) % W, s.baseY + y, ((s.z0 + z) % W + W) % W, colours[ci % colours.length], (si * 3.7 + x) % 6.28]);
       return;
     }
     const picked = [], most = s.type === 'castle' ? 4 : 1;
@@ -1936,21 +2293,22 @@ function routeOver(b, A, B) {
   return route;
 }
 
-// Where you start, in front of the biggest castle's gate: the furthest spot from 6 to 20 cells out
-// along the gate's line from which you can walk straight to the gate (no step up or down more than a
-// step, no water, no tree in the way), so it stands ahead of you and you can reach it. On the bigger
-// world, v1's 14 cells out could land in a gully between badland terraces.
+// Where you start ([x, z, yaw]): before the gate of the biggest castle's town (phase 4), looking up its
+// street to the castle, at the furthest spot from 6 to 24 cells out along the gate's line from which you
+// can walk straight to the gate (no step up or down more than a step, no water, no tree in the way), so
+// it stands ahead of you and you can reach it; with open ground behind you (no rise, no trees), where
+// the camera stands to show you the town. A castle without a town: the same before its own gate.
 function spawnAt(s) {
-  const { H, water, treeMask } = world, x = s.cx;
-  for (let d = s.half + 20; d >= s.half + 6; d--) {
-    let ok = true;
-    for (let e = d; e > s.half + 1 && ok; e--) {
-      const a = ((s.cz + e) & MASK) * W + x, b = ((s.cz + e - 1) & MASK) * W + x;
-      if (water[a] || treeMask[a] || Math.abs(H[a] - H[b]) > 1) ok = false;
-    }
-    if (ok) return d;
-  }
-  return s.half + 14;
+  const { H, water, treeMask } = world, t = s.town >= 0 ? world.structs[s.town] : null;
+  const dir = t ? t.gate : s.gate || 0, [ox, oz] = GATE_DIRS[dir];
+  const [gx, gz] = t ? t.gatePos : [s.cx + ox * (s.half + 1), s.cz + oz * (s.half + 1)];
+  const cell = e => ((gz + oz * e) & MASK) * W + ((gx + ox * e) & MASK);
+  const way = far => { for (let e = far; e > 0; e--) if (water[cell(e)] || treeMask[cell(e)] || Math.abs(H[cell(e)] - H[cell(e - 1)]) > 1) return false; return true; };
+  const open = far => { for (let e = far + 1; e <= far + 8; e++) if (treeMask[cell(e)] || H[cell(e)] > H[cell(far)] + 2) return false; return true; };
+  let d = 0;
+  for (let far = 24; far >= 6 && !d; far--) if (way(far) && open(far)) d = far;
+  for (let far = 24; far >= 5 && !d; far--) if (way(far)) d = far;
+  return [((gx + ox * (d || 10)) & MASK) + 0.5, ((gz + oz * (d || 10)) & MASK) + 0.5, Math.atan2(-oz, -ox)];
 }
 
 // The deck under (x, z) if it is on a bridge, for whatever walks the roads.
@@ -1998,7 +2356,7 @@ function placeTrees(seed) {
       for (let lz = -1; lz <= s.tpl.sz; lz++) for (let lx = -1; lx <= s.tpl.sx; lx++) excl[((s.z0 + lz) & MASK) * W + ((s.x0 + lx) & MASK)] = 1;
       continue;
     }
-    const r = s.half + (s.type === 'castle' ? 16 : s.type === 'tower' ? 6 : 2);   // castles stand in a clearing, so their gate can be seen coming
+    const r = s.half + (s.type === 'castle' ? 16 : s.type === 'town' ? 22 : s.type === 'tower' ? 6 : 2);   // castles stand in a clearing, so their gate can be seen coming; towns in their fields
     for (let oz = -r; oz <= r; oz++) for (let ox = -r; ox <= r; ox++) excl[((s.cz + oz) & MASK) * W + ((s.cx + ox) & MASK)] = 1;
   }
   for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) if (road[z * W + x]) {
@@ -2073,14 +2431,15 @@ function spawnBirds(rng) {
   world.birds = birds;
 }
 
-// Torches flank every gate and door; a campfire burns by every stone circle.
+// Torches flank every castle gate and tower door, whichever way it faces (phase 4: v1's placed them on
+// the south, where every gate was); a campfire burns by every stone circle. (A town lights its own.)
 function placeLights(rng) {
   const lights = [];
   const torch = (x, y, z) => lights.push({ x: ((x % W) + W) % W, y, z: ((z % W) + W) % W, r: 12, color: [1, 0.62, 0.28], i: 1.1, kind: 'torch', phase: rng() * 10, size: 0.7 });
   for (const s of world.structs) {
-    const front = s.z0 + s.tpl.sz + 0.4;
-    if (s.type === 'castle') { torch(s.cx - 2.2, s.baseY + 5.5, front); torch(s.cx + 2.2, s.baseY + 5.5, front); }
-    else if (s.type === 'tower') torch(s.cx + 0.5, s.baseY + 4.5, front);
+    const [ox, oz] = GATE_DIRS[s.gate || 0], out = s.tpl.sz / 2 + 0.4, mx = s.cx + 0.5, mz = s.cz + 0.5;   // (out: just off the gate's face)
+    if (s.type === 'castle') for (const side of [-2.2, 2.2]) torch(mx + ox * out + oz * side, s.baseY + 5.5, mz + oz * out + ox * side);
+    else if (s.type === 'tower') torch(mx + ox * out, s.baseY + 4.5, mz + oz * out);
     else if (s.type === 'stones') {
       const fx = s.cx + 3.5, fz = s.cz + 3.5, i = ((fz | 0) & MASK) * W + ((fx | 0) & MASK);
       lights.push({ x: fx, y: world.H[i] + 0.2, z: fz, r: 18, color: [1, 0.55, 0.2], i: 1.3, kind: 'fire', phase: rng() * 10, size: 1.6 });
@@ -5456,9 +5815,8 @@ function spawn() {
   const castles = world.structs.filter(x => x.type === 'castle').sort((a, b) => b.half - a.half);
   const s = castles[0] || world.structs[0];
   if (s) {
-    cam.x = s.cx + 0.5; cam.z = ((s.cz + spawnAt(s)) & MASK) + 0.5;
+    [cam.x, cam.z, cam.yaw] = spawnAt(s);   // (before its town's gate, facing up the street to the castle)
     for (let k = 0; k < 6 && world.treeMask[(cam.z | 0) * W + (cam.x | 0)]; k++) cam.x = ((cam.x + 1) % W);   // not inside a tree
-    cam.yaw = -Math.PI / 2;
     cam.pitch = 0;
     settlePlayer();
     return;
@@ -5720,8 +6078,8 @@ function updateHero(dt) {
   // never grazes a wall's corner)
   let want = view3.dist;
   const sx = -bz * V3_SIDE, sz = bx * V3_SIDE;
-  for (let d = 0.5; d <= view3.dist; d += 0.25) {
-    const px = cam.x + bx * d * cph, pz = cam.z + bz * d * cph, py = pivot + d * sph;
+  for (let s = 0.5; s < view3.dist + 0.25; s += 0.25) {
+    const d = Math.min(s, view3.dist), px = cam.x + bx * d * cph, pz = cam.z + bz * d * cph, py = pivot + d * sph;   // (to the camera's own spot)
     if (terrainHeight(px, pz) > py - V3_CLEAR + 0.05 || solidAt(px, py, pz) || solidAt(px + sx, py, pz + sz) || solidAt(px - sx, py, pz - sz)) { want = Math.max(0.5, d - 0.45); break; }
   }
   view3.cur = want < view3.cur ? want : view3.cur + (want - view3.cur) * Math.min(1, dt * 2.5);

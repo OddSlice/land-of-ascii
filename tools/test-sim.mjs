@@ -10,9 +10,10 @@
 //      held keys and mouse turns, stepped through TV.update(1/60) and TV.updateMerchants(1/60): the
 //      player, camera, merchants and clock must be bit-identical after every step. Along the way
 //      the player never falls through the ground and never gets stuck.
-//   3. Walks: from outside every castle gate and every tower door, walk in; both must end inside the
-//      footprint, on the same path. Then every house in every settlement: from outside its door,
-//      walk in, onto its floor.
+//   3. Walks: from outside every castle gate and every tower door (which face any way: a castle faces
+//      its town, a tower its road), walk in; both must end inside the footprint, on the same path.
+//      Then every house in every town, village and hamlet: from outside its door, walk in, onto its
+//      floor.
 //   4. Bridges: on every seed, walk across every bridge from one bank to the other, both ways: the
 //      walk must reach the far bank and never drop below the deck on the way (into the river).
 //   5. Weather: each day's plan (rain or snow, dawn fog, aurora) is the same every time for a seed,
@@ -36,7 +37,7 @@ const { server, port } = await startServer();
 const { browser, page: p1 } = await launch();
 const v1Fixed = applyFixes(fs.readFileSync(path.join(ROOT, 'reference/v1-index.html'), 'utf8'));
 await p1.route('**/reference/v1-index.html*', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: v1Fixed }));
-await p1.addInitScript(() => { window.deckAt = () => -Infinity; window.spawnAt = s => s.half + 14; });   // (v1's own world has no bridges and starts as v1 did; v2's, taken below, brings its decks, and the session starts where v2 does)
+await p1.addInitScript(() => { window.deckAt = () => -Infinity; window.spawnAt = s => [s.cx + 0.5, ((s.cz + s.half + 14) & 1023) + 0.5, -Math.PI / 2]; });   // (v1's own world has no bridges and starts as v1 did; v2's, taken below, brings its decks, and the session starts where v2 does)
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await p2.addInitScript(TIME_CONTROL);
 p2.on('pageerror', e => console.error('[v2 pageerror]', e.message));
@@ -225,7 +226,7 @@ else console.log('  never stuck');
 
 // ---- 3. walks through every gate and door ----
 console.log('3. gate, door and house walks, seed 42');
-const walks = await p2.evaluate(() => window.TV.world.structs.map((s, i) => ({ i, type: s.type, cx: s.cx, cz: s.cz, half: s.half, z0: s.z0, sz: s.tpl.sz, W: window.TV.defs.W })).filter(s => s.type === 'castle' || s.type === 'tower'));
+const walks = await p2.evaluate(() => window.TV.world.structs.map((s, i) => ({ i, type: s.type, cx: s.cx, cz: s.cz, half: s.half, gate: s.gate || 0, out: (s.tpl.sz >> 1) + 4, W: window.TV.defs.W })).filter(s => s.type === 'castle' || s.type === 'tower'));
 for (const s of walks) {
   const res = [];
   for (const page of [p1, p2]) {
@@ -233,14 +234,15 @@ for (const s of walks) {
       const TV = window.TV, W = s.W;
       TV.clock.scale = 0; TV.setMode('walk');
       for (const k of Object.keys(TV.keys)) TV.keys[k] = false;
-      // stand three cells outside the south-facing entrance, facing north, and walk in
-      TV.cam.x = s.cx + 0.5; TV.cam.z = ((s.z0 + s.sz + 3) % W + W) % W; TV.cam.yaw = -Math.PI / 2; TV.cam.pitch = 0;
+      // stand three cells outside the entrance, facing in, and walk in
+      const [ox, oz] = [[0, 1], [1, 0], [0, -1], [-1, 0]][s.gate];
+      TV.cam.x = ((s.cx + 0.5 + ox * s.out) % W + W) % W; TV.cam.z = ((s.cz + 0.5 + oz * s.out) % W + W) % W; TV.cam.yaw = Math.atan2(-oz, -ox); TV.cam.pitch = 0;
       TV.setMode('fly'); TV.setMode('walk');   // settle the feet on the ground below
       TV.keys.KeyW = true;
       const path = [];
       for (let i = 0; i < 60 * 6; i++) { TV.update(1 / 60); if (i % 30 === 0) path.push([TV.cam.x, TV.cam.y, TV.cam.z]); }
       TV.keys.KeyW = false;
-      const dz = ((TV.cam.z - s.cz) % W + W * 1.5) % W - W / 2;   // wrapped offset from the centre
+      const wd = v => ((v % W) + W * 1.5) % W - W / 2, dz = wd(TV.cam.x - s.cx) * ox + wd(TV.cam.z - s.cz) * oz;   // (how far out from the middle along the gate's line)
       return { inside: Math.abs(dz) < s.half, dz: +dz.toFixed(2), y: +TV.cam.y.toFixed(2), path };
     }, s));
   }

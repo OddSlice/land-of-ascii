@@ -7,6 +7,8 @@
 // shadows and hollows). Retired in phase 4: the structures (v1 454-775: voxel templates, castles,
 // towers, ruins, standing stones and their placement), redesigned as v2's own (castles with a church
 // at their heart). The collision code that walks you through them is still v1's (movement, below).
+// Retired in phase 4 step 2: the gate torches (v1 972-986, placeLights), since castle gates and tower
+// doors now face any way (castles face their towns, towers their roads).
 //   node tools/check-verbatim.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -20,7 +22,8 @@ const SECTIONS = [   // [first line, last line, what]
   [202, 260, 'helpers and noise'],
   [361, 453, 'rivers'],
   [776, 905, 'roads'],
-  [959, 1099, 'birds, lights, clouds, merchants, sky'],
+  [959, 971, 'birds'],
+  [987, 1099, 'clouds, merchants, sky'],
   [1223, 1306, 'camera and input (up to the cell-size key)'],
   [1311, 1321, 'view distance, resize'],
   [1322, 1487, 'movement: walking, collision, flying'],

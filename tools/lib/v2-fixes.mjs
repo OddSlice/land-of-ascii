@@ -50,9 +50,9 @@ FIXES.push({
   to: 'path.push([(n & GM) << 1, ((n / G) | 0) << 1]);',
 });
 FIXES.push({
-  why: 'you start where you can walk to the castle gate (spawnAt): on the bigger world, 14 cells out could be a gully between badland terraces',
-  from: '    cam.x = s.cx + 0.5; cam.z = ((s.cz + s.half + 14) & MASK) + 0.5;',
-  to: '    cam.x = s.cx + 0.5; cam.z = ((s.cz + spawnAt(s)) & MASK) + 0.5;',
+  why: 'you start where you can walk to the gate (spawnAt): on the bigger world, 14 cells out could be a gully between badland terraces; and (phase 4) before the gate of the biggest castle\'s town, which faces whichever way the town lies, looking up its street to the castle',
+  from: '    cam.x = s.cx + 0.5; cam.z = ((s.cz + s.half + 14) & MASK) + 0.5;\n    for (let k = 0; k < 6 && world.treeMask[(cam.z | 0) * W + (cam.x | 0)]; k++) cam.x = ((cam.x + 1) % W);   // not inside a tree\n    cam.yaw = -Math.PI / 2;',
+  to: '    [cam.x, cam.z, cam.yaw] = spawnAt(s);   // (before its town\'s gate, facing up the street to the castle)\n    for (let k = 0; k < 6 && world.treeMask[(cam.z | 0) * W + (cam.x | 0)]; k++) cam.x = ((cam.x + 1) % W);   // not inside a tree',
 });
 export function applyFixes(text) {
   for (const f of FIXES) {

@@ -4,37 +4,37 @@
   "scenes": [
     {
       "name": "vista",
-      "title": "Castle in the valley, 09:30",
+      "title": "A small castle and its town on a mesa by the water, 09:30",
       "seed": 42,
       "hour": 9.5,
       "t": 1000,
       "cam": {
-        "x": 526.56,
-        "y": 70.32,
-        "z": 216.85,
-        "yaw": 67.5,
+        "x": 692.85,
+        "y": 89.43,
+        "z": 869.56,
+        "yaw": 22.5,
         "pitch": -165
       }
     },
     {
       "name": "road",
-      "title": "Osric of Greyhaven on the road, 18:00",
+      "title": "Nell of Greyhaven on the road, 18:00",
       "seed": 42,
       "hour": 18,
       "t": 1000,
       "merchants": [
         {
-          "i": 1,
-          "s": 313.8,
+          "i": 7,
+          "s": 54,
           "dir": 1,
           "walked": 3.3
         }
       ],
       "cam": {
-        "x": 770.08,
+        "x": 854.5,
         "y": 0.2,
-        "z": 590.92,
-        "yaw": -45,
+        "z": 938.9,
+        "yaw": 88.4,
         "pitch": 10,
         "ground": true
       }
@@ -46,32 +46,32 @@
       "hour": 22.5,
       "t": 1000,
       "cam": {
-        "x": 808.5,
-        "y": 55.21,
-        "z": 645.5,
-        "yaw": 180,
+        "x": 714.5,
+        "y": 48.21,
+        "z": 371.5,
+        "yaw": 90,
         "pitch": -265
       }
     },
     {
       "name": "merchant",
-      "title": "Osric of Greyhaven walking toward you, 10:30",
+      "title": "Nell of Greyhaven walking toward you, 10:30",
       "seed": 42,
       "hour": 10.5,
       "t": 1000,
       "merchants": [
         {
-          "i": 1,
-          "s": 319.5,
-          "dir": -1,
+          "i": 7,
+          "s": 54,
+          "dir": 1,
           "walked": 3.3
         }
       ],
       "cam": {
-        "x": 782.81,
+        "x": 858.5,
         "y": 0,
-        "z": 578.19,
-        "yaw": 135,
+        "z": 955.25,
+        "yaw": -119.9,
         "pitch": 0,
         "ground": true
       }
@@ -84,32 +84,32 @@
       "t": 1000,
       "merchants": [
         {
-          "i": 1,
-          "s": 319.5,
-          "dir": -1,
+          "i": 7,
+          "s": 54,
+          "dir": 1,
           "walked": 3.3
         }
       ],
       "cam": {
-        "x": 782.81,
+        "x": 858.5,
         "y": 0,
-        "z": 578.19,
-        "yaw": 135,
+        "z": 955.25,
+        "yaw": -119.9,
         "pitch": 0,
         "ground": true
       }
     },
     {
       "name": "gate",
-      "title": "The spawn castle's gate at night, 21:00",
+      "title": "The spawn town's gate at night, 21:00",
       "seed": 42,
       "hour": 21,
       "t": 1000,
       "cam": {
-        "x": 825.5,
+        "x": 979.5,
         "y": 0,
-        "z": 150.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 40,
         "ground": true
       }
@@ -356,47 +356,47 @@
     },
     {
       "name": "bridge",
-      "title": "A stone bridge over a canyon stream (seed 7), 10:00",
-      "seed": 7,
+      "title": "A stone bridge over a forest stream (seed 31337), 10:00",
+      "seed": 31337,
       "hour": 10,
       "t": 1000,
       "cam": {
-        "x": 831.5,
-        "y": 40,
-        "z": 53,
-        "yaw": -90,
-        "pitch": -70
+        "x": 773,
+        "y": 50,
+        "z": 146,
+        "yaw": -83.5,
+        "pitch": -388
       },
       "fixed": true
     },
     {
       "name": "bridge-night",
-      "title": "The stone bridge at night, its lanterns lit (seed 7), 21:30",
-      "seed": 7,
+      "title": "The stone bridge at night, its lanterns lit (seed 31337), 21:30",
+      "seed": 31337,
       "hour": 21.5,
       "t": 1000,
       "cam": {
-        "x": 831.5,
-        "y": 40,
-        "z": 53,
-        "yaw": -90,
-        "pitch": -70
+        "x": 773,
+        "y": 50,
+        "z": 146,
+        "yaw": -83.5,
+        "pitch": -388
       },
       "fixed": true
     },
     {
       "name": "bridge-wood",
-      "title": "A wooden bridge over a forest stream, 10:00",
-      "seed": 42,
+      "title": "A wooden bridge in a badlands canyon (seed 1234), 10:00",
+      "seed": 1234,
       "hour": 10,
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 693,
-        "y": 25,
-        "z": 984.5,
-        "yaw": 180,
-        "pitch": -70
+        "x": 413,
+        "y": 66,
+        "z": 340,
+        "yaw": -148,
+        "pitch": -220
       }
     },
     {
@@ -512,34 +512,34 @@
     },
     {
       "name": "hero",
-      "title": "Your hero in the open field, before a fortress: its gate, flags on its towers, the church dome behind (10:30)",
+      "title": "Your hero before the gate of the citadel’s town, where you start (10:30)",
       "seed": 42,
       "hour": 10.5,
       "t": 1000,
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 507.5,
+        "x": 979.5,
         "y": 0,
-        "z": 322.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       }
     },
     {
       "name": "hero-start",
-      "title": "Where you start: in front of the biggest castle, 10:30",
+      "title": "Where you start: before the gate of the biggest castle’s town, 10:30",
       "seed": 42,
       "hour": 10.5,
       "t": 1000,
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 825.5,
+        "x": 979.5,
         "y": 0,
-        "z": 150.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       }
@@ -563,17 +563,17 @@
     },
     {
       "name": "hero-dusk",
-      "title": "Before the fortress at dusk (19:00)",
+      "title": "Before the town gate at dusk (19:00)",
       "seed": 42,
       "hour": 19,
       "t": 1000,
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 507.5,
+        "x": 979.5,
         "y": 0,
-        "z": 322.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       }
@@ -587,10 +587,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 507.5,
+        "x": 979.5,
         "y": 0,
-        "z": 322.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       },
@@ -616,10 +616,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 507.5,
+        "x": 979.5,
         "y": 0,
-        "z": 322.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       },
@@ -646,10 +646,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 507.5,
+        "x": 979.5,
         "y": 0,
-        "z": 322.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       },
@@ -676,10 +676,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 507.5,
+        "x": 979.5,
         "y": 0,
-        "z": 322.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       },
@@ -698,10 +698,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 507.5,
+        "x": 979.5,
         "y": 0,
-        "z": 322.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       },
@@ -716,10 +716,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 507.5,
+        "x": 979.5,
         "y": 0,
-        "z": 322.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       },
@@ -739,10 +739,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 507.5,
+        "x": 979.5,
         "y": 0,
-        "z": 322.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       },
@@ -763,10 +763,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 507.5,
+        "x": 979.5,
         "y": 0,
-        "z": 322.5,
-        "yaw": -90,
+        "z": 808.5,
+        "yaw": 0,
         "pitch": 0,
         "ground": true
       },
@@ -788,9 +788,9 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 976.5,
+        "x": 828.5,
         "y": 0,
-        "z": 888.5,
+        "z": 902.5,
         "yaw": -90,
         "pitch": 0,
         "ground": true
@@ -805,9 +805,9 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 976.5,
+        "x": 828.5,
         "y": 0,
-        "z": 888.5,
+        "z": 902.5,
         "yaw": -90,
         "pitch": 0,
         "ground": true
@@ -821,11 +821,11 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 1018,
-        "y": 70,
-        "z": 905,
-        "yaw": -138,
-        "pitch": -560
+        "x": 870,
+        "y": 95,
+        "z": 930,
+        "yaw": -132,
+        "pitch": -500
       }
     },
     {
@@ -836,10 +836,10 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 967.7,
-        "y": 37.25,
-        "z": 868.5,
-        "yaw": 180,
+        "x": 837.6,
+        "y": 50.25,
+        "z": 884.5,
+        "yaw": 0,
         "pitch": -40
       }
     },
@@ -851,26 +851,26 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 967.7,
-        "y": 37.25,
-        "z": 868.5,
-        "yaw": 180,
+        "x": 837.6,
+        "y": 50.25,
+        "z": 884.5,
+        "yaw": 0,
         "pitch": -40
       }
     },
     {
       "name": "castle-flags",
-      "title": "Flags on a castle, streaming in the wind",
+      "title": "The citadel from behind: the keep, the cathedral dome, flags on the towers (10:30)",
       "seed": 42,
       "hour": 10.5,
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 561.5,
-        "y": 48,
-        "z": 334,
-        "yaw": -90,
-        "pitch": -160
+        "x": 88,
+        "y": 68,
+        "z": 840,
+        "yaw": -146,
+        "pitch": -200
       }
     },
     {
@@ -898,10 +898,10 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 984.4,
-        "y": 36.25,
-        "z": 868.5,
-        "yaw": 0,
+        "x": 817.9,
+        "y": 53.25,
+        "z": 890.5,
+        "yaw": 180,
         "pitch": -30
       }
     },
@@ -913,10 +913,10 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 984.4,
-        "y": 36.25,
-        "z": 868.5,
-        "yaw": 0,
+        "x": 817.9,
+        "y": 53.25,
+        "z": 890.5,
+        "yaw": 180,
         "pitch": -30
       }
     },
@@ -928,9 +928,9 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 985.4,
-        "y": 36.25,
-        "z": 868.5,
+        "x": 816.9,
+        "y": 53.25,
+        "z": 890.5,
         "yaw": -90,
         "pitch": 40
       }
@@ -943,54 +943,54 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 1004,
-        "y": 55,
-        "z": 870,
+        "x": 840,
+        "y": 72,
+        "z": 892,
         "yaw": 180,
         "pitch": -250
       }
     },
     {
       "name": "castle-fortress",
-      "title": "A fortress from above: the keep, the church with its gold dome, the great hall, towers with flags (10:30)",
+      "title": "A fortress from above, over its town: the keep, the church dome, the great hall (10:30)",
       "seed": 42,
       "hour": 10.5,
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 530,
-        "y": 75,
-        "z": 330,
+        "x": 383,
+        "y": 134.6,
+        "z": 266,
         "yaw": -118.7,
         "pitch": -330
       }
     },
     {
       "name": "castle-citadel",
-      "title": "A citadel from above: the cathedral with three domes (10:30)",
+      "title": "The citadel and its town climbing to it, from the side (16:00)",
       "seed": 42,
-      "hour": 10.5,
+      "hour": 16,
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 618,
-        "y": 78,
-        "z": 82,
-        "yaw": -121,
-        "pitch": -320
+        "x": 1030,
+        "y": 85,
+        "z": 895,
+        "yaw": -95,
+        "pitch": -250
       }
     },
     {
       "name": "castle-church",
-      "title": "Inside a castle church: the iconostasis with the Royal Doors and the deacons doors (10:30)",
+      "title": "Inside a fortress church: the iconostasis with the Royal Doors and the deacons’ doors (10:30)",
       "seed": 42,
       "hour": 10.5,
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 507.5,
-        "y": 31.55,
-        "z": 291.6,
+        "x": 360.5,
+        "y": 91.11,
+        "z": 227.6,
         "yaw": -90,
         "pitch": -30
       }
@@ -1003,9 +1003,9 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 517.5,
-        "y": 31.55,
-        "z": 292.5,
+        "x": 370.5,
+        "y": 91.11,
+        "z": 228.5,
         "yaw": -90,
         "pitch": -60
       }
@@ -1018,26 +1018,128 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 517.5,
-        "y": 31.55,
-        "z": 292.5,
+        "x": 370.5,
+        "y": 91.11,
+        "z": 228.5,
         "yaw": -90,
         "pitch": -60
       }
     },
     {
       "name": "castle-keep",
-      "title": "Up in the keep bell chamber, looking out over the courtyard (10:30)",
+      "title": "Up in the keep’s bell chamber, looking out over the town (10:30)",
       "seed": 42,
       "hour": 10.5,
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 495.5,
-        "y": 49.6,
-        "z": 276.4,
+        "x": 348.5,
+        "y": 109.78,
+        "z": 212.4,
         "yaw": 90,
         "pitch": -200
+      }
+    },
+    {
+      "name": "town-citadel",
+      "title": "The citadel's town from outside its gate, 10:00",
+      "seed": 42,
+      "hour": 10,
+      "t": 1000,
+      "cam": {
+        "x": 950,
+        "y": 95,
+        "z": 808.5,
+        "yaw": 0,
+        "pitch": -260
+      }
+    },
+    {
+      "name": "town-street",
+      "title": "Up the street to the citadel, 10:00",
+      "seed": 42,
+      "hour": 10,
+      "t": 1000,
+      "third": true,
+      "cam": {
+        "x": 1023.5,
+        "y": 0,
+        "z": 808.5,
+        "yaw": 0,
+        "pitch": 0,
+        "ground": true
+      }
+    },
+    {
+      "name": "town-market",
+      "title": "The market street and its well, 11:00",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "third": true,
+      "cam": {
+        "x": 1015.5,
+        "y": 0,
+        "z": 803.5,
+        "yaw": 90,
+        "pitch": 0,
+        "ground": true
+      }
+    },
+    {
+      "name": "town-night",
+      "title": "The citadel and its town at night, 21:30",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "cam": {
+        "x": 995,
+        "y": 60,
+        "z": 845,
+        "yaw": -50,
+        "pitch": -220
+      }
+    },
+    {
+      "name": "town-small",
+      "title": "A small castle and its town by a lake, 09:00",
+      "seed": 42,
+      "hour": 9,
+      "t": 1000,
+      "cam": {
+        "x": 530,
+        "y": 95,
+        "z": 352.5,
+        "yaw": 0,
+        "pitch": -300
+      }
+    },
+    {
+      "name": "tower",
+      "title": "A watchtower over the road, 11:00",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "cam": {
+        "x": 605,
+        "y": 75,
+        "z": 400,
+        "yaw": 157.6,
+        "pitch": -150
+      }
+    },
+    {
+      "name": "ruin",
+      "title": "A ruined church in the wild, 15:00",
+      "seed": 42,
+      "hour": 15,
+      "t": 1000,
+      "cam": {
+        "x": 812,
+        "y": 33,
+        "z": 612,
+        "yaw": -138.6,
+        "pitch": -248
       }
     }
   ]

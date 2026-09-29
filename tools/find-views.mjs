@@ -119,16 +119,17 @@ const scenes = await page.evaluate(({ seed, hour, aerialOnly, classic }) => {
       return true;
     };
     const regionsAhead = (x, z, yaw) => { const seen = new Set(); for (let s = 20; s <= 300; s += 10) for (const o of [-0.4, 0, 0.4]) seen.add(w.biome[idx(x + Math.cos(yaw + o) * s, z + Math.sin(yaw + o) * s)]); return seen.size; };
-    // The spawn, outside the biggest castle's gate, at night.
+    // The spawn, outside the gate of the biggest castle's town (phase 4), at night.
     TV.regenerate(seed);
-    out.push({ name: 'gate', title: "The spawn castle's gate at night, 21:00", seed, hour: 21, t: 1000, cam: { x: wrap(TV.cam.x), y: 0, z: wrap(TV.cam.z), yaw: -90, pitch: 40, ground: true } });
-    // A castle in its valley, from high up and far off, with as many regions beyond it as possible.
+    out.push({ name: 'gate', title: "The spawn town's gate at night, 21:00", seed, hour: 21, t: 1000, cam: { x: wrap(TV.cam.x), y: 0, z: wrap(TV.cam.z), yaw: deg(TV.cam.yaw), pitch: 40, ground: true } });
+    // A castle in its valley, from high up and far off, over its town (phase 4: the town lies before its
+    // gate), with as many regions beyond it as possible.
     {
       let best = null;
       for (const s of w.structs.filter(s => s.type === 'castle')) for (let k = 0; k < 16; k++) {
-        const a = k / 16 * Math.PI * 2, x = s.cx + Math.cos(a) * 90, z = s.cz + Math.sin(a) * 90, y = s.baseY + 45;
-        if (w.water[idx(x, z)] || w.H[idx(x, z)] > y - 10 || !los(x, z, y, s.cx, s.cz, s.baseY + 8)) continue;
-        const score = regionsAhead(x, z, a + Math.PI);
+        const a = k / 16 * Math.PI * 2, x = s.cx + Math.cos(a) * 90, z = s.cz + Math.sin(a) * 90, y = s.baseY + 45, [gx, gz] = [[0, 1], [1, 0], [0, -1], [-1, 0]][s.gate || 0];
+        if (w.water[idx(x, z)] || w.H[idx(x, z)] > y - 10 || !los(x, z, y, s.cx, s.cz, s.baseY + 22)) continue;   // (the top of its church)
+        const score = regionsAhead(x, z, a + Math.PI) + (Math.cos(a) * gx + Math.sin(a) * gz > 0.5 ? 3 : 0);
         if (!best || score > best.score) best = { score, x, z, y, yaw: a + Math.PI };
       }
       if (best) out.push({ name: 'vista', title: 'Castle in the valley, 09:30', seed, hour: 9.5, t: 1000, cam: { x: wrap(best.x), y: +best.y.toFixed(2), z: wrap(best.z), yaw: deg(best.yaw), pitch: -165 } });
