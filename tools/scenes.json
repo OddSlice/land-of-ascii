@@ -512,17 +512,17 @@
     },
     {
       "name": "hero",
-      "title": "Your hero in the open field, looking at a castle, 10:30",
+      "title": "Your hero in the open field, before a fortress: its gate, flags on its towers, the church dome behind (10:30)",
       "seed": 42,
       "hour": 10.5,
       "t": 1000,
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 510.5,
+        "x": 507.5,
         "y": 0,
-        "z": 276.5,
-        "yaw": 22,
+        "z": 322.5,
+        "yaw": -90,
         "pitch": 0,
         "ground": true
       }
@@ -563,17 +563,17 @@
     },
     {
       "name": "hero-dusk",
-      "title": "Your hero in the open field at dusk, 19:00",
+      "title": "Before the fortress at dusk (19:00)",
       "seed": 42,
       "hour": 19,
       "t": 1000,
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 510.5,
+        "x": 507.5,
         "y": 0,
-        "z": 276.5,
-        "yaw": 22,
+        "z": 322.5,
+        "yaw": -90,
         "pitch": 0,
         "ground": true
       }
@@ -587,10 +587,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 510.5,
+        "x": 507.5,
         "y": 0,
-        "z": 276.5,
-        "yaw": 22,
+        "z": 322.5,
+        "yaw": -90,
         "pitch": 0,
         "ground": true
       },
@@ -616,10 +616,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 510.5,
+        "x": 507.5,
         "y": 0,
-        "z": 276.5,
-        "yaw": 22,
+        "z": 322.5,
+        "yaw": -90,
         "pitch": 0,
         "ground": true
       },
@@ -646,10 +646,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 510.5,
+        "x": 507.5,
         "y": 0,
-        "z": 276.5,
-        "yaw": 22,
+        "z": 322.5,
+        "yaw": -90,
         "pitch": 0,
         "ground": true
       },
@@ -676,10 +676,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 510.5,
+        "x": 507.5,
         "y": 0,
-        "z": 276.5,
-        "yaw": 22,
+        "z": 322.5,
+        "yaw": -90,
         "pitch": 0,
         "ground": true
       },
@@ -698,10 +698,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 510.5,
+        "x": 507.5,
         "y": 0,
-        "z": 276.5,
-        "yaw": 22,
+        "z": 322.5,
+        "yaw": -90,
         "pitch": 0,
         "ground": true
       },
@@ -716,10 +716,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 510.5,
+        "x": 507.5,
         "y": 0,
-        "z": 276.5,
-        "yaw": 22,
+        "z": 322.5,
+        "yaw": -90,
         "pitch": 0,
         "ground": true
       },
@@ -739,10 +739,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 510.5,
+        "x": 507.5,
         "y": 0,
-        "z": 276.5,
-        "yaw": 22,
+        "z": 322.5,
+        "yaw": -90,
         "pitch": 0,
         "ground": true
       },
@@ -763,10 +763,10 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 510.5,
+        "x": 507.5,
         "y": 0,
-        "z": 276.5,
-        "yaw": 22,
+        "z": 322.5,
+        "yaw": -90,
         "pitch": 0,
         "ground": true
       },
@@ -788,9 +788,9 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 468.5,
+        "x": 976.5,
         "y": 0,
-        "z": 306.5,
+        "z": 888.5,
         "yaw": -90,
         "pitch": 0,
         "ground": true
@@ -805,9 +805,9 @@
       "third": true,
       "fixed": true,
       "cam": {
-        "x": 468.5,
+        "x": 976.5,
         "y": 0,
-        "z": 306.5,
+        "z": 888.5,
         "yaw": -90,
         "pitch": 0,
         "ground": true
@@ -815,17 +815,17 @@
     },
     {
       "name": "village-aerial",
-      "title": "The village from above, the road in from a tower",
+      "title": "A village from above: the chapel with its dome, the square, chimneys smoking (10:30)",
       "seed": 42,
       "hour": 10.5,
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 468.5,
-        "y": 72,
-        "z": 326,
-        "yaw": -90,
-        "pitch": -400
+        "x": 1018,
+        "y": 70,
+        "z": 905,
+        "yaw": -138,
+        "pitch": -560
       }
     },
     {
@@ -836,10 +836,10 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 468.5,
-        "y": 28.3,
-        "z": 277.2,
-        "yaw": -90,
+        "x": 967.7,
+        "y": 37.25,
+        "z": 868.5,
+        "yaw": 180,
         "pitch": -40
       }
     },
@@ -851,10 +851,10 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 468.5,
-        "y": 28.3,
-        "z": 277.2,
-        "yaw": -90,
+        "x": 967.7,
+        "y": 37.25,
+        "z": 868.5,
+        "yaw": 180,
         "pitch": -40
       }
     },
@@ -898,10 +898,10 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 468.5,
-        "y": 26.65,
-        "z": 275.6,
-        "yaw": -90,
+        "x": 984.4,
+        "y": 36.25,
+        "z": 868.5,
+        "yaw": 0,
         "pitch": -30
       }
     },
@@ -913,10 +913,10 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 468.5,
-        "y": 26.65,
-        "z": 275.6,
-        "yaw": -90,
+        "x": 984.4,
+        "y": 36.25,
+        "z": 868.5,
+        "yaw": 0,
         "pitch": -30
       }
     },
@@ -928,26 +928,116 @@
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 468.5,
-        "y": 26.65,
-        "z": 274.2,
-        "yaw": 180,
+        "x": 985.4,
+        "y": 36.25,
+        "z": 868.5,
+        "yaw": -90,
         "pitch": 40
       }
     },
     {
       "name": "chapel-outside",
-      "title": "The chapel from above: the drum, the dome and its cross, the apse (10:30)",
+      "title": "The chapel among the houses: its drum, dome and cross (10:30)",
       "seed": 42,
       "hour": 10.5,
       "t": 1000,
       "fixed": true,
       "cam": {
-        "x": 452,
-        "y": 48,
-        "z": 292,
-        "yaw": -57,
-        "pitch": -260
+        "x": 1004,
+        "y": 55,
+        "z": 870,
+        "yaw": 180,
+        "pitch": -250
+      }
+    },
+    {
+      "name": "castle-fortress",
+      "title": "A fortress from above: the keep, the church with its gold dome, the great hall, towers with flags (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 530,
+        "y": 75,
+        "z": 330,
+        "yaw": -118.7,
+        "pitch": -330
+      }
+    },
+    {
+      "name": "castle-citadel",
+      "title": "A citadel from above: the cathedral with three domes (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 618,
+        "y": 78,
+        "z": 82,
+        "yaw": -121,
+        "pitch": -320
+      }
+    },
+    {
+      "name": "castle-church",
+      "title": "Inside a castle church: the iconostasis with the Royal Doors and the deacons doors (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 507.5,
+        "y": 31.55,
+        "z": 291.6,
+        "yaw": -90,
+        "pitch": -30
+      }
+    },
+    {
+      "name": "castle-hall",
+      "title": "The great hall: the long table and benches, the lord chair, banners, a torch, the hearth (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 517.5,
+        "y": 31.55,
+        "z": 292.5,
+        "yaw": -90,
+        "pitch": -60
+      }
+    },
+    {
+      "name": "castle-hall-night",
+      "title": "The great hall at night, by its fire and torches (22:00)",
+      "seed": 42,
+      "hour": 22,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 517.5,
+        "y": 31.55,
+        "z": 292.5,
+        "yaw": -90,
+        "pitch": -60
+      }
+    },
+    {
+      "name": "castle-keep",
+      "title": "Up in the keep bell chamber, looking out over the courtyard (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 495.5,
+        "y": 49.6,
+        "z": 276.4,
+        "yaw": 90,
+        "pitch": -200
       }
     }
   ]

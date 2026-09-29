@@ -4,7 +4,9 @@
 // Retired in phase 2, because the world is now v2's own: the materials, the world state and
 // generateWorld (v1 118-119, 261-360: regions, terrain shaping, coasts and marsh pools), tree
 // placement and its constants (v1 906-958: plants by region) and the lighting update (v1 1100-1126:
-// shadows and hollows).
+// shadows and hollows). Retired in phase 4: the structures (v1 454-775: voxel templates, castles,
+// towers, ruins, standing stones and their placement), redesigned as v2's own (castles with a church
+// at their heart). The collision code that walks you through them is still v1's (movement, below).
 //   node tools/check-verbatim.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,7 +19,6 @@ const SECTIONS = [   // [first line, last line, what]
   [89, 113, 'world and movement constants'],
   [202, 260, 'helpers and noise'],
   [361, 453, 'rivers'],
-  [454, 775, 'structures'],
   [776, 905, 'roads'],
   [959, 1099, 'birds, lights, clouds, merchants, sky'],
   [1223, 1306, 'camera and input (up to the cell-size key)'],

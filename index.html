@@ -146,8 +146,8 @@ const DAY_SECONDS = 240;                  // one full in-game day in real second
 const START_HOUR = 9;
 
 const MAT = { WATER: 0, GRASS: 1, ROCK: 2, SNOW: 3, HAZE: 4, STONE: 5, WOOD: 6, LEAF: 7, ROAD: 8, GRASS2: 9, SAND: 10, REDROCK: 11, DRYGRASS: 12, MUD: 13, REEDS: 14, PLASTER: 15, TILES: 16, THATCH: 17, GLASS: 18,
-  BRICK: 19, MARBLE: 20, FRESCO: 21, ICON: 22, GILD: 23, STARS: 24 };
-const MAT_COUNT = 25;   // (15 and up are only ever buildings: phase 3's settlements, phase 4's churches)
+  BRICK: 19, MARBLE: 20, FRESCO: 21, ICON: 22, GILD: 23, STARS: 24, BANNER: 25 };
+const MAT_COUNT = 26;   // (15 and up are only ever buildings: phase 3's settlements, phase 4's churches)
 const ROBE_COUNT = 4;
 
 // Regions. Every cell of land belongs to one, picked from its climate and height; where two meet
@@ -530,7 +530,9 @@ function generateWorld(seed) {
 
   // 5. Landmarks. Castles, towers and ruins level the ground under themselves, so this
   //    has to run before slopes are turned into materials and normals.
+  world.chimneys = []; world.domes = []; world.bells = [];
   placeStructures(rng);
+  structureExtras();        // (phase 4: the castles' domes, bells, chimneys: from their templates into the world)
   placeSettlements(seed);   // (phase 3: hamlets and villages, before the roads so the roads reach them)
   castleFlags();
 
@@ -546,6 +548,7 @@ function generateWorld(seed) {
   placeLights(rng);
   bridgeLights();
   settlementLights();
+  structureLights();
 
   // 7. Materials and lighting normals, then what shades the ground (hollows, and whatever stands on it),
   //    and where dawn fog lies.
@@ -1031,149 +1034,108 @@ function makeTemplate(sx, sy, sz) {
   return T;
 }
 
-// Building blocks shared by the castle variants.
-function wallRing(T, a, b, top) {                   // square ring of wall from (a,a) to (b,b), y 1..top, crenellated
-  T.box(a, 1, a, b, top, a, VOX.STONE); T.box(a, 1, b, b, top, b, VOX.STONE);
-  T.box(a, 1, a, a, top, b, VOX.STONE); T.box(b, 1, a, b, top, b, VOX.STONE);
-  for (let i = a; i <= b; i += 2) { T.set(i, top + 1, a, VOX.STONE); T.set(i, top + 1, b, VOX.STONE); T.set(a, top + 1, i, VOX.STONE); T.set(b, top + 1, i, VOX.STONE); }
-}
-function towerBlock(T, x, z, top) {                 // 3×3 tower with its corner at (x, z), crenels on the corners
-  T.box(x, 1, z, x + 2, top, z + 2, VOX.STONE);
-  T.set(x, top + 1, z, VOX.STONE); T.set(x + 2, top + 1, z, VOX.STONE); T.set(x, top + 1, z + 2, VOX.STONE); T.set(x + 2, top + 1, z + 2, VOX.STONE);
-}
-function gatehouse(T, x, z0, z1, top) {              // 5-wide block from z0..z1 with a 3-wide, 5-high passage through it
-  T.box(x, 1, z0, x + 4, top, z1, VOX.STONE);
-  T.box(x + 1, 1, z0, x + 3, 5, z1, 0);
-  T.set(x, top + 1, z1, VOX.STONE); T.set(x + 2, top + 1, z1, VOX.STONE); T.set(x + 4, top + 1, z1, VOX.STONE);
-}
-// A keep: solid block with a hollow interior, a wooden ground floor, an upper floor reached by
-// single-step stairs around the inside wall (holes where they pass), a door on the south side
-// and windows. x0..x1 / z0..z1 is the outer footprint; the interior is one cell in.
-function keepBlock(T, x0, z0, x1, z1, top, floorY) {
-  T.box(x0, 1, z0, x1, top, z1, VOX.STONE);
-  T.box(x0 + 1, 1, z0 + 1, x1 - 1, top - 1, z1 - 1, 0);
-  T.box(x0 + 1, 0, z0 + 1, x1 - 1, 0, z1 - 1, VOX.WOOD);
-  T.box(x0 + 1, floorY, z0 + 1, x1 - 1, floorY, z1 - 1, VOX.WOOD);
-  const cx = (x0 + x1) >> 1;
-  T.box(cx, 1, z1, cx, 4, z1, 0);                                     // door
-  for (let i = x0; i <= x1; i += 2) { T.set(i, top + 1, z0, VOX.STONE); T.set(i, top + 1, z1, VOX.STONE); T.set(x0, top + 1, i - x0 + z0, VOX.STONE); T.set(x1, top + 1, i - x0 + z0, VOX.STONE); }
-  for (const y of [3, floorY + 2]) { T.set(x0, y, (z0 + z1) >> 1, 0); T.set(x1, y, (z0 + z1) >> 1, 0); T.set(cx, y, z0, 0); }   // windows
-  // stair ring: the interior perimeter, clockwise from just past the door-side cell
-  const ix0 = x0 + 1, iz0 = z0 + 1, ix1 = x1 - 1, iz1 = z1 - 1, ring = [];
-  for (let x = cx + 1; x <= ix1; x++) ring.push([x, iz1]);
-  for (let z = iz1 - 1; z >= iz0; z--) ring.push([ix1, z]);
-  for (let x = ix1 - 1; x >= ix0; x--) ring.push([x, iz0]);
-  for (let z = iz0 + 1; z <= iz1; z++) ring.push([ix0, z]);
-  for (let x = ix0 + 1; x <= cx; x++) ring.push([x, iz1]);
-  for (let y = 1; y <= floorY; y++) { const [x, z] = ring[(y - 1) % ring.length]; T.set(x, y, z, VOX.WOOD); }
-  for (const y of [floorY - 2, floorY - 1]) { const [x, z] = ring[(y - 1) % ring.length]; T.set(x, floorY, z, 0); }
+// Castles, towers and ruins (phase 4: each has a purpose, a church at a castle's heart). Their extra
+// parts (domes, candles, chandeliers, bells, hearth fires, chimneys, flag poles) ride on the template as
+// T.extras, in its own coordinates; structureExtras puts them in the world once it is placed.
+
+// A keep, or a tower on its own: a square stone tower, 7 across, its door on the south. A stair of
+// single wooden steps climbs round the inside of the walls through two floors to a bell chamber (open
+// arches on every side, a bell hung in the middle) under a pyramid roof. Each floor has its use: a guard
+// room (a table and a bench), a storeroom (barrels), a chamber (a bed and a chest). Arrow slits.
+const KEEP_RING = [[4, 5], [5, 5], [5, 4], [5, 3], [5, 2], [5, 1], [4, 1], [3, 1], [2, 1], [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [2, 5], [3, 5]];
+function buildKeep(rng) {
+  const S = 7, F1 = 6, F2 = 12, F3 = 18, T = makeTemplate(S, 27, S), ST = VOX.STONE, WD = VOX.WOOD;
+  T.box(0, 0, 0, S - 1, 0, S - 1, ST);
+  T.box(0, 1, 0, S - 1, F3 + 3, S - 1, ST); T.box(1, 1, 1, S - 2, F3 + 3, S - 2, 0);                  // the walls, hollow
+  for (const F of [F1, F2, F3]) T.box(1, F, 1, S - 2, F, S - 2, WD);                                 // the floors
+  for (let y = 1; y <= F3; y++) { const [x, z] = KEEP_RING[(y - 1) % 16]; T.set(x, y, z, WD); }      // the stair
+  for (const F of [F1, F2, F3]) for (const y of [F - 2, F - 1]) { const [x, z] = KEEP_RING[(y - 1) % 16]; T.set(x, F, z, 0); }   // (holes where it climbs through)
+  T.box(3, 1, 6, 3, 3, 6, 0);                                                                         // the door
+  for (const y of [3, 9, 15]) { T.set(0, y, 3, 0); T.set(6, y, 3, 0); T.set(3, y + 1, 0, 0); }      // arrow slits
+  T.set(2, 1, 3, WD); T.set(2, 1, 4, WD);                                                             // the guard room: a table and a bench
+  T.box(2, F1 + 1, 2, 3, F1 + 1, 2, WD); T.set(2, F1 + 2, 2, WD);                                     // the storeroom: barrels
+  T.box(2, F2 + 1, 3, 2, F2 + 1, 4, WD); T.set(4, F2 + 1, 2, WD);                                     // the chamber: a bed, a chest
+  for (const [x0, z0, x1, z1] of [[2, 0, 4, 0], [2, 6, 4, 6], [0, 2, 0, 4], [6, 2, 6, 4]]) T.box(x0, F3 + 1, z0, x1, F3 + 2, z1, 0);   // the bell chamber's arches
+  for (let k = 0; k <= 3; k++) T.box(k, F3 + 4 + k, k, S - 1 - k, F3 + 4 + k, S - 1 - k, VOX.TILES); // the pyramid roof
+  T.extras = { bells: [[3.5, F3 + 2.4, 3.5]] };
+  return { T, hx: S, hy: 27, hz: S, chimneys: [], lamp: null, door: [3.5, 6.5], bells: T.extras.bells };
 }
 
-// Keep castle, 21×21: outer wall with six towers and a gatehouse, an inner ward wall with
-// corner turrets and its own gate, and a two-storey keep, all gates aligned on the south.
-function buildKeepCastle() {
-  const S = 21, T = makeTemplate(S, 16, S);
-  T.box(0, 0, 0, S - 1, 0, S - 1, VOX.STONE);
-  wallRing(T, 1, S - 2, 6);
-  for (const [x, z] of [[0, 0], [S - 3, 0], [0, S - 3], [S - 3, S - 3], [9, 0], [S - 3, 9], [0, 9]]) towerBlock(T, x, z, 9);
-  gatehouse(T, 8, 17, S - 1, 8);
-  wallRing(T, 5, 15, 7);
-  for (const [x, z] of [[4, 4], [14, 4], [4, 14], [14, 14]]) towerBlock(T, x, z, 9);
-  T.box(9, 1, 15, 11, 5, 15, 0);                                        // inner gate
-  keepBlock(T, 7, 6, 13, 12, 11, 6);
-  return T;
-}
-
-// Concentric castle, 27×27: three wall rings each taller than the last, eight outer towers,
-// turrets on the inner rings, aligned gates, and a keep at the centre.
-function buildConcentricCastle() {
-  const S = 27, T = makeTemplate(S, 16, S);
-  T.box(0, 0, 0, S - 1, 0, S - 1, VOX.STONE);
-  wallRing(T, 1, S - 2, 6);
-  for (const [x, z] of [[0, 0], [S - 3, 0], [0, S - 3], [S - 3, S - 3], [12, 0], [S - 3, 12], [0, 12]]) towerBlock(T, x, z, 9);
-  gatehouse(T, 11, 23, S - 1, 8);
-  wallRing(T, 5, S - 6, 7);
-  for (const [x, z] of [[4, 4], [S - 7, 4], [4, S - 7], [S - 7, S - 7]]) towerBlock(T, x, z, 10);
-  T.box(12, 1, S - 6, 14, 5, S - 6, 0);
-  wallRing(T, 9, S - 10, 8);
-  for (const [x, z] of [[8, 8], [S - 11, 8], [8, S - 11], [S - 11, S - 11]]) towerBlock(T, x, z, 11);
-  T.box(12, 1, S - 10, 14, 5, S - 10, 0);
-  keepBlock(T, 11, 11, 15, 15, 12, 5);
-  return T;
-}
-
-// Curtain wall with crenellations, four corner towers, a gatehouse with a passage through it,
-// and a roofed great hall inside the courtyard with its own doorway and windows.
-function buildCastle() {
-  const S = 15, T = makeTemplate(S, 12, S), ST = VOX.STONE, WD = VOX.WOOD;
-  T.box(0, 0, 0, S - 1, 0, S - 1, ST);                                            // paved ground
-  T.box(1, 1, 1, S - 2, 6, 1, ST); T.box(1, 1, S - 2, S - 2, 6, S - 2, ST);        // curtain wall
-  T.box(1, 1, 1, 1, 6, S - 2, ST); T.box(S - 2, 1, 1, S - 2, 6, S - 2, ST);
-  for (let i = 1; i <= S - 2; i += 2) {                                           // crenellations
-    T.set(i, 7, 1, ST); T.set(i, 7, S - 2, ST); T.set(1, 7, i, ST); T.set(S - 2, 7, i, ST);
+// A castle round a church, in three sizes. A paved courtyard inside a curtain wall two thick and
+// crenellated, towers at its corners (and in the middle of the west wall of the bigger two); a
+// gatehouse in the middle of the south wall, its three-wide passage arched, in line with the church's
+// door; a stair up to the wall-walk beside it, and a well; the keep in the back left corner; in the
+// bigger two, a great hall along the east wall: a long table with benches and the lord's chair at its
+// head, a fire in the hearth at the end under a chimney, banners on the walls, torches between them.
+const FORT = {
+  small: { S: 25, church: 'chapel', hall: false, midTower: false },
+  fortress: { S: 31, church: 'church', hall: true, midTower: true },
+  citadel: { S: 37, church: 'cathedral', hall: true, midTower: true },
+};
+function buildFortress(kind, rng) {
+  const F = FORT[kind], S = F.S, c = S >> 1, WH = 7, T = makeTemplate(S, 30, S), ST = VOX.STONE;
+  const ex = { domes: [], candles: [], horos: [], bells: [], chimneys: [], fires: [], flags: [], sconces: [] };
+  const add = d => { for (const k of ['domes', 'candles', 'horos', 'bells']) if (d[k]) ex[k].push(...d[k]); };
+  T.box(0, 0, 0, S - 1, 0, S - 1, ST);                                                                // the courtyard's paving
+  T.box(0, 1, 0, S - 1, WH, 1, ST); T.box(0, 1, S - 2, S - 1, WH, S - 1, ST);                         // the curtain wall
+  T.box(0, 1, 0, 1, WH, S - 1, ST); T.box(S - 2, 1, 0, S - 1, WH, S - 1, ST);
+  for (let i = 0; i < S; i += 2) { T.set(i, WH + 1, 0, ST); T.set(i, WH + 1, S - 1, ST); T.set(0, WH + 1, i, ST); T.set(S - 1, WH + 1, i, ST); }
+  const tower = (x, z) => {
+    T.box(x, 1, z, x + 4, WH + 3, z + 4, ST);
+    for (const [a, b] of [[0, 0], [2, 0], [4, 0], [0, 2], [4, 2], [0, 4], [2, 4], [4, 4]]) T.set(x + a, WH + 4, z + b, ST);
+    ex.flags.push([x + 2.5, WH + 4, z + 2.5]);
+  };
+  tower(S - 5, 0); tower(0, S - 5); tower(S - 5, S - 5);
+  if (F.midTower) tower(0, c - 2);
+  T.box(c - 3, 1, S - 6, c + 3, WH + 2, S - 1, ST);                                                   // the gatehouse
+  for (let i = c - 3; i <= c + 3; i += 2) { T.set(i, WH + 3, S - 1, ST); T.set(i, WH + 3, S - 6, ST); }
+  T.box(c - 1, 1, S - 6, c + 1, 4, S - 1, 0);                                                         // its passage, the arch's corners
+  for (const z of [S - 6, S - 1]) { T.set(c - 1, 4, z, ST); T.set(c + 1, 4, z, ST); }
+  for (let k = 1; k <= WH; k++) T.box(2, 1, S - 6 - k, 2, k, S - 6 - k, ST);                         // a stair up to the wall-walk, along the west wall
+  T.box(c + 4, 1, S - 9, c + 6, 1, S - 7, ST); T.set(c + 5, 1, S - 8, 0); T.set(c + 5, 0, S - 8, 0);   // a well in the forecourt: a ring round a hole
+  const keep = buildKeep(rng);                                                                        // the keep, its door on the courtyard
+  add(stampHouse(T, keep, 0, 0, 0, 0));
+  const ch = buildChurch(CHURCH[F.church], rng), cX = c - Math.floor(ch.door[0]), cZ = S - 10 - ch.hz;   // the church, its door facing the gate
+  const cd = stampHouse(T, ch, cX, cZ, 0, 0);
+  add(cd);
+  T.set(Math.floor(cd.door[0]), 0, Math.floor(cd.door[2]), ST); T.set(Math.floor(cd.door[0]), 0, Math.floor(cd.door[2]) - 1, ST);   // (its threshold paved, as the courtyard is)
+  if (F.hall) {                                                                                       // the great hall, along the east wall
+    const x0 = S - 9, x1 = S - 3, z0 = 7, z1 = S - 10, xm = (x0 + x1) >> 1, zm = (z0 + z1) >> 1, H = 5;
+    T.box(x0, 1, z0, x1, H, z1, ST); T.box(x0 + 1, 1, z0 + 1, x1 - 1, H, z1 - 1, 0); T.box(x0 + 1, 0, z0 + 1, x1 - 1, 0, z1 - 1, VOX.WOOD);
+    T.box(x0, 1, zm, x0, 3, zm, 0);                                                                   // the door, on the courtyard
+    for (let z = z0 + 2; z <= z1 - 2; z += 3) if (Math.abs(z - zm) > 1) T.set(x0, 3, z, VOX.GLASS);  // windows
+    for (let k = 0; k * 2 <= x1 - x0 + 2; k++) T.box(x0 - 1 + k, H + 1 + k, z0, x1 + 1 - k, H + 1 + k, z1, VOX.TILES);   // the roof
+    T.box(xm, 1, z0 + 4, xm, 1, z1 - 3, VOX.WOOD);                                                    // the long table
+    for (let z = z0 + 5; z <= z1 - 4; z += 2) { T.set(xm - 1, 1, z, VOX.WOOD); T.set(xm + 1, 1, z, VOX.WOOD); }   // benches either side
+    T.box(xm, 1, z0 + 3, xm, 2, z0 + 3, VOX.WOOD);                                                    // the lord's chair, at the head
+    T.box(xm - 1, 1, z0 + 1, xm + 1, 3, z0 + 1, ST); T.box(xm, 1, z0 + 1, xm, 2, z0 + 1, 0);          // the hearth
+    const top = H + 1 + ((x1 - x0 + 2) >> 1) + 1;
+    T.box(xm, 4, z0 + 1, xm, top, z0 + 1, ST);                                                        // its chimney
+    for (let z = z0 + 3; z <= z1 - 2; z += 3) T.box(x1, 2, z, x1, 4, z, VOX.BANNER);                  // banners on the east wall
+    for (let z = z0 + 4; z <= z1 - 3; z += 6) ex.sconces.push([x1 - 0.45, 3.4, z + 2.0]);             // torches between them
+    ex.fires.push([xm + 0.5, 1.05, z0 + 1.5]); ex.chimneys.push([xm + 0.5, top + 1, z0 + 1.5]);
   }
-  for (const [x, z] of [[0, 0], [S - 3, 0], [0, S - 3], [S - 3, S - 3]]) {         // corner towers
-    T.box(x, 1, z, x + 2, 9, z + 2, ST);
-    T.set(x, 10, z, ST); T.set(x + 2, 10, z, ST); T.set(x, 10, z + 2, ST); T.set(x + 2, 10, z + 2, ST);
-  }
-  T.box(5, 1, 11, 9, 8, S - 1, ST);                                               // gatehouse
-  T.box(6, 1, 11, 8, 5, S - 1, 0);                                                // passage through it
-  T.set(5, 9, S - 1, ST); T.set(7, 9, S - 1, ST); T.set(9, 9, S - 1, ST);
-  T.box(3, 1, 2, 11, 7, 7, ST);                                                   // great hall: walls + roof
-  T.box(4, 1, 3, 10, 6, 6, 0);                                                    // hollow inside
-  T.box(4, 0, 3, 10, 0, 6, WD);                                                   // wooden floor
-  T.box(6, 1, 7, 8, 4, 7, 0);                                                     // doorway onto the courtyard
-  T.set(3, 3, 4, 0); T.set(11, 3, 4, 0); T.set(5, 3, 2, 0); T.set(9, 3, 2, 0);    // windows
+  T.extras = ex;
   return T;
 }
 
-// Round-ish tower with two wooden floors and a spiral stair of single wooden steps that
-// follows a 16-cell ring inside the wall, one unit up per cell, starting just past the
-// doorway so the entrance stays clear. The floors have holes where the stair passes.
-const STAIR_RING = [[5, 6], [6, 6], [6, 5], [6, 4], [6, 3], [6, 2], [5, 2], [4, 2], [3, 2], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [3, 6], [4, 6]];
-function buildTower() {
-  const S = 9, TOP = 18, T = makeTemplate(S, TOP + 2, S), ST = VOX.STONE, WD = VOX.WOOD, c = 4;
-  for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
-    const r = Math.hypot(x - c, z - c);
-    if (r > 4.3) continue;
-    T.set(x, 0, z, ST);
-    if (r > 3.2) {
-      T.box(x, 1, z, x, TOP, z, ST);
-      if ((x + z) & 1) T.set(x, TOP + 1, z, ST);   // crenellations
-    } else {
-      T.set(x, TOP, z, ST);                        // roof
-      T.set(x, 6, z, WD); T.set(x, 12, z, WD);     // floors
-    }
-  }
-  const stair = y => STAIR_RING[(y - 1) % STAIR_RING.length];
-  for (let y = 1; y <= 12; y++) { const [x, z] = stair(y); T.set(x, y, z, WD); }
-  for (const F of [6, 12]) for (const y of [F - 2, F - 1]) { const [x, z] = stair(y); T.set(x, F, z, 0); }   // stair holes
-  T.box(c, 1, 8, c, 5, 8, 0);                                                     // doorway (south side)
-  T.set(0, 4, c, 0); T.set(8, 9, c, 0); T.set(c, 15, 0, 0);                        // windows
-  return T;
-}
-
-// A castle or tower with its walls knocked down to a noisy height, one section breached
-// entirely, the roof mostly gone, and rubble scattered where things fell.
+// A ruined church: a chapel with its walls fallen to a ragged height, its roof and dome gone, one side
+// broken through and rubble where things fell; frescoes still on what stands.
 function buildRuin(rng) {
-  const T = rng() < 0.6 ? buildCastle() : buildTower();
-  const { sx, sy, sz } = T;
-  const ns = (rng() * 1e6) | 0;
-  const removed = [];
+  const S = 17, T = makeTemplate(S, 16, S), ch = buildChurch(CHURCH.chapel, rng);
+  stampHouse(T, ch, (S >> 1) - Math.floor(ch.door[0]), 2, 0, 0);
+  const { sx, sy, sz } = T, ns = (rng() * 1e6) | 0, removed = [];
   for (let x = 0; x < sx; x++) for (let z = 0; z < sz; z++) {
     const n = valueNoise(x * 0.35 + 0.5, z * 0.35 + 0.5, 64, ns) * 0.7 + valueNoise(x * 0.9, z * 0.9, 64, ns + 3) * 0.3;
-    const keep = 1 + Math.floor(n * 8);
-    for (let y = keep + 1; y < sy; y++) if (T.get(x, y, z)) { T.set(x, y, z, 0); removed.push(x, z); }
+    const keep = 1 + Math.floor(n * 6);
+    for (let y = 1; y < sy; y++) { const m = T.get(x, y, z); if (m && (y > keep || m === VOX.TILES || m === VOX.GLASS || m === VOX.GILD)) { T.set(x, y, z, 0); removed.push(x, z); } }
   }
-  const side = (rng() * 4) | 0, at = 1 + ((rng() * Math.max(1, sx - 7)) | 0);
-  for (let i = 0; i < 5; i++) for (let y = 1; y < sy; y++) {
-    if (side === 0) T.set(at + i, y, 1, 0); else if (side === 1) T.set(at + i, y, sz - 2, 0);
-    else if (side === 2) T.set(1, y, at + i, 0); else T.set(sx - 2, y, at + i, 0);
-  }
+  const at = 4 + ((rng() * 5) | 0);
+  for (let i = 0; i < 3; i++) for (let y = 1; y < sy; y++) T.set(1 + ((rng() * 2) | 0) * 8, y, at + i, 0);   // a breach in a side wall
   for (let i = 0; i < removed.length; i += 2) {
-    if (rng() > 0.08) continue;
+    if (rng() > 0.06) continue;
     const x = removed[i] + ((rng() * 5) | 0) - 2, z = removed[i + 1] + ((rng() * 5) | 0) - 2;
-    if (T.inside(x, 1, z) && !T.get(x, 1, z) && T.get(x, 0, z)) T.set(x, 1, z, VOX.STONE);
+    if (T.inside(x, 1, z) && !T.get(x, 1, z)) T.set(x, 1, z, VOX.STONE);
   }
   return T;
 }
@@ -1214,19 +1176,19 @@ function flatten(cx, cz, r, y) {
 // its own flatness tolerance, and every structure keeps a minimum distance from every other.
 function placeStructures(rng) {
   const { H, water, seaLevel } = world;
-  const castleKinds = [
-    { variant: 'small', half: 7, build: buildCastle },
-    { variant: 'keep', half: 10, build: buildKeepCastle },
-    { variant: 'concentric', half: 13, build: buildConcentricCastle },
+  const castleKinds = [   // (phase 4: castles round a church, in three sizes)
+    { variant: 'small', half: 12, build: rng => buildFortress('small', rng) },
+    { variant: 'fortress', half: 15, build: rng => buildFortress('fortress', rng) },
+    { variant: 'citadel', half: 18, build: rng => buildFortress('citadel', rng) },
   ];
   // One of each castle design per world, plus one more at random, in a seeded order.
   const castleOrder = castleKinds.slice();
   for (let i = castleOrder.length - 1; i > 0; i--) { const j = (rng() * (i + 1)) | 0; const t = castleOrder[i]; castleOrder[i] = castleOrder[j]; castleOrder[j] = t; }
   castleOrder.push(castleKinds[(rng() * castleKinds.length) | 0]);
   const specs = [
-    { type: 'castle', count: 4, half: 7, flat: 7, build: buildCastle, kinds: castleOrder },
-    { type: 'tower', count: 5, half: 4, flat: 6, build: buildTower },
-    { type: 'ruin', count: 5, half: 7, flat: 12, build: buildRuin },
+    { type: 'castle', count: 4, half: 12, flat: 7, kinds: castleOrder },
+    { type: 'tower', count: 5, half: 4, flat: 6, build: rng => buildKeep(rng).T },
+    { type: 'ruin', count: 5, half: 8, flat: 12, build: buildRuin },
     { type: 'stones', count: 10, half: 4, flat: 14, hilltop: true },
   ];
   const cands = [];
@@ -1321,8 +1283,8 @@ function placeStructures(rng) {
 // - Every house faces the square (or the green) with its gable end, the door in it.
 // - After dark the windows glow, a lamp lights each room, and the torches burn (settlementLights).
 //   Chimneys smoke (world.chimneys, drawn by the renderer).
-Object.assign(VOX, { PLASTER: 3, TILES: 4, THATCH: 5, GLASS: 6, BRICK: 7, MARBLE: 8, FRESCO: 9, ICON: 10, GILD: 11, STARS: 12 });
-VOX_MAT.push(MAT.PLASTER, MAT.TILES, MAT.THATCH, MAT.GLASS, MAT.BRICK, MAT.MARBLE, MAT.FRESCO, MAT.ICON, MAT.GILD, MAT.STARS);
+Object.assign(VOX, { PLASTER: 3, TILES: 4, THATCH: 5, GLASS: 6, BRICK: 7, MARBLE: 8, FRESCO: 9, ICON: 10, GILD: 11, STARS: 12, BANNER: 13 });
+VOX_MAT.push(MAT.PLASTER, MAT.TILES, MAT.THATCH, MAT.GLASS, MAT.BRICK, MAT.MARBLE, MAT.FRESCO, MAT.ICON, MAT.GILD, MAT.STARS, MAT.BANNER);
 const SETTLE = {
   village: { count: 4, size: 46, square: 5, houses: [8, 15], flat: 8 },    // (flat: the most the land under the square may rise)
   hamlet: { count: 6, size: 34, square: 3, houses: [3, 6], flat: 9 },
@@ -1336,61 +1298,85 @@ const HOUSE_KINDS = {
   barn: { w: 7, d: [9], h: 4, roofs: [VOX.THATCH], walls: VOX.WOOD, chimneys: 0, bigDoor: true, dark: true },
 };
 
-// A village chapel, an Orthodox church in small (phase 4), in the same frame as a house (the door at
-// the highest z). Walls two layers thick: stone striped with brick outside; inside, frescoes up to the
-// windows and a starry vault above. A drum rises through the tiled roof over the nave, windowed and
-// open below, so from the nave you look up into it; a dome and a cross stand on it. A rounded apse
-// behind holds the altar; the iconostasis (four icons, the Royal Doors between them, a gilded crest)
-// closes it off from the nave. Two candle stands before it, a chandelier (horos) hung from the drum.
-function buildChapel(rng) {
-  const hx = 11, hz = 13, H = 5, hy = 14, T = makeTemplate(hx, hy, hz);
+// Churches (phase 4), after the Orthodox churches of Bulgaria, in three sizes: a village chapel, a
+// castle's church, and a citadel's cathedral with two small domes over its front corners. In the frame
+// of a house (the door at the highest z). Walls two layers thick: stone striped with brick outside;
+// inside, frescoes up to the windows and a starry vault above. A drum rises through the tiled roof over
+// the nave, windowed and open below, so from the nave you look up into it; a dome and a cross stand on
+// it. A rounded apse behind holds the altar; the iconostasis (icons, the Royal Doors in the middle and
+// in a bigger church a deacon's door either side, a gilded crest) closes it off from the nave. Candle
+// stands before it (and by the door in a bigger church), a chandelier (horos) hung from the drum.
+const CHURCH = {
+  chapel: { iw: 5, il: 6, H: 5, drumR: 2.45, drumTop: 12, domeR: 2.5, stands: 2 },
+  church: { iw: 7, il: 8, H: 6, drumR: 2.9, drumTop: 14, domeR: 3, stands: 4 },
+  cathedral: { iw: 9, il: 10, H: 7, drumR: 3.35, drumTop: 16, domeR: 3.5, stands: 4, sideDomes: true },
+};
+function buildChurch(o, rng) {
+  const { iw, il, H } = o, hx = iw + 6, hz = il + 7, hy = o.drumTop + 3, T = makeTemplate(hx, hy, hz);
+  const cx = (hx - 1) >> 1, zf = hz - 1;   // the middle column (the door, the Royal Doors), the front wall
   const striped = y => y % 3 === 0 ? VOX.BRICK : VOX.STONE;
-  const cx = 5.5, dz = 9.5, ax = 5.5, az = 3.5;   // (the drum's middle, the apse's middle)
-  for (let x = 1; x <= 9; x++) for (let z = 3; z <= 12; z++) T.set(x, 0, z, x >= 3 && x <= 7 && z >= 5 && z <= 10 && ((x + z) & 1) ? VOX.MARBLE : VOX.STONE);   // the floor
-  for (let y = 1; y <= H; y++) for (let x = 1; x <= 9; x++) for (let z = 3; z <= 12; z++) {
-    const outer = x === 1 || x === 9 || z === 3 || z === 12, inner = !outer && (x === 2 || x === 8 || z === 4 || z === 11);
+  const dcx = hx / 2, dcz = (8 + (zf - 2) + 1) / 2, ra = (iw + 1) / 2 + 0.1, ri = ra - 1.1;   // (the drum's middle; the apse's radii)
+  const domeRamp = rng() < 0.5 ? R.gild : R.stone;
+  for (let x = 1; x <= hx - 2; x++) for (let z = 3; z <= zf; z++) T.set(x, 0, z, x >= 3 && x <= hx - 4 && z >= 5 && z <= zf - 2 && ((x + z) & 1) ? VOX.MARBLE : VOX.STONE);   // the floor
+  for (let y = 1; y <= H; y++) for (let x = 1; x <= hx - 2; x++) for (let z = 3; z <= zf; z++) {   // the walls, two layers
+    const outer = x === 1 || x === hx - 2 || z === 3 || z === zf, inner = !outer && (x === 2 || x === hx - 3 || z === 4 || z === zf - 1);
     if (outer) T.set(x, y, z, striped(y)); else if (inner) T.set(x, y, z, y <= 4 ? VOX.FRESCO : VOX.STARS);
   }
-  for (let k = 0; k <= 5; k++) {   // the roof, stepped, the gables in striped stone
+  for (let k = 0; k <= (hx - 1) >> 1; k++) {   // the roof, stepped, the gables in striped stone
     const y = H + 1 + k;
-    T.box(k, y, 3, 10 - k, y, 12, VOX.TILES);
-    if (k > 0 && 9 - k >= k + 1) { T.box(k + 1, y, 3, 9 - k, y, 3, striped(y)); T.box(k + 1, y, 12, 9 - k, y, 12, striped(y)); }
+    T.box(k, y, 3, hx - 1 - k, y, zf, VOX.TILES);
+    if (k > 0 && hx - 2 - k >= k + 1) { T.box(k + 1, y, 3, hx - 2 - k, y, 3, striped(y)); T.box(k + 1, y, zf, hx - 2 - k, y, zf, striped(y)); }
   }
-  for (let x = 2; x <= 8; x++) for (let z = 6; z <= 12; z++) {   // the drum, its ceiling a starry vault, its windows
-    const d = Math.hypot(x + 0.5 - cx, z + 0.5 - dz), a = Math.atan2(z + 0.5 - dz, x + 0.5 - cx);
-    if (d > 2.45) continue;
-    for (let y = H + 1; y <= 12; y++) {
-      if (d < 1.4) T.set(x, y, z, y === 12 ? VOX.STARS : 0);
-      else T.set(x, y, z, (y === 9 || y === 10) && Math.abs(((a / (Math.PI / 4)) % 1 + 1) % 1 - 0.5) > 0.3 ? VOX.GLASS : striped(y));
+  const drum = (mx, mz, r, y0, top) => {   // a drum: a ring of striped stone with windows, open below, a starry vault on top
+    for (let x = Math.floor(mx - r); x <= Math.ceil(mx + r); x++) for (let z = Math.floor(mz - r); z <= Math.ceil(mz + r); z++) {
+      const d = Math.hypot(x + 0.5 - mx, z + 0.5 - mz), a = Math.atan2(z + 0.5 - mz, x + 0.5 - mx);
+      if (d > r) continue;
+      for (let y = y0; y <= top; y++) {
+        if (d < r - 1.05) T.set(x, y, z, y === top ? VOX.STARS : 0);
+        else T.set(x, y, z, (y === top - 3 || y === top - 2) && Math.abs(((a / (Math.PI / 4)) % 1 + 1) % 1 - 0.5) > 0.3 ? VOX.GLASS : striped(y));
+      }
     }
+  };
+  drum(dcx, dcz, o.drumR, H + 1, o.drumTop);
+  const domes = [[dcx, o.drumTop + 1, dcz, o.domeR, domeRamp]];
+  if (o.sideDomes) for (const mx of [3, hx - 3]) {   // two small drums and domes over the front corners
+    const mz = zf - 2.5;
+    for (let x = Math.floor(mx - 1.5); x < mx + 1.5; x++) for (let z = Math.floor(mz - 1.5); z < mz + 1.5; z++) for (let y = H + 1; y <= H + 6; y++) T.set(x, y, z, striped(y));
+    domes.push([mx, H + 7, mz, 1.7, domeRamp]);
   }
-  for (let x = 1; x <= 9; x++) for (let z = 0; z <= 2; z++) {   // the apse
-    const d = Math.hypot(x + 0.5 - ax, z + 0.5 - az);
-    if (d > 3.1) continue;
+  for (let x = 0; x < hx; x++) for (let z = 0; z <= 2; z++) {   // the apse
+    const d = Math.hypot(x + 0.5 - dcx, z + 0.5 - 3.5);
+    if (d > ra) continue;
     T.set(x, 0, z, VOX.MARBLE);
-    for (let y = 1; y <= 4; y++) T.set(x, y, z, d > 2 ? striped(y) : 0);
-    T.set(x, 5, z, VOX.TILES);
-    if (d <= 2) T.set(x, 6, z, VOX.TILES);
+    for (let y = 1; y < H; y++) T.set(x, y, z, d > ri ? striped(y) : 0);
+    T.set(x, H, z, VOX.TILES);
+    if (d <= ri) T.set(x, H + 1, z, VOX.TILES);
   }
-  T.box(4, 1, 3, 6, 3, 4, 0); T.box(4, 0, 3, 6, 0, 4, VOX.MARBLE);   // (the way from the sanctuary into the apse)
-  for (const x of [3, 4, 6, 7]) T.box(x, 1, 7, x, 4, 7, VOX.ICON);     // the iconostasis
-  T.set(5, 4, 7, VOX.GILD); T.box(3, 5, 7, 7, 5, 7, VOX.GILD);          // (over the Royal Doors, and the crest)
-  T.set(5, 1, 1, VOX.MARBLE); T.set(5, 2, 1, VOX.GILD);                 // the altar
-  T.set(1, 4, 8, VOX.GLASS); T.set(2, 4, 8, 0); T.set(9, 4, 8, VOX.GLASS); T.set(8, 4, 8, 0);   // windows either side of the nave
-  T.set(5, 4, 12, VOX.GLASS);                                          // (a window over the door)
-  T.box(5, 0, 11, 5, 3, 12, 0);                                        // the door, on the bare ground
+  T.box(cx - 1, 1, 3, cx + 1, 3, 4, 0); T.box(cx - 1, 0, 3, cx + 1, 0, 4, VOX.MARBLE);   // (the way from the sanctuary into the apse)
+  for (let x = 3; x <= hx - 4; x++) {   // the iconostasis: icons, the Royal Doors, the deacons' doors, gilded lintels and crest
+    const door = x === cx || (iw >= 7 && Math.abs(x - cx) === 2);
+    if (door) T.set(x, 4, 7, VOX.GILD); else T.box(x, 1, 7, x, 4, 7, VOX.ICON);
+    T.set(x, 5, 7, VOX.GILD);
+  }
+  if (H >= 6) T.set(cx, 6, 7, VOX.GILD);
+  T.set(cx, 1, 1, VOX.MARBLE); T.set(cx, 2, 1, VOX.GILD);                                   // the altar
+  const wz = Math.round(dcz - 0.5);
+  for (const [xo, xi] of [[1, 2], [hx - 2, hx - 3]]) { T.set(xo, H - 1, wz, VOX.GLASS); T.set(xi, H - 1, wz, 0); }   // windows either side of the nave
+  T.set(cx, H - 1, zf, VOX.GLASS);                                                          // (and over the door)
+  T.box(cx, 0, zf - 1, cx, 3, zf, 0);                                                       // the door, on the bare ground
+  const candles = [[3.5, 2.25, 8.5, 7], [hx - 3.5, 2.25, 8.5, 7]];
+  if (o.stands > 2) candles.push([3.5, 2.25, zf - 2.5, 5], [hx - 3.5, 2.25, zf - 2.5, 5]);
+  const hy0 = 1 + 3.2 + (H - 5) * 0.5;
   return {
-    T, hx, hy, hz, chimneys: [], lamp: null, door: [5.5, 12.5],
-    domes: [[cx, 13, dz, 2.5, rng() < 0.5 ? R.gild : R.stone]],
-    candles: [[3.5, 2.25, 8.5, 7], [7.5, 2.25, 8.5, 7]],
-    horos: [[cx, 4.2, dz, 1.0, 7.8]],
+    T, hx, hy, hz, chimneys: [], lamp: null, door: [cx + 0.5, zf + 0.5],
+    domes, candles, horos: [[dcx, hy0, dcz, o.drumR - 1.45, o.drumTop - hy0]],
   };
 }
 
 // One house in its own frame: the ridge runs front to back, the front (with the door) is at the
 // highest z. Returns its voxels, where its chimneys smoke from, and where its door light hangs.
 function buildHouse(kind, rng) {
-  if (kind === 'chapel') return buildChapel(rng);
+  if (kind === 'chapel') return buildChurch(CHURCH.chapel, rng);
   const H0 = HOUSE_KINDS[kind], w = H0.w, d = H0.d[(rng() * H0.d.length) | 0], H = H0.h;
   const roof = H0.roofs[(rng() * H0.roofs.length) | 0], walls = H0.walls;
   const ridge = H + 1 + ((w + 1) >> 1), hx = w + 2, hz = d, hy = ridge + 3;
@@ -1444,7 +1430,7 @@ function stampHouse(T, h, X, Z, dir, oy) {
     chimneys: h.chimneys.map(c => at(c, c[1])),
     lamp: h.lamp && [...at(h.lamp, h.lamp[1]), h.lamp[3]],
     door: at(h.door, 0), dir,
-    domes: all(h.domes), candles: all(h.candles), horos: all(h.horos),
+    domes: all(h.domes), candles: all(h.candles), horos: all(h.horos), bells: all(h.bells),
   };
 }
 
@@ -1538,7 +1524,6 @@ function buildSettlement(size, rng, cx, cz) {
 // other landmark, where the square's plot is fairly flat; villages first.
 function placeSettlements(seed) {
   const rng = mulberry32(seed ^ 0x5e771e), { H, water, biome } = world;
-  world.chimneys = []; world.domes = [];
   const cands = [];
   for (let z = 0; z < W; z += 4) for (let x = 0; x < W; x += 4) cands.push(z * W + x);
   for (let i = cands.length - 1; i > 0; i--) { const j = (rng() * (i + 1)) | 0; const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
@@ -1574,6 +1559,32 @@ function placeSettlements(seed) {
     }
   }
 }
+// A castle's or tower's extra parts, from its template's own coordinates into the world: domes, bells
+// and chimneys now; its lights (candles, chandeliers, hearth fires) once the world's lights are made.
+function structureExtras() {
+  const wrap = v => ((v % W) + W) % W;
+  for (const s of world.structs) {
+    const ex = s.tpl.extras;
+    if (!ex) continue;
+    const toW = p => [wrap(s.x0 + p[0]), s.baseY + p[1], wrap(s.z0 + p[2])];
+    for (const d of ex.domes || []) world.domes.push([...toW(d), d[3], d[4]]);
+    for (const b of ex.bells || []) world.bells.push(toW(b));
+    for (const c of ex.chimneys || []) world.chimneys.push([...toW(c), (c[0] * 1.3 + c[2]) % 10]);
+  }
+}
+function structureLights() {
+  const wrap = v => ((v % W) + W) % W;
+  for (const s of world.structs) {
+    const ex = s.tpl.extras;
+    if (!ex) continue;
+    const toW = p => [wrap(s.x0 + p[0]), s.baseY + p[1], wrap(s.z0 + p[2])];
+    for (const c of ex.candles || []) { const [x, y, z] = toW(c); world.lights.push({ x, y, z, r: 5, color: [1, 0.74, 0.4], i: 0.75, kind: 'candles', n: c[3], phase: (x * 3.1 + z * 1.7) % 6, size: 0.1 }); }
+    for (const c of ex.horos || []) { const [x, y, z] = toW(c); world.lights.push({ x, y, z, r: 8, color: [1, 0.76, 0.42], i: 0.85, kind: 'horos', n: 12, rad: c[3], chain: c[4], phase: (x * 2.3 + z) % 6, size: 0.1 }); }
+    for (const c of ex.fires || []) { const [x, y, z] = toW(c); world.lights.push({ x, y, z, r: 10, color: [1, 0.55, 0.2], i: 1.1, kind: 'fire', phase: (x + z) % 10, size: 0.55 }); }
+    for (const c of ex.sconces || []) { const [x, y, z] = toW(c); world.lights.push({ x, y, z, r: 8, color: [1, 0.62, 0.28], i: 0.9, kind: 'sconce', phase: (x * 1.7 + z) % 10, size: 0.45 }); }
+  }
+}
+
 // Flags on the highest roofs of castles and towers: a pole standing on a roof (a column whose eight
 // neighbours are as high), up to four a castle and one a tower, the cloth in a colour of each castle's.
 function castleFlags() {
@@ -1592,6 +1603,10 @@ function castleFlags() {
       if (roof) cols.push([h, x, z]);
     }
     cols.sort((a, b) => b[0] - a[0] || a[1] - b[1] || a[2] - b[2]);
+    if (T.extras && T.extras.flags) {   // (phase 4: a castle says where its tower tops are)
+      for (const [x, y, z] of T.extras.flags) flags.push([((s.x0 + x) % W + W) % W, s.baseY + y, ((s.z0 + z) % W + W) % W, colours[si % colours.length], (si * 3.7 + x) % 6.28]);
+      return;
+    }
     const picked = [], most = s.type === 'castle' ? 4 : 1;
     for (const c of cols) if (picked.length < most && !picked.some(p => Math.max(Math.abs(p[1] - c[1]), Math.abs(p[2] - c[2])) < 5)) picked.push(c);
     for (const [h, x, z] of picked) flags.push([((s.x0 + x + 0.5) % W + W) % W, s.baseY + h, ((s.z0 + z + 0.5) % W + W) % W, colours[si % colours.length], (si * 3.7 + x) % 6.28]);
@@ -2618,7 +2633,7 @@ function compose() {
 //      marks, or a narrow ░▒▓ band on a seam between two tones, fog layers or lit ground.
 //   3. Compose. The glyph masks are painted into one ImageData.
 const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2, R.sand, R.redrock, R.drygrass, R.mud, R.reeds, R.plaster, R.tiles, R.thatch, R.glass,
-  R.brick, R.marble, R.fresco, R.gild, R.gild, R.fresco]);
+  R.brick, R.marble, R.fresco, R.gild, R.gild, R.fresco, R.robe0]);
 // Rock strata: where a face of rock stands across several rows, its rows fall into bands by height,
 // each a step of tone from the next, with crisp edges between them (the band is part of the
 // segment). Red rock is banded strongly, grey rock gently.
@@ -2685,7 +2700,7 @@ function collectLights(t) {
   };
   for (const L of world.lights) {
     const flick = 0.85 + 0.15 * Math.sin(t * 9 + L.phase) * Math.sin(t * 5.3 + L.phase * 2);
-    const strength = L.kind === 'fire' ? Math.max(k, 0.3) : L.kind === 'candles' || L.kind === 'horos' ? Math.max(k, 0.6) : k;
+    const strength = L.kind === 'fire' ? Math.max(k, 0.3) : L.kind === 'candles' || L.kind === 'horos' || L.kind === 'sconce' ? Math.max(k, 0.6) : k;
     if (strength < 0.05) continue;
     add(L.x, L.y, L.z, L.r, L.color, L.i * flick * strength);
   }
@@ -2838,6 +2853,13 @@ function paintFigure(du, vv, h, bg, bgB, sc) {   // a standing saint, sc high (h
   patR = bg; patB = bgB;
 }
 function paintedWall(m, u, v) {
+  if (m === MAT.BANNER) {   // a banner in a castle's hall: red or blue cloth, a gold cross, a gold fringe below, a rod above
+    const c = Math.floor(u), lu = u - c - 0.5, cloth = hash2(c, 3, 919) < 0.5 ? R.robe0 : R.robe1;
+    if (v > 2.82) { patR = R.dark; patB = 0.4; return; }
+    if (v < 0.16) { patR = R.gild; patB = 0.7 + 0.2 * Math.sin(u * 40); return; }
+    if ((Math.abs(lu) < 0.07 && v > 1.1 && v < 2.5) || (Math.abs(v - 2.05) < 0.07 && Math.abs(lu) < 0.3)) { patR = R.gild; patB = 0.86; return; }
+    patR = cloth; patB = 0.5 + 0.1 * Math.sin(lu * 20); return;
+  }
   if (m === MAT.STARS) {   // the vaults: gold stars on the blue
     const sx = Math.floor(u * 1.4), sy = Math.floor(v * 1.4), gx = u * 1.4 - sx - 0.5, gy = v * 1.4 - sy - 0.5;
     if (hash2(sx, sy, 913) < 0.35 && gx * gx + gy * gy < 0.03) { patR = R.gild; patB = 0.85; } else { patR = R.fresco; patB = 0.36; }
@@ -3125,7 +3147,7 @@ function marchRays(t) {
             // near a light, the firelight at the top and bottom of the span, blended down it
             const lTop = perRow ? warmAt(ix + 0.5, wTop, iz + 0.5) : aLit, lBot = perRow ? warmAt(ix + 0.5, wBot, iz + 0.5) : aLit, kL = (lBot - lTop) / (wBot - wTop);
             const glow = m === MAT.GLASS && winGlow > 0;   // (a window after dark: lamplight inside)
-            const painted = m === MAT.FRESCO || m === MAT.ICON || m === MAT.STARS, pLight = 0.4 + 0.9 * aPos;
+            const painted = m === MAT.FRESCO || m === MAT.ICON || m === MAT.STARS || m === MAT.BANNER, pLight = 0.4 + 0.9 * aPos;
             for (let r = r0, i = col * RH + r0; r < r1; r++, i++) {
               if (kind[i] !== NONE) continue;
               const hy = camY + rayQ[r] * tt;
@@ -3744,6 +3766,16 @@ function drawSprites(t, poses) {
     pCapsule(dxw - 0.42, top + 0.98, dzw, dxw + 0.42, top + 0.98, dzw, 0.045, K.DOME, cs, R.gild, LOOK_SOLID).posAdd = 0.1;
     pCapsule(dxw - 0.26, top + 0.52, dzw, dxw + 0.26, top + 0.7, dzw, 0.04, K.DOME, cs, R.gild, LOOK_SOLID).posAdd = 0.1;
   }
+  // Bells in the towers' bell chambers: bronze, flared, a clapper hanging below.
+  const bells = world.bells;
+  for (let bi = 0; bi < bells.length; bi++) {
+    const B = bells[bi], dxw = wrapDelta(B[0] - camX), dzw = wrapDelta(B[2] - camZ), zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
+    if (zc > 140 || !inView(zc, lat, 1)) continue;
+    const y = B[1] - camY, seg = (K.DOME << 24) | (4096 + bi * 2);
+    pCone(dxw, y - 0.6, dzw, dxw, y, dzw, 0.45, 0.2, K.DOME, seg, R.gild, LOOK_SOLID).posAdd = -0.2;
+    pSphere(dxw, y, dzw, 0.2, K.DOME, seg, R.gild, LOOK_SOLID).posAdd = -0.2;
+    pCapsule(dxw, y - 0.45, dzw, dxw, y - 0.72, dzw, 0.07, K.DOME, seg + 1, R.dark, LOOK_SOLID);
+  }
   // Campfires and torches: logs or a bracket as solids; the flame itself after the solids. Candle
   // stands and chandeliers (in the churches): brass, thin candles, a small flame on each.
   const flames = [];
@@ -3757,8 +3789,9 @@ function drawSprites(t, poses) {
     if (L.kind === 'candles' || L.kind === 'horos') { if (zc < 70) candlesAt(L, dxw, y, dzw, li, flames); continue; }
     if (L.kind === 'fire') {
       const a = hash2(li, 1, 3) * Math.PI;
+      const ls = Math.min(1, L.size / 1.6);   // (a hearth's fire is smaller than a campfire)
       for (let k = 0; k < 3; k++) {
-        const b = a + k * Math.PI / 3, ca = Math.cos(b) * 0.65, sa = Math.sin(b) * 0.65;
+        const b = a + k * Math.PI / 3, ca = Math.cos(b) * 0.65 * ls, sa = Math.sin(b) * 0.65 * ls;
         const p = pCapsule(dxw - ca, y - 0.05 + k * 0.07, dzw - sa, dxw + ca, y + 0.1 + k * 0.07, dzw + sa, 0.09, K.LOGS, seg, R.wood, LOOK_SOLID);
         p.posAdd = -0.25; p.lit = 1;
       }
@@ -5510,7 +5543,7 @@ function workerSource() {
     `const KEYFRAMES = { day: { ramps: ${JSON.stringify(KEYFRAMES.day.ramps)} } };`,
     `const clamp = ${clamp};`, `const smoothstep = ${smoothstep};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`, `const pack = ${pack};`,
     `${hash2}`, `${terrainHeight}`, `${skyState}`,
-    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, chimneys: [], flags: [], domes: [] };`,
+    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, chimneys: [], flags: [], domes: [], bells: [] };`,
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
     `const cur = { ambient: 0.38, diffuse: 0.62, lights: 0, stars: 0 }, light = { lx: 0, ly: 1, lz: 0, darkness: 0, faceShade: new Float32Array(6) };`,
     `const wx = { rain: 0, snow: 0, fog: 0, wet: 0, aurora: 0, storm: 0 };`,
@@ -5551,7 +5584,7 @@ function syncWorkers() {
     const pkg = {
       seed: world.seed, H: world.H, mat: world.mat, fogTop: world.fogTop,
       structs: world.structs.map(s => ({ cx: s.cx, cz: s.cz, x0: s.x0, z0: s.z0, baseY: s.baseY, radius: s.radius, half: s.half, type: s.type, tpl: { sx: s.tpl.sx, sy: s.tpl.sy, sz: s.tpl.sz, spans: s.tpl.spans, topSolid: s.tpl.topSolid } })),
-      trees: world.trees, treeBuckets: world.treeBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds, chimneys: world.chimneys, flags: world.flags, domes: world.domes,
+      trees: world.trees, treeBuckets: world.treeBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds, chimneys: world.chimneys, flags: world.flags, domes: world.domes, bells: world.bells,
       merchants: world.merchants.map(m => ({ robe: m.robe, x: m.x, y: m.y, z: m.z, walked: m.walked })),
     };
     for (const wk of pool.workers) wk.postMessage({ type: 'world', world: pkg });

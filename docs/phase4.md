@@ -64,3 +64,54 @@ The church comes first, because the castles will be built round it (step 1b). It
 - Inside the chapel: 7.4 ms a frame (7.7 ms facing a frescoed wall). The village around it: 9.5 ms. ⚠️ Measured with Chrome busy in the background.
 - Workers and the main thread give byte-identical frames in both looks.
 - Tests: all pass, with the world checksums re-recorded. The house walks go into every chapel (and every other house) on every test seed.
+
+## Step 1b: castles round a church
+
+Shots: `shots/phase4/step1/` (`sheet-castles`, `sheet-castle-inside`).
+
+### What changed
+
+- **Castles, towers and ruins are v2's own now** (v1's structures section retires from `check-verbatim.mjs`: its builders were replaced wholesale, which listed fixes cannot carry, since v1's page would call builders it does not have). The collision code that walks you through them is still v1's, and still checked.
+- **A castle is built round a church** (`buildFortress`), in three sizes: small, fortress, and citadel.
+  - A paved courtyard inside a curtain wall two thick, crenellated, with towers at the corners (and one in the middle of the west wall in the bigger two), flags on their tops.
+  - A gatehouse in the middle of the south wall, its three-wide passage arched, in line with the church's door, so you walk from the gate straight up to the church.
+  - **The church** (`buildChurch`, now in three sizes): a village chapel's size in the small castle, a bigger church (a deacon's door either side of the Royal Doors, four candle stands) in the fortress, and a cathedral with two small domes over its front corners in the citadel.
+  - **The keep** (`buildKeep`) in the back left corner: a stair of wooden steps round the inside of its walls through a guard room (a table and a bench), a storeroom (barrels) and a chamber (a bed and a chest) to a bell chamber (open arches on every side, a bronze bell) under a pyramid roof, with arrow slits.
+  - **The great hall** along the east wall (fortress and citadel): a long table with benches either side and the lord's chair at its head, a fire in the hearth at its end under a smoking chimney, banners on the walls (red or blue, a gold cross, a gold fringe) and torches between them that burn by day too.
+  - A stair up the inside of the west wall to the wall-walk, and a well in the forecourt.
+- **A tower on its own is a keep.**
+- **A ruin is a ruined church** (`buildRuin`): its walls fallen to a ragged height, its roof and dome gone, a side broken through, rubble around, frescoes still on what stands.
+- **New:**
+  - bells (bronze, drawn as solids);
+  - hearth fires (a campfire's logs, scaled down to the fire);
+  - wall torches that burn by day (`sconce`);
+  - painted banners (`MAT.BANNER`, painted like the frescoes).
+
+  A castle's extra parts ride on its template (`T.extras`) and are put in the world by `structureExtras` and `structureLights`.
+
+### Numbers
+
+- **Speed**, painted look, on a quiet machine:
+
+  | Scene | ms a frame |
+  |---|---|
+  | The fortress from above | 6.9 |
+  | The citadel from above | 8.5 |
+  | Inside the castle church | 5.3 |
+  | The great hall | 5.1 |
+  | The keep's bell chamber | 7.2 |
+
+- **Workers and the main thread agree**, byte for byte in both looks.
+- **Tests:** all pass, with the world checksums re-recorded. The gate walks now go through every new gatehouse into the church, and through every tower's door into the keep, on the same paths in v1 and v2.
+
+### Scenes
+
+- The castles moved (the new ones are bigger, so they sit on other sites), and took the field where the hero scenes stood, and the village of the village scenes.
+  - The hero scenes now stand before the fortress's gate.
+  - The village, tavern and chapel scenes moved to the village at (976, 868).
+- New scenes: `castle-fortress`, `castle-citadel`, `castle-church`, `castle-hall`, `castle-hall-night`, `castle-keep`.
+
+### Still open
+
+- **The walls' insides are plain:** no arcaded galleries yet.
+- **Castles still sit where v1's placement puts them,** bunched in the east. Step 2 spreads them over the world, with a town at each.
