@@ -120,7 +120,7 @@ Test harness notes:
   - cliff faces right in front of you are blocky, with a break at the horizon line;
   - palm fronds are tubes up close, and canopies look faceted;
   - merchant faces and outfits are simple;
-  - third person: the camera goes into your eyes on slopes steeper than about 50° and with your back to a wall; looking down steeply stretches upright things a little (the tilt is a shear); a flower at the lens is a big flat blob; the hero's green tunic is close to the fields' green;
+  - third person: the camera goes into your eyes on slopes steeper than about 50°, with your back to a wall and in doors and gates (it snaps in; it never shows the hero from closer than 2 cells); looking down steeply stretches upright things a little (the tilt is a shear); a flower at the lens is a big flat blob; the hero's green tunic is close to the fields' green;
   - gear: nothing to sell and no way to earn gold (v1's trade); what you own is always worn; the things at the belt are small;
   - settlements: on steep land a village gets few houses and steep grass between its plots; houses have one room;
-  - towns: every town has the same plan; on a steep slope house footings show along the street; watchtowers stand where v1's roads happen to climb.
+  - towns: every town has the same plan, its streets wide for the camera (so a small castle's town holds only 7 or 8 houses); on a steep slope house footings show along the street; watchtowers stand where v1's roads happen to climb.

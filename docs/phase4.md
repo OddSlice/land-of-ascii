@@ -134,11 +134,11 @@ Shots: `shots/phase4/step2/` (`sheet-towns`, `sheet-in-town`, `sheet-wild`, `she
   - a square before the castle's gate, as wide as the town;
   - the main street, from the square down through the town to the town's gate, climbing with the land;
   - a market street across the town halfway, opening into a market square with a well where it crosses the main street, torches at its corners;
-  - lanes inside the side walls;
+  - lanes inside the side walls (at first: they went after step 2, see below);
   - the ground inside the walls levelled to the street's slope (level across the town, falling from the castle to the gate), and blended back to the land outside;
   - houses packed into the blocks between the streets, each where it fits most snugly against the streets, the walls and the houses already there (so they stand in rows), its door on a street, its plot levelled with the street before its door. The church and the tavern stand on the market, a smithy toward the gate, and homes fill the rest, most of them townhouses: two storeys, timber-framed, windows on both floors, a beam at the storey line. A small castle's town has no church of its own (the castle's chapel serves it);
   - a wall five high with crenels, a tower at each corner and a gatehouse over the main street with a torch either side, its ends meeting the castle's corners; flags in the castle's colours on its towers;
-  - 8 to 18 houses; windows glow and torches burn at night, chimneys smoke;
+  - 8 to 18 houses (7 to 17 since the fix after step 2); windows glow and torches burn at night, chimneys smoke;
   - fields round it: no trees within 22 cells of its walls.
 - **Where you start:** before the gate of the biggest castle's town, looking up its street to the castle (`spawnAt`, through a listed fix to v1's `spawn`), where the ground behind you is open, so the camera shows you the town.
 - **Watchtowers on the passes** (`placeTowers`). Once the roads are laid, a tower stands beside every road that climbs 8 or more above both its ends, near the top of the climb, 11 to 20 cells off the road, its door toward it. Where fewer than three roads cross passes, the high points of the longest roads get one. Three to five a world, 90 apart at least. A tower's levelling never touches a road, and the way from its door is walkable.
@@ -185,3 +185,50 @@ Shots: `shots/phase4/step2/` (`sheet-towns`, `sheet-in-town`, `sheet-wild`, `she
 - Watchtowers stand where the roads happen to climb; once step 3's roads go over real passes, they will mean more.
 - Seed 1234 has no site with room for a citadel, so it has fortresses and small castles only.
 - The castle walls' insides are still plain (no galleries).
+
+## After step 2: the camera in the towns
+
+Martin, trying step 2 (30 Sep): looking around felt glitchy and skipping, like a fish lens looking down; the game moved the camera by itself. It had worked in the version before.
+
+Shots: `shots/phase4/step2/sheet-camera` (the same walk through the town's gate, before the fix and after).
+
+### What was wrong
+
+- The camera's code had hardly changed (step 2 added one check, of its own spot). What changed is where you play: you now start before a town's gate and walk straight into its streets.
+- The camera stays 6.4 cells behind you and comes in closer when something is in the way. In the town's gate, three cells wide, and its streets, five wide, almost any turn of the mouse put a house or the gate's wall in its way:
+  - it snapped in to about 2 cells in a single frame;
+  - there, the back of the hero's head filled the picture, looking down at it (the fish lens);
+  - it drifted back out over a second or two, only to be caught again.
+- Step 1's start was an open field, where this was rare; the same happened in its castle's gate.
+
+### The fix
+
+- **Room in the towns:**
+  - the main street and the market street are seven wide (they were five);
+  - the town's gate and the castle's gate are five wide (they were three);
+  - the narrow lanes inside the side walls are gone: the houses back onto the walls;
+  - houses line the main street first, then the squares, then the market street.
+- **The camera:**
+  - it never shows the hero from closer than 2 cells: squeezed nearer, it goes into their eyes (before, the back of their head filled the picture);
+  - when a wall stops it, it no longer rises to clear the ground beyond the wall (that rise made it look steeply down from close up);
+  - it comes back out faster once the way is clear;
+  - after a jump in place (a new world with R), it starts afresh behind you instead of swooping in from where it was.
+
+### Numbers
+
+- Turning a full circle at fixed spots in the citadel's town: the share of directions in which the camera ends up closer than 3 cells (in brackets, those in which the hero is hidden).
+
+  | Spot | Before | After |
+  |---|---|---|
+  | The town's gate | 69% (53%) | 47% (0%) |
+  | The upper street | 42% | 0% |
+  | The market | 10% | 0% |
+  | The castle's gate | 53% (42%) | 33% (0%) |
+
+- A 27-second tour of the town (in through the gate, up the street looking about, a full turn, along the market street and back):
+  - the hero shown from closer than 2.5 cells on 17 frames (70 before);
+  - looking down more than 30° on none (36 before);
+  - 9 snaps of more than a cell (12 before).
+- ⚠️ The towns hold fewer houses: 7 or 8 in a small castle's town (10 to 12 before), 8 to 11 in a fortress's, 14 to 17 in the citadel's.
+- ⚠️ On the steep forest walk of the tests, you see through the hero's eyes on 68 frames where before the back of their head filled the picture. The camera is where it was.
+- Tests: all pass, with the world checksums re-recorded. The house walks go into all 501 houses on the five test seeds.

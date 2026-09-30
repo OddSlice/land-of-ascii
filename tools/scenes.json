@@ -1130,16 +1130,16 @@
     },
     {
       "name": "ruin",
-      "title": "A ruined church in the wild, 15:00",
+      "title": "A ruined church in the forest, 15:00",
       "seed": 42,
       "hour": 15,
       "t": 1000,
       "cam": {
-        "x": 812,
-        "y": 33,
-        "z": 612,
-        "yaw": -138.6,
-        "pitch": -248
+        "x": 428,
+        "y": 34,
+        "z": 132,
+        "yaw": -143,
+        "pitch": -260
       }
     }
   ]

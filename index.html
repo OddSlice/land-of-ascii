@@ -1069,7 +1069,7 @@ function buildKeep(rng) {
 
 // A castle round a church, in three sizes. A paved courtyard inside a curtain wall two thick and
 // crenellated, towers at its corners (and in the middle of the west wall of the bigger two); a
-// gatehouse in the middle of the south wall, its three-wide passage arched, in line with the church's
+// gatehouse in the middle of the south wall, its passage five wide and arched, in line with the church's
 // door; a stair up to the wall-walk beside it, and a well; the keep in the back left corner; in the
 // bigger two, a great hall along the east wall: a long table with benches and the lord's chair at its
 // head, a fire in the hearth at the end under a chimney, banners on the walls, torches between them.
@@ -1093,10 +1093,10 @@ function buildFortress(kind, rng) {
   };
   tower(S - 5, 0); tower(0, S - 5); tower(S - 5, S - 5);
   if (F.midTower) tower(0, c - 2);
-  T.box(c - 3, 1, S - 6, c + 3, WH + 2, S - 1, ST);                                                   // the gatehouse
-  for (let i = c - 3; i <= c + 3; i += 2) { T.set(i, WH + 3, S - 1, ST); T.set(i, WH + 3, S - 6, ST); }
-  T.box(c - 1, 1, S - 6, c + 1, 4, S - 1, 0);                                                         // its passage, the arch's corners
-  for (const z of [S - 6, S - 1]) { T.set(c - 1, 4, z, ST); T.set(c + 1, 4, z, ST); }
+  T.box(c - 4, 1, S - 6, c + 4, WH + 2, S - 1, ST);                                                   // the gatehouse
+  for (let i = c - 4; i <= c + 4; i += 2) { T.set(i, WH + 3, S - 1, ST); T.set(i, WH + 3, S - 6, ST); }
+  T.box(c - 2, 1, S - 6, c + 2, 5, S - 1, 0);                                                         // its passage five wide, the arch's corners
+  for (const z of [S - 6, S - 1]) { T.set(c - 2, 5, z, ST); T.set(c + 2, 5, z, ST); }
   for (let k = 1; k <= WH; k++) T.box(2, 1, S - 6 - k, 2, k, S - 6 - k, ST);                         // a stair up to the wall-walk, along the west wall
   T.box(c + 4, 1, S - 9, c + 6, 1, S - 7, ST); T.set(c + 5, 1, S - 8, 0); T.set(c + 5, 0, S - 8, 0);   // a well in the forecourt: a ring round a hole
   const keep = buildKeep(rng);                                                                        // the keep, its door on the courtyard
@@ -1615,8 +1615,9 @@ function placeCastles(rng) {
 // A walled town before a castle's gate, laid out in the frame where the gate faces +z: tx across (the
 // castle's gate in line with the middle, mx), tz from the castle's wall out to the town's own gate at
 // TD - 1. A square lies before the castle's gate, as wide as the town; the main street runs from it out
-// through the town's gate, a market street crosses the town halfway, opening into a market square with a
-// well where the two meet, and lanes run inside the side walls. The ground inside the walls is levelled to the street's slope (level across the town,
+// through the town's gate, and a market street crosses the town halfway, opening into a market square
+// with a well where the two meet. The main and market streets are seven wide and the gate five, so the
+// camera behind you has room (and no narrow lanes: the houses back onto the walls). The ground inside the walls is levelled to the street's slope (level across the town,
 // falling with the land from the castle to the gate) and blended back to the land outside. Houses fill
 // the blocks between the streets: the church and the tavern on the market, a smithy by the gate, homes
 // (two storeys, most of them) from the castle outward; each on a plot levelled with the street before its
@@ -1633,20 +1634,19 @@ function buildTown(kind, rng, castle, castleIndex) {
   const drop = clamp(hTop - outer / no, -3, TOWN_SLOPE * townRun(kind)), streetH = tz => hTop - drop * streetDrop(kind, tz);
 
   // the plan: streets, and what is built (walls, towers, the gatehouse, the well, posts, houses)
-  const OPEN = 0, STREET = 1, BUILT = 2, plan = new Uint8Array(TW * TD), zc = SQ + ((TD - 1 - SQ) >> 1), wellX = mx + 4;
+  const OPEN = 0, STREET = 1, BUILT = 2, plan = new Uint8Array(TW * TD), zc = SQ + ((TD - 1 - SQ) >> 1), wellX = mx + 5;
   const put = (x0, z0, x1, z1, v) => { for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) plan[z * TW + x] = v; };
   const planAt = (x, z) => x < 0 || z < 0 || x >= TW || z >= TD ? BUILT : plan[z * TW + x];
   put(1, 0, TW - 2, SQ - 1, STREET);                                          // the square before the castle
-  put(mx - 2, SQ, mx + 2, TD - 1, STREET);                                    // the main street, out through the gate
-  put(1, zc - 2, TW - 2, zc + 2, STREET); put(mx - 6, zc - 4, mx + 6, zc + 4, STREET);   // the market street, and the market square where it crosses the main street
-  put(1, SQ, 3, TD - 2, STREET); put(TW - 4, SQ, TW - 2, TD - 2, STREET);     // the lanes inside the side walls
+  put(mx - 3, SQ, mx + 3, TD - 1, STREET);                                    // the main street, out through the gate
+  put(1, zc - 3, TW - 2, zc + 3, STREET); put(mx - 6, zc - 5, mx + 6, zc + 5, STREET);   // the market street, and the market square where it crosses the main street
   put(0, 0, 0, TD - 1, BUILT); put(TW - 1, 0, TW - 1, TD - 1, BUILT); put(0, TD - 1, TW - 1, TD - 1, BUILT);
   put(0, 0, mx - hs - 1, 0, BUILT); put(mx + hs + 1, 0, TW - 1, 0, BUILT);   // (the wall's ends, meeting the castle's corners)
   const corners = [[0, 0], [TW - 4, 0], [0, TD - 4], [TW - 4, TD - 4]];
   for (const [x, z] of corners) put(x, z, x + 3, z + 3, BUILT);
-  put(mx - 3, TD - 5, mx + 3, TD - 1, BUILT); put(mx - 1, TD - 5, mx + 1, TD - 1, STREET);   // the gatehouse, its passage
+  put(mx - 4, TD - 5, mx + 4, TD - 1, BUILT); put(mx - 2, TD - 5, mx + 2, TD - 1, STREET);   // the gatehouse, its passage
   put(wellX - 1, zc - 1, wellX + 1, zc + 1, BUILT);
-  const posts = [[mx - 4, SQ - 2], [mx + 4, SQ - 2], [mx - 6, zc - 4], [mx + 6, zc + 4]];
+  const posts = [[mx - 5, SQ - 2], [mx + 5, SQ - 2], [mx - 6, zc - 5], [mx + 6, zc + 5]];
   for (const [x, z] of posts) put(x, z, x, z, BUILT);
 
   // the ground: inside the walls the street's slope, round them blended back to the land over six cells
@@ -1673,7 +1673,7 @@ function buildTown(kind, rng, castle, castleIndex) {
     chapel: (x, z) => Math.abs(z - zc) + Math.abs(x - mx) * 0.5,           // on the market, near the middle
     tavern: (x, z) => (Math.abs(z - zc) + Math.abs(x - wellX)) * 0.2,      // near the market and its well
     smithy: (x, z) => (TD - z) * 0.3,                                       // towards the gate
-    home: (x, z) => (Math.abs(x - mx) + z) * 0.03,                          // (a little: from the castle and the main street outward)
+    home: (x, z) => Math.abs(x - mx) <= 3 && z >= SQ ? 0 : Math.abs(x - mx) <= 6 && Math.abs(z - zc) <= 5 ? 3 : z < SQ ? 5 : 7 + Math.abs(x - mx) * 0.1,   // (the main street lined first, then the squares, then the market street)
   };
   const placed = [];
   for (const kind of kinds) {
@@ -1711,7 +1711,7 @@ function buildTown(kind, rng, castle, castleIndex) {
   // the curtain wall
   const wall = (x, z) => { const top = yOf(around(x, z, Math.max)) + TOWN_WALL; T.box(x, footOf(x, z), z, x, top, z, ST); crenel(x, z, top + 1); };
   for (let z = 0; z < TD; z++) { wall(0, z); wall(TW - 1, z); }
-  for (let x = 1; x < TW - 1; x++) { if (Math.abs(x - mx) > 3) wall(x, TD - 1); if (Math.abs(x - mx) > hs) wall(x, 0); }   // (the gatehouse stands in the outer wall)
+  for (let x = 1; x < TW - 1; x++) { if (Math.abs(x - mx) > 4) wall(x, TD - 1); if (Math.abs(x - mx) > hs) wall(x, 0); }   // (the gatehouse stands in the outer wall)
   // a tower at each corner, a flag on it
   for (const [x0, z0] of corners) {
     let top = 0;
@@ -1722,15 +1722,16 @@ function buildTown(kind, rng, castle, castleIndex) {
     }
     flags.push([x0 + 2, top + 1, z0 + 2]);
   }
-  // the gatehouse: a passage three wide under it, its arch's corners, torches either side of it outside
+  // the gatehouse: a passage five wide under it (room for the camera behind you), its arch's corners,
+  // torches either side of it outside
   const gy = yOf(streetH(TD - 1)), gTop = gy + TOWN_WALL + 2;
-  for (let x = mx - 3; x <= mx + 3; x++) for (let z = TD - 5; z <= TD - 1; z++) {
-    T.box(x, Math.abs(x - mx) <= 1 ? gy + 5 : footOf(x, z), z, x, gTop, z, ST);
-    if (x === mx - 3 || x === mx + 3 || z === TD - 5 || z === TD - 1) crenel(x, z, gTop + 1);
+  for (let x = mx - 4; x <= mx + 4; x++) for (let z = TD - 5; z <= TD - 1; z++) {
+    T.box(x, Math.abs(x - mx) <= 2 ? gy + 6 : footOf(x, z), z, x, gTop, z, ST);
+    if (x === mx - 4 || x === mx + 4 || z === TD - 5 || z === TD - 1) crenel(x, z, gTop + 1);
   }
-  for (const z of [TD - 5, TD - 1]) { T.set(mx - 1, gy + 4, z, ST); T.set(mx + 1, gy + 4, z, ST); }
-  flags.push([mx - 2.5, gTop + 1, TD - 0.5], [mx + 3.5, gTop + 1, TD - 0.5]);
-  torches.push([mx - 2.1, gy + 4.5, TD + 0.4], [mx + 3.1, gy + 4.5, TD + 0.4]);
+  for (const z of [TD - 5, TD - 1]) { T.set(mx - 2, gy + 5, z, ST); T.set(mx + 2, gy + 5, z, ST); }
+  flags.push([mx - 3.5, gTop + 1, TD - 0.5], [mx + 4.5, gTop + 1, TD - 0.5]);
+  torches.push([mx - 3.1, gy + 4.5, TD + 0.4], [mx + 4.1, gy + 4.5, TD + 0.4]);
   // the well on the market square: a ring round a hole on a plinth, a frame over it
   const wy = yOf(streetH(zc)) + 1;
   for (let z = zc - 1; z <= zc + 1; z++) for (let x = wellX - 1; x <= wellX + 1; x++) T.box(x, footOf(x, z), z, x, wy, z, ST);
@@ -1751,7 +1752,7 @@ function buildTown(kind, rng, castle, castleIndex) {
   for (const h of houses) for (const dm of h.domes) world.domes.push([...toWorld(dm), dm[3], dm[4]]);
   const street = [];
   for (let tz = 0; tz < TD; tz++) for (let tx = 0; tx < TW; tx++) if (plan[tz * TW + tx] === STREET) street.push(cellOf(tx, tz));
-  for (let tz = TD; tz < TD + 3; tz++) for (let tx = mx - 1; tx <= mx + 1; tx++) street.push(cellOf(tx, tz));   // (and out to where the road begins)
+  for (let tz = TD; tz < TD + 3; tz++) for (let tx = mx - 2; tx <= mx + 2; tx++) street.push(cellOf(tx, tz));   // (and out to where the road begins)
   const cellXZ = c => ({ x: c & MASK, z: (c / W) | 0 }), out = cellXZ(cellOf(mx, TD)), road = cellXZ(cellOf(mx, TD + 2));
   return {
     type: 'town', variant: kind, cx: tcx, cz: tcz, half: Math.max(R.sx, R.sz) >> 1, baseY, tpl: R, x0, z0,
@@ -2438,7 +2439,7 @@ function placeLights(rng) {
   const torch = (x, y, z) => lights.push({ x: ((x % W) + W) % W, y, z: ((z % W) + W) % W, r: 12, color: [1, 0.62, 0.28], i: 1.1, kind: 'torch', phase: rng() * 10, size: 0.7 });
   for (const s of world.structs) {
     const [ox, oz] = GATE_DIRS[s.gate || 0], out = s.tpl.sz / 2 + 0.4, mx = s.cx + 0.5, mz = s.cz + 0.5;   // (out: just off the gate's face)
-    if (s.type === 'castle') for (const side of [-2.2, 2.2]) torch(mx + ox * out + oz * side, s.baseY + 5.5, mz + oz * out + ox * side);
+    if (s.type === 'castle') for (const side of [-3.3, 3.3]) torch(mx + ox * out + oz * side, s.baseY + 5.5, mz + oz * out + ox * side);   // (either side of the passage)
     else if (s.type === 'tower') torch(mx + ox * out, s.baseY + 4.5, mz + oz * out);
     else if (s.type === 'stones') {
       const fx = s.cx + 3.5, fz = s.cz + 3.5, i = ((fz | 0) & MASK) * W + ((fx | 0) & MASK);
@@ -6004,7 +6005,7 @@ function merchantPose(m, dt) {
 const V3_WADE = 0.55, V3_SIDE = 0.25;   // (how deep the hero is drawn in water; the room the camera keeps from walls to either side:
                                         // less than a one-cell corridor leaves around a walker, whose body is 0.3 across RADIUS)
 const V3_DIST = 6.4, V3_PHI0 = 0.2, V3_PHI_MAX = 0.85, V3_AIM = 1.65, V3_AIM_HIGH = 1.2, V3_PIVOT = 1.85, V3_CLEAR = 0.5, V3_TILT = 1.3;
-const view3 = { on: true, dist: V3_DIST, cur: V3_DIST, lift: 0, face: 0, walked: 0, lastX: NaN, lastZ: NaN, speed: 0, wade: 0, feet: 0 };
+const view3 = { on: true, dist: V3_DIST, cur: V3_DIST, lift: 0, face: 0, walked: 0, lastX: NaN, lastZ: NaN, speed: 0, wade: 0, feet: 0, wall: V3_DIST + 1 };   // (wall: how far back a wall stops the camera)
 const viewCam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
 const hero = { on: 0, x: 0, y: 0, z: 0, face: 0, walked: 0, moving: 0, gear: 0, air: 0, gy: 0 };   // (air: 0 on the ground, 1 in a jump; gy: the ground under them)
 function solidAt(x, y, z) {   // inside a voxel of a building?
@@ -6048,7 +6049,9 @@ function updateHero(dt) {
   Object.assign(viewCam, { x: cam.x, y: cam.y, z: cam.z, yaw: cam.yaw, pitch: cam.pitch });
   if (!walking) { view3.lastX = NaN; return; }
   // the hero turns toward where they walk, and walks on
-  const fresh = !(view3.lastX === view3.lastX);   // (just switched on, or back from flying: nothing to measure a step from)
+  const jumped = view3.lastX === view3.lastX && Math.hypot(wrapDelta(cam.x - view3.lastX), wrapDelta(cam.z - view3.lastZ)) > 3;   // (moved in one go: a new world, a teleport)
+  const fresh = !(view3.lastX === view3.lastX) || jumped;   // (just switched on, back from flying, or moved: nothing to measure a step from)
+  if (jumped) { view3.cur = view3.dist; view3.lift = 0; view3.wall = V3_DIST + 1; }   // (and the camera starts afresh behind you, rather than swooping in)
   const mx = fresh ? 0 : wrapDelta(cam.x - view3.lastX), mz = fresh ? 0 : wrapDelta(cam.z - view3.lastZ), moved = Math.hypot(mx, mz);
   if (moved > 1e-4 && moved < 3) {
     view3.walked += moved;
@@ -6068,7 +6071,7 @@ function updateHero(dt) {
   const pivot = view3.feet + V3_PIVOT, bx = -Math.cos(cam.yaw), bz = -Math.sin(cam.yaw);
   const phiUser = clamp(V3_PHI0 - cam.pitch / grid.f * 0.6, -0.08, V3_PHI_MAX);
   let need = -1;   // the lowest angle whose line from the pivot clears the ground behind by V3_CLEAR
-  for (let h = 0.5, reach = view3.dist * Math.cos(phiUser) + 0.01; h <= reach; h += 0.25) {
+  for (let h = 0.5, reach = Math.min(view3.dist, view3.wall + 0.5) * Math.cos(phiUser) + 0.01; h <= reach; h += 0.25) {   // (a wall behind: no rising for the ground beyond it)
     need = Math.max(need, Math.atan2(terrainHeight(cam.x + bx * h, cam.z + bz * h) + V3_CLEAR - pivot, h));
   }
   const wantLift = clamp(need - phiUser, 0, V3_PHI_MAX - phiUser);
@@ -6076,15 +6079,18 @@ function updateHero(dt) {
   const phi = phiUser + view3.lift, cph = Math.cos(phi), sph = Math.sin(phi);
   // ...and in front of anything still in the way (walls with a little room to the sides, so the lens
   // never grazes a wall's corner)
-  let want = view3.dist;
+  let want = view3.dist, wall = Infinity;
   const sx = -bz * V3_SIDE, sz = bx * V3_SIDE;
   for (let s = 0.5; s < view3.dist + 0.25; s += 0.25) {
     const d = Math.min(s, view3.dist), px = cam.x + bx * d * cph, pz = cam.z + bz * d * cph, py = pivot + d * sph;   // (to the camera's own spot)
-    if (terrainHeight(px, pz) > py - V3_CLEAR + 0.05 || solidAt(px, py, pz) || solidAt(px + sx, py, pz + sz) || solidAt(px - sx, py, pz - sz)) { want = Math.max(0.5, d - 0.45); break; }
+    const ground = terrainHeight(px, pz) > py - V3_CLEAR + 0.05;
+    if (ground || solidAt(px, py, pz) || solidAt(px + sx, py, pz + sz) || solidAt(px - sx, py, pz - sz)) { want = Math.max(0.5, d - 0.45); if (!ground) wall = d; break; }
   }
-  view3.cur = want < view3.cur ? want : view3.cur + (want - view3.cur) * Math.min(1, dt * 2.5);
+  view3.wall = wall < view3.wall ? wall : view3.wall + (Math.min(wall, V3_DIST + 1) - view3.wall) * Math.min(1, dt * 3);   // (nearer at once, further off gently)
+  view3.cur = want < view3.cur ? want : view3.cur + (want - view3.cur) * Math.min(1, dt * 4);
   // Squeezed right up behind them, the camera slides into their eyes (e: 1 behind them, 0 in their
-  // eyes), and turns from looking at them to where the eyes look.
+  // eyes), and turns from looking at them to where the eyes look. The hero is hidden once the camera is
+  // within 2 of them, so a squeeze never fills the picture with the back of their head.
   const D = view3.cur, e = clamp((D - 1.1) / 1.2, 0, 1), hd = D * cph * e;
   viewCam.x = ((cam.x + bx * hd) % W + W) % W; viewCam.z = ((cam.z + bz * hd) % W + W) % W;
   viewCam.y = cam.y + (pivot + D * sph - cam.y) * e;
@@ -6092,9 +6098,9 @@ function updateHero(dt) {
   const aim = V3_AIM + (V3_AIM_HIGH - V3_AIM) * clamp((phi - 0.45) / 0.4, 0, 1);   // (from high up, lower, so their feet stay in the picture)
   const look = clamp((view3.feet + aim - viewCam.y) / Math.max(0.5, hd) * grid.f, -grid.h * V3_TILT, grid.h * 1.3);   // looking at the hero's head
   viewCam.pitch = cam.pitch + (look - cam.pitch) * smoothstep(0.35, 0.75, e);
-  if (e < 0.5) hero.on = 0;
+  if (hd < 2) hero.on = 0;
 }
-function setThird(on) { view3.on = !!on; view3.lastX = NaN; view3.cur = view3.dist; view3.lift = 0; updateHero(0); }
+function setThird(on) { view3.on = !!on; view3.lastX = NaN; view3.cur = view3.dist; view3.lift = 0; view3.wall = V3_DIST + 1; updateHero(0); }
 window.addEventListener('keydown', e => {
   if (e.target === seedInput || ui.open || e.repeat || e.code !== 'KeyV') return;
   setThird(!view3.on);
