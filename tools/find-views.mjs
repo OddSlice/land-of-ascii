@@ -6,8 +6,11 @@
 // An aerial view per seed looks down over as many regions as possible. With --classic it re-aims
 // the six scenes phase 1 was measured on (castle vista, merchant on the road, campfire, merchant
 // close up by day and by lantern light, the spawn gate at night) at the same things in this world.
+// With --landmarks it aims the scenes of castles, towns, villages, churches, taverns, towers, ruins,
+// hamlets and your hero at those landmarks in this world (phase 4: they move whenever world
+// generation changes); only their cameras change.
 // Prints scenes for tools/scenes.json (or merges them in with --write).
-//   node tools/find-views.mjs [--seed 42] [--hour 10.5] [--write] [--aerial-only | --classic]
+//   node tools/find-views.mjs [--seed 42] [--hour 10.5] [--write] [--aerial-only | --classic | --landmarks]
 import fs from 'node:fs';
 import path from 'node:path';
 import { startServer, launch, ROOT } from './lib/harness.mjs';
@@ -15,13 +18,13 @@ import { startServer, launch, ROOT } from './lib/harness.mjs';
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf('--' + k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
 const flag = k => { const i = args.indexOf('--' + k); if (i < 0) return false; args.splice(i, 1); return true; };
-const seed = +opt('seed', 42), hour = +opt('hour', 10.5), write = flag('write'), aerialOnly = flag('aerial-only'), classic = flag('classic');
+const seed = +opt('seed', 42), hour = +opt('hour', 10.5), write = flag('write'), aerialOnly = flag('aerial-only'), classic = flag('classic'), landmarks = flag('landmarks');
 
 const { server, port } = await startServer();
 const { browser, page } = await launch();
 await page.goto(`http://127.0.0.1:${port}/index.html?seed=${seed}&threads=0`);
 await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
-const scenes = await page.evaluate(({ seed, hour, aerialOnly, classic }) => {
+const scenes = await page.evaluate(({ seed, hour, aerialOnly, classic, landmarks }) => {
   const TV = window.TV, w = TV.world, B = TV.defs.BIOME, NAMES = TV.defs.BIOME_NAMES, W = TV.defs.W, M = W - 1;
   if (w.seed !== seed) TV.regenerate(seed);
   const idx = (x, z) => ((Math.floor(z) & M) * W) + (Math.floor(x) & M);
@@ -50,7 +53,94 @@ const scenes = await page.evaluate(({ seed, hour, aerialOnly, classic }) => {
   };
   const out = [];
 
-  if (!aerialOnly && !classic) {
+  if (landmarks) {
+    // Cameras aimed at the landmarks, for a 1440-wide shot (its focal length f): pitch is the centre's
+    // slope times f (the renderer turns the view by it). Aerial cameras keep 6 above the ground.
+    TV.regenerate(seed);
+    const D = TV.defs, G = D.GATE_DIRS, f = 720 / Math.tan(75 * Math.PI / 360), S = w.structs;
+    const turn = (dir, dx, dz) => dir === 0 ? [dx, dz] : dir === 1 ? [dz, -dx] : dir === 2 ? [-dx, -dz] : [-dz, dx];   // (turnOffset)
+    const ground = (x, z) => TV.terrainHeight(((x % W) + W) % W, ((z % W) + W) % W);
+    const aim = (x, y, z, tx, ty, tz, lift = 6) => {
+      y = Math.max(y, ground(x, z) + lift);
+      const dx = wrapD(tx - x), dz = wrapD(tz - z), dist = Math.hypot(dx, dz) || 1;
+      return { x: wrap(x), y: +y.toFixed(2), z: wrap(z), yaw: deg(Math.atan2(dz, dx)), pitch: Math.round(f * (ty - y) / dist) };
+    };
+    const onFoot = (x, z, yaw) => ({ x: wrap(x), y: 0, z: wrap(z), yaw: deg(yaw), pitch: 0, ground: true });
+    const inside = (x, y, z, yaw, pitch) => ({ x: wrap(x), y: +y.toFixed(2), z: wrap(z), yaw: deg(yaw), pitch });
+    const set = (name, cam, more) => out.push({ name, cam, ...more });
+    const mid = (a, b) => [a.cx + 0.5 + wrapD(b.cx - a.cx) / 2, a.cz + 0.5 + wrapD(b.cz - a.cz) / 2];
+    // your hero, where the game starts you
+    TV.regenerate(seed);
+    for (const n of ['hero', 'hero-start', 'hero-dusk', 'hero-kit', 'hero-kit-side', 'hero-kit-front', 'hero-night', 'hero-night-none', 'hero-red', 'hero-blue', 'hero-russet']) set(n, onFoot(TV.cam.x, TV.cam.z, TV.cam.yaw));
+    // the biggest castle and its town
+    const castles = S.filter(s => s.type === 'castle'), big = castles.slice().sort((a, b) => b.half - a.half)[0];
+    const town = t => S[t.town], kindOf = t => D.TOWN[t.variant];
+    const townViews = (C, T, names) => {
+      const [ox, oz] = G[T.gate], [px, pz] = turn(T.gate, 1, 0), P = kindOf(T), TD = P.deep, zc = P.square + ((TD - 1 - P.square) >> 1);
+      const [gx, gz] = [T.gatePos[0] + 0.5, T.gatePos[1] + 0.5], [mx, mz] = mid(T, C);
+      if (names.front) set(names.front, aim(gx + ox * 45, T.baseY + 55, gz + oz * 45, mx, C.baseY + 5, mz));
+      if (names.street) set(names.street, onFoot(gx - ox * 12, gz - oz * 12, Math.atan2(-oz, -ox)));
+      const kx = gx - ox * (TD - zc), kz = gz - oz * (TD - zc);   // (the middle of the market square)
+      if (names.market) set(names.market, onFoot(kx - px * 3, kz - pz * 3, Math.atan2(pz, px)));
+      if (names.night) set(names.night, aim(T.cx + px * 38 + ox * 8, T.baseY + 36, T.cz + pz * 38 + oz * 8, T.cx, T.baseY + 6, T.cz));
+    };
+    if (big) {
+      townViews(big, town(big), { front: 'town-citadel', street: 'town-street', market: 'town-market', night: 'town-night' });
+      const [ox, oz] = G[big.gate], [px, pz] = turn(big.gate, 1, 0), cx = big.cx + 0.5, cz = big.cz + 0.5;
+      set('castle-citadel', aim(cx + px * 55 + ox * 25, big.baseY + 42, cz + pz * 55 + oz * 25, cx, big.baseY + 8, cz));
+      // from behind it, at the first angle round from straight behind whose line to its towers the land leaves clear
+      const back = Math.atan2(-oz, -ox);
+      let flags = null;
+      for (const da of [0.55, -0.55, 0.9, -0.9, 0.25, -0.25, 1.3, -1.3]) {
+        const a = back + da, x = cx + Math.cos(a) * 48, z = cz + Math.sin(a) * 48, y = Math.max(big.baseY + 30, ground(x, z) + 8);
+        let clear = true;
+        for (let k = 1; k < 24 && clear; k++) { const t = k / 24; if (ground(x + (cx - x) * t, z + (cz - z) * t) > y + (big.baseY + 12 - y) * t - 1) clear = false; }
+        if (clear) { flags = aim(x, y, z, cx, big.baseY + 12, cz); break; }
+      }
+      set('castle-flags', flags || aim(cx - ox * 50 + px * 30, big.baseY + 40, cz - oz * 50 + pz * 30, cx, big.baseY + 12, cz));
+    }
+    // a small castle's town, from outside its gate
+    const small = castles.find(c => c.variant === 'small');
+    if (small) {
+      const T = town(small), [ox, oz] = G[T.gate], [mx, mz] = mid(T, small);
+      set('town-small', aim(T.gatePos[0] + 0.5 + ox * 50, T.baseY + 55, T.gatePos[1] + 0.5 + oz * 50, mx, small.baseY + 5, mz));
+    }
+    // a fortress from above, and inside it: its church, its great hall, the keep's bell chamber (offsets
+    // from its middle in the frame where its gate faces +z, turned with it)
+    const fort = castles.find(c => c.variant === 'fortress');
+    if (fort) {
+      const [ox, oz] = G[fort.gate], [px, pz] = turn(fort.gate, 1, 0), cx = fort.cx + 0.5, cz = fort.cz + 0.5, y = fort.baseY;
+      set('castle-fortress', aim(cx + ox * 42 + px * 22, y + 46, cz + oz * 42 + pz * 22, cx, y + 6, cz));
+      const room = (dx, dz, dy, face, pitch) => { const [wx, wz] = turn(fort.gate, dx, dz), [fx, fz] = turn(fort.gate, Math.cos(face), Math.sin(face)); return inside(cx + wx, y + dy, cz + wz, Math.atan2(fz, fx), pitch); };
+      set('castle-church', room(0, 3.1, 2.51, -Math.PI / 2, -30));
+      set('castle-hall', room(10, 4, 2.51, -Math.PI / 2, -60)); set('castle-hall-night', room(10, 4, 2.51, -Math.PI / 2, -60));
+      set('castle-keep', room(-12, -12.1, 21.2, Math.PI / 2, -200));
+    }
+    // a village: its street, from above, its tavern and its chapel inside and out
+    const V = S.find(s => s.type === 'village' && s.houses.some(h => h.kind === 'tavern') && s.houses.some(h => h.kind === 'chapel'));
+    if (V) {
+      set('village', onFoot(V.cx + 0.5, V.cz + 20.5, -Math.PI / 2)); set('village-night', onFoot(V.cx + 0.5, V.cz + 20.5, -Math.PI / 2));
+      set('village-aerial', aim(V.cx + 42, V.baseY + 40, V.cz + 37, V.cx, V.baseY + 5, V.cz));
+      const into = (h, k) => { const [ox, oz] = G[h.dir]; return [h.door[0] - ox * k, h.door[2] - oz * k, Math.atan2(-oz, -ox)]; };
+      const tav = V.houses.find(h => h.kind === 'tavern'), [tx, tz, ta] = into(tav, 2.1);
+      set('tavern', inside(tx, tav.door[1] + 2.45, tz, ta, -40)); set('tavern-night', inside(tx, tav.door[1] + 2.45, tz, ta, -40));
+      const ch = V.houses.find(h => h.kind === 'chapel'), [cx1, cz1, ca] = into(ch, 3.4), [cx2, cz2] = into(ch, 4.4);
+      set('chapel', inside(cx1, ch.door[1] + 2.45, cz1, ca, -30)); set('chapel-night', inside(cx1, ch.door[1] + 2.45, cz1, ca, -30));
+      set('chapel-frescoes', inside(cx2, ch.door[1] + 2.45, cz2, ca + Math.PI / 2, 40));
+      const [ox, oz] = G[ch.dir], [cx3, cz3] = into(ch, 6);
+      set('chapel-outside', aim(ch.door[0] + ox * 19 + oz * 2, ch.door[1] + 19, ch.door[2] + oz * 19 + ox * 2, cx3, ch.door[1] + 8, cz3));
+    }
+    // a watchtower from its road's side, a ruin, a hamlet's street
+    const tw = S.find(s => s.type === 'tower');
+    if (tw) { const [ox, oz] = G[tw.gate], [px, pz] = turn(tw.gate, 1, 0); set('tower', aim(tw.cx + 0.5 + ox * 20 + px * 8, tw.baseY + 18, tw.cz + 0.5 + oz * 20 + pz * 8, tw.cx + 0.5, tw.baseY + 12, tw.cz + 0.5)); }
+    const wild = [B.FOREST, B.PINES, B.MARSH, B.BADLANDS], ruins = S.filter(s => s.type === 'ruin');
+    const ruin = ruins.find(s => w.biome[idx(s.cx, s.cz)] === B.FOREST) || ruins.find(s => wild.includes(w.biome[idx(s.cx, s.cz)])) || ruins[0];
+    if (ruin) set('ruin', aim(ruin.cx + 20, ruin.baseY + 10, ruin.cz + 15, ruin.cx + 0.5, ruin.baseY + 3, ruin.cz + 0.5, 4));
+    const H = S.find(s => s.type === 'hamlet');
+    if (H) set('hamlet', onFoot(H.cx + 0.5, H.cz + 18.5, -Math.PI / 2));
+  }
+
+  if (!aerialOnly && !classic && !landmarks) {
     // [region, eye above the ground, pitch (px of horizon shift), nearest and farthest distance
     // that counts in full, how far to look]. The peaks are seen from below them, from anywhere.
     const views = [[B.GRASSLAND, 1.5, -110, 20, 110, 150], [B.FOREST, 1.5, -40, 8, 45, 70], [B.PINES, 1.5, -60, 12, 80, 110], [B.PEAKS, 2, 50, 40, 200, 220], [B.BADLANDS, 3, -80, 25, 120, 160], [B.MARSH, 1, -150, 8, 80, 110]];
@@ -182,7 +272,7 @@ const scenes = await page.evaluate(({ seed, hour, aerialOnly, classic }) => {
   }
 
   // Aerial: high over the spot from which the most different regions lie ahead, looking down.
-  if (!classic) {
+  if (!classic && !landmarks) {
     let best = null;
     for (let z = 0; z < W; z += 32) for (let x = 0; x < W; x += 32) for (let k = 0; k < 8; k++) {
       const a = k / 8 * Math.PI * 2, seen = new Map();
@@ -197,7 +287,7 @@ const scenes = await page.evaluate(({ seed, hour, aerialOnly, classic }) => {
       cam: { x: wrap(best.x + 0.5), y: 330, z: wrap(best.z + 0.5), yaw: deg(best.a), pitch: -330 } });   // (above the highest peaks)
   }
   return out;
-}, { seed, hour, aerialOnly, classic });
+}, { seed, hour, aerialOnly, classic, landmarks });
 
 for (const s of scenes) console.log(JSON.stringify(s));
 if (write) {
@@ -205,8 +295,9 @@ if (write) {
   const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
   for (const s of scenes) {
     const k = cfg.scenes.findIndex(o => o.name === s.name);
-    if (k >= 0 && cfg.scenes[k].fixed) { console.log(`kept ${s.name}: placed by hand (fixed)`); continue; }
-    if (k >= 0) cfg.scenes[k] = s; else cfg.scenes.push(s);
+    if (k >= 0 && cfg.scenes[k].fixed && !landmarks) { console.log(`kept ${s.name}: placed by hand (fixed)`); continue; }   // (--landmarks re-aims the hand-placed landmark scenes: that is what it is for)
+    if (k >= 0 && landmarks) cfg.scenes[k].cam = s.cam;   // (only the camera: each scene keeps its hour, title, gear...)
+    else if (k >= 0) cfg.scenes[k] = s; else cfg.scenes.push(s);
   }
   fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
   console.log(`wrote ${scenes.length} scenes to tools/scenes.json`);

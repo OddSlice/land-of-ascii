@@ -1194,9 +1194,10 @@ function flatten(cx, cz, r, y, spare) {
 //   Chimneys smoke (world.chimneys, drawn by the renderer).
 Object.assign(VOX, { PLASTER: 3, TILES: 4, THATCH: 5, GLASS: 6, BRICK: 7, MARBLE: 8, FRESCO: 9, ICON: 10, GILD: 11, STARS: 12, BANNER: 13 });
 VOX_MAT.push(MAT.PLASTER, MAT.TILES, MAT.THATCH, MAT.GLASS, MAT.BRICK, MAT.MARBLE, MAT.FRESCO, MAT.ICON, MAT.GILD, MAT.STARS, MAT.BANNER);
+const SETTLE_APART = 80;       // open country between any two settlements (castles and towns, villages, hamlets): room for what will roam it
 const SETTLE = {
-  village: { count: 4, size: 46, square: 5, houses: [8, 15], flat: 8 },    // (flat: the most the land under the square may rise)
-  hamlet: { count: 6, size: 34, square: 3, houses: [3, 6], flat: 9 },
+  village: { count: 3, size: 46, square: 5, houses: [8, 15], flat: 8 },    // (flat: the most the land under the square may rise)
+  hamlet: { count: 4, size: 34, square: 3, houses: [3, 6], flat: 9 },
 };
 // w: wall width, d: depth (front to back), h: wall height; roof: tiles or thatch
 const HOUSE_KINDS = {
@@ -1450,7 +1451,7 @@ function placeSettlements(seed) {
       if (placed >= P.count) break;
       const cx = c & MASK, cz = (c / W) | 0;
       if (!open[Math.min(pass, 2)].includes(biome[c])) continue;
-      if (world.structs.some(s => Math.max(Math.abs(wrapDelta(cx - s.cx)), Math.abs(wrapDelta(cz - s.cz))) < half + s.half + 14)) continue;
+      if (world.structs.some(s => Math.max(Math.abs(wrapDelta(cx - s.cx)), Math.abs(wrapDelta(cz - s.cz))) < half + s.half + SETTLE_APART)) continue;
       let ok = true, mn = Infinity, mx = -Infinity;
       for (let oz = -half; oz <= half && ok; oz += 2) for (let ox = -half; ox <= half; ox += 2) {
         const i = ((cz + oz) & MASK) * W + ((cx + ox) & MASK);
@@ -1505,7 +1506,7 @@ function turnTemplate(T, dir) {
   return R;
 }
 
-const CASTLE_SPACING = 300;    // castles stand at least this far apart, so each holds its own part of the land
+const CASTLE_SPACING = 360;    // castles stand at least this far apart, so each holds its own part of the land (and open country lies between)
 const CASTLE_MOST = 8, FORTRESS_MOST = 3;   // (one citadel, up to three fortresses, the rest small castles)
 // A town: wide, how far it reaches past the castle's sides; deep, from the castle's wall out to the
 // town's own gate; square, the depth of the square before the castle's gate.
@@ -3011,7 +3012,16 @@ const TERRAIN_SEG = K.TERRAIN << 24;
 let sunScreen = null, moonScreen = null;
 
 // The frame's camera, lighting and fog, set at the start of render().
-let vHor = 0, vFx = 1, vFz = 0, vRx = 0, vRz = 1, vCamX = 0, vCamY = 0, vCamZ = 0, vF = 1, vVd = 500, vTanX = 1;
+let vHor = 0, vFx = 1, vFz = 0, vRx = 0, vRz = 1, vCamX = 0, vCamY = 0, vCamZ = 0, vF = 1, vVd = 500, vTanX = 1, vTan = 0, vMidH = 0;
+// Looking up or down turns the rays of each column of the picture (in the upright plane through it)
+// by the pitch: the row y sees the slope tan(pitch + atan(q)), q its height over the focal length.
+// (Until phase 4 the picture slid up or down instead, the horizon moving and every column's rays
+// staying level, which stretched everything when looking far up or down.) A direction rising s for
+// each unit forward shows at the height pixOfSlope(s) on the screen (pixels from the top), and the
+// row at height y looks along slopeOfPix(y). vHor is where the horizon is (slope 0).
+const TILT_MAX = 1.6;   // the steepest pitch drawn, as a slope (58°: the top and bottom rows stay short of straight up and down)
+function pixOfSlope(s) { const d = 1 + s * vTan; return d > 1e-9 ? vMidH - vF * (s - vTan) / d : s > vTan ? -1e9 : 1e9; }
+function slopeOfPix(y) { const q = (vMidH - y) / vF, d = 1 - q * vTan; return d > 1e-9 ? (q + vTan) / d : 1e9; }
 let shAmb = 0.38, shDiff = 0.62, posLo = 0, posInv = 1, lightsOn = false, winGlow = 0;   // (winGlow: how brightly windows glow, after dark)
 const FOG_LUT = new Float32Array(1025);
 for (let k = 0; k <= 1024; k++) { const u = (k / 1024 - 0.15) / 0.85; FOG_LUT[k] = u <= 0 ? 0 : Math.pow(u, 1.4) * 0.93; }
@@ -3020,7 +3030,7 @@ const fogAt = d => { const k = d * 1024 / vVd; return k >= 1024 ? 0.93 : FOG_LUT
 function projectBody(el, az) {   // sun or moon, in pixels
   const dAz = wrapAngle(az - cam.yaw);
   if (el < -0.06 || Math.abs(dAz) > Math.PI / 2 - 0.05) return null;
-  return { x: grid.w / 2 + Math.tan(dAz) * vF, y: vHor - Math.tan(el) / Math.cos(dAz) * vF, r: 0.05 * vF };
+  return { x: grid.w / 2 + Math.tan(dAz) * vF, y: pixOfSlope(Math.tan(el) / Math.cos(dAz)), r: 0.05 * vF };
 }
 
 // Structures close enough to matter this frame, positioned in the unwrapped frame nearest
@@ -3244,7 +3254,7 @@ function paintedWall(m, u, v) {
 // =====================================================================
 function marchRays(t) {
   const { RW, RH } = grid;
-  const f = vF, invRayH = 1 / grid.rayH, rayH = grid.rayH, horizonPix = vHor;
+  const f = vF, invRayH = 1 / grid.rayH, rayH = grid.rayH;
   const fx = vFx, fz = vFz, rx = vRx, rz = vRz;
   const camX = vCamX, camY = vCamY, camZ = vCamZ;
   const { H, mat, shade } = world;
@@ -3288,7 +3298,7 @@ function marchRays(t) {
   function terrainAt(idx, z, px, pz, hIn) {
     const near = z < NEAR_SMOOTH;
     const h = hIn !== undefined ? hIn : near ? terrainHeight(px, pz) : marchHeight(px, pz, z);
-    let row = Math.ceil((horizonPix + (camY - h) * f / z) * invRayH - 0.5);
+    let row = Math.ceil(pixOfSlope((h - camY) / z) * invRayH - 0.5);
     if (!(row < ybuf)) return;   // (also skips a NaN height: seed 42 has one, at 416, 390)
     if (row < 0) row = 0;
     const warm = lightsOn && z < 120 && hasLightsAt(px, pz);
@@ -3487,14 +3497,14 @@ function marchRays(t) {
             if (pxl >= 0 && pxl < sx && pzl >= 0 && pzl < sz) prevTop = topSolid[pxl * sz + pzl];
           }
           const fc = face >= 0 ? face : 4, sideShade = fb[fc];
-          const kNear = f / tt, kFar = f / tn;
+          const kNear = 1 / tt, kFar = 1 / tn;   // (slope per unit of height)
           const wallU = face < 2 ? camZ + dz * tt : camX + dx * tt;   // where the ray meets this face, along the wall
           const warm = lightsOn && tt < 120 && hasLightsAt(ix + 0.5, iz + 0.5);
           for (let i = 0; i < sp.length; i += 3) {
             const y0 = sp[i], y1 = sp[i + 1], m = VOX_MAT[sp[i + 2]];
             const wTop = baseY + y1 + 1, wBot = baseY + y0;
-            const rT = Math.ceil((horizonPix + (camY - wTop) * kNear) * invRayH - 0.5);
-            let rB = Math.ceil((horizonPix + (camY - wBot) * kNear) * invRayH - 0.5);
+            const rT = Math.ceil(pixOfSlope((wTop - camY) * kNear) * invRayH - 0.5);
+            let rB = Math.ceil(pixOfSlope((wBot - camY) * kNear) * invRayH - 0.5);
             if (rB <= rT) rB = rT + 1;   // a distant wall still gets one ray row
             const inside = prevTop > eyeY && prevTop > y0 + 1;   // interior face: the air beside it, at eye level, is under something solid
             aKind = K.WALL; aSeg = (K.WALL << 24) | sSeg | fc; aRamp = MAT_RAMP[m];
@@ -3521,7 +3531,7 @@ function marchRays(t) {
             }
             if (r1 >= ybuf) { if (r0 < ybuf) ybuf = r0; } else if (r0 < r1) gaps = true;
             if (camY > wTop) {           // top face, between this cell's far and near projection
-              const rF = Math.ceil((horizonPix + (camY - wTop) * kFar) * invRayH - 0.5);
+              const rF = Math.ceil(pixOfSlope((wTop - camY) * kFar) * invRayH - 0.5);
               if (rF < rT) {
                 let st = fb[4];
                 if (thisTop > y1 + 1) st *= 0.45;
@@ -3531,7 +3541,7 @@ function marchRays(t) {
                 paint(rF, rT, tt);
               }
             } else if (camY < wBot) {    // underside: always in shadow
-              const rU = Math.ceil((horizonPix + (camY - wBot) * kFar) * invRayH - 0.5);
+              const rU = Math.ceil(pixOfSlope((wBot - camY) * kFar) * invRayH - 0.5);
               if (rU > rB) {
                 aKind = K.UNDER; aSeg = (K.UNDER << 24) | sSeg | 5; aPos = posOf(fb[5] * 0.7); aFlags = F_INTERIOR; aLit = 0; aU = ix; aV = iz;
                 paint(rB, rU, tt);
@@ -3594,12 +3604,12 @@ function marchRays(t) {
           blockExit = (ex < ez ? ex : ez) + 1e-4;
           let zEnd = blockExit < vd ? blockExit : vd;
           if (k < nInt && intT0[k] < zEnd) zEnd = intT0[k];
-          const D = ((ybuf - 0.5) * rayH - horizonPix) / f, need0 = camY - D * z, need1 = camY - D * zEnd;
+          const D = -slopeOfPix((ybuf - 0.5) * rayH), need0 = camY - D * z, need1 = camY - D * zEnd;
           if (blockMax[(bz & BM) * NB + (bx & BM)] < (need0 < need1 ? need0 : need1)) { zPrev = z; z = zEnd; continue; }
         }
         const idx = (Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK);
         const hf = marchHeight(px, pz, z);
-        if ((horizonPix + (camY - hf) * f / z) * invRayH - 0.5 <= ybuf - 1) terrainAt(idx, z, px, pz, hf);
+        if (pixOfSlope((hf - camY) / z) * invRayH - 0.5 <= ybuf - 1) terrainAt(idx, z, px, pz, hf);
         else { lastShZ = z; lastH = hf; lastSh = NaN; }   // (hidden: its light is looked up only if the next step needs it)
       } else terrainAt((Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK), z, px, pz);
       zPrev = z;
@@ -3795,7 +3805,7 @@ function primScreenBox(p) {
   }
   const { RW, RH, rayW, rayH } = grid, f = vF;
   let x0 = Math.floor((grid.w * 0.5 + sx0 * f) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + sx1 * f) / rayW - 0.5);
-  let y0 = Math.floor((vHor - sy1 * f) / rayH - 0.5), y1 = Math.ceil((vHor - sy0 * f) / rayH - 0.5);
+  let y0 = Math.floor(pixOfSlope(sy1) / rayH - 0.5), y1 = Math.ceil(pixOfSlope(sy0) / rayH - 0.5);
   primBox[4] = x0; primBox[5] = x1;   // (the same in every stripe, for choices that must agree across them)
   if (x0 < grid.xr0) x0 = grid.xr0; if (x1 > grid.xr1 - 1) x1 = grid.xr1 - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
   if (x0 > x1 || y0 > y1) return false;
@@ -3823,7 +3833,7 @@ function rasterPrim(p) {
   // The rows a column can hit: the discriminant, as a quadratic in the row's slope q, is
   // A·q² + 2B·q + C; when A < 0 it is non-negative between two roots, and only those rows are
   // tested. (A ≥ 0 means the eye is inside the solid's vertical shadow: test the whole column.)
-  const f = vF, hor = vHor, rayH = grid.rayH;
+  const f = vF, rayH = grid.rayH;
   let ya = 0, yb = 0;
   const rowsOf = (A, B, C) => {
     ya = y0; yb = y1;
@@ -3831,7 +3841,7 @@ function rasterPrim(p) {
     const disc = B * B - A * C;
     if (disc < 0) return false;
     const sq = Math.sqrt(disc), qLo = (-B + sq) / A, qHi = (-B - sq) / A;
-    const top = Math.floor((hor - qHi * f) / rayH - 0.5), bot = Math.ceil((hor - qLo * f) / rayH - 0.5);
+    const top = Math.floor(pixOfSlope(qHi) / rayH - 0.5), bot = Math.ceil(pixOfSlope(qLo) / rayH - 0.5);
     if (top > ya) ya = top; if (bot < yb) yb = bot;
     return ya <= yb;
   };
@@ -3902,7 +3912,7 @@ function rasterPrim(p) {
       let ya = y0, yb2 = y1;
       if (t1 > 0.05) {
         const qMax = yt > 0 ? yt / t1 : yt / t2, qMin = yb < 0 ? yb / t1 : yb / t2;
-        const top = Math.floor((hor - qMax * f) / rayH - 0.5), bot = Math.ceil((hor - qMin * f) / rayH - 0.5);
+        const top = Math.floor(pixOfSlope(qMax) / rayH - 0.5), bot = Math.ceil(pixOfSlope(qMin) / rayH - 0.5);
         if (top > ya) ya = top; if (bot < yb2) yb2 = bot;
       }
       for (let y = ya, i = x * RH + ya; y <= yb2; y++, i++) {
@@ -3972,7 +3982,8 @@ function rasterFlame(L, cx, cy, cz, t, li) {
   const fh = L.size * flick, fw = L.size * 0.55, base = cy - 0.15 * L.size;
   const k = vF / zc;
   let x0 = Math.floor((grid.w * 0.5 + (xc - fw * 1.2) * k) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + (xc + fw * 1.2) * k) / rayW - 0.5);
-  let y0 = Math.floor((vHor - (base + fh) * k) / rayH - 0.5), y1 = Math.ceil((vHor - base * k) / rayH - 0.5);
+  const pTip = pixOfSlope((base + fh) / zc), pBase = pixOfSlope(base / zc);
+  let y0 = Math.floor(pTip / rayH - 0.5), y1 = Math.ceil(pBase / rayH - 0.5);
   if (x0 < grid.xr0) x0 = grid.xr0; if (x1 > grid.xr1 - 1) x1 = grid.xr1 - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
   const { kind, seg, ramp, pos, depth, lit, flags } = rays;
   for (let y = y0; y <= y1; y++) {
@@ -3988,7 +3999,7 @@ function rasterFlame(L, cx, cy, cz, t, li) {
       depth[i] = zc; lit[i] = 0; flags[i] = 0;
     }
   }
-  if (L.kind !== 'candle') glows.push({ x: grid.w * 0.5 + xc * k, y: vHor - (base + fh * 0.5) * k, hPx: fh * k, zc, fire: L.kind === 'fire', li });   // (a candle's own light is its stand's pool; no halo each)
+  if (L.kind !== 'candle') glows.push({ x: grid.w * 0.5 + xc * k, y: (pTip + pBase) * 0.5, hPx: pBase - pTip, zc, fire: L.kind === 'fire', li });   // (a candle's own light is its stand's pool; no halo each)
 }
 
 // ---- what the sprites are made of ---------------------------------------------------------------
@@ -4037,7 +4048,7 @@ function drawSprites(t, poses) {
     if (zc > 0.3) {
       const k = vF / zc, y = hero.y - camY;
       heroBox[0] = (grid.w * 0.5 + (lat - 0.7) * k) / grid.rayW - 1; heroBox[1] = (grid.w * 0.5 + (lat + 0.7) * k) / grid.rayW + 1;
-      heroBox[2] = (vHor - (y + 2.1) * k) / grid.rayH - 1; heroBox[3] = (vHor - (y - 0.2) * k) / grid.rayH + 1; heroBox[4] = zc;
+      heroBox[2] = pixOfSlope((y + 2.1) / zc) / grid.rayH - 1; heroBox[3] = pixOfSlope((y - 0.2) / zc) / grid.rayH + 1; heroBox[4] = zc;
     }
   }
   // Trees, bushes and boulders from the buckets within range.
@@ -4176,7 +4187,7 @@ function drawSprites(t, poses) {
     const zc = dxw * fx + dzw * fz;
     if (zc < 1 || zc > zoneC) continue;
     const lat = dxw * rx + dzw * rz, k = vF / zc;
-    birdsOnScreen.push({ x: grid.w * 0.5 + lat * k, y: vHor + (camY - wy) * k, zc, frame: Math.floor(t * 4 + b.flap) % 3 });
+    birdsOnScreen.push({ x: grid.w * 0.5 + lat * k, y: pixOfSlope((wy - camY) / zc), zc, frame: Math.floor(t * 4 + b.flap) % 3 });
   }
 }
 
@@ -4487,7 +4498,7 @@ function castShadows() {
     const zN = zc - rad, zF = zc + rad, k0 = vF / zN, k1 = vF / zF;
     let x0 = Math.floor((grid.w * 0.5 + Math.min((xc - rad) * k0, (xc - rad) * k1)) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + Math.max((xc + rad) * k0, (xc + rad) * k1)) / rayW - 0.5);
     const yT = y + rad * 0.7, yB = y - rad * 0.7;
-    let y0 = Math.floor((vHor - Math.max(yT * k0, yT * k1)) / rayH - 0.5), y1 = Math.ceil((vHor - Math.min(yB * k0, yB * k1)) / rayH - 0.5);
+    let y0 = Math.floor(pixOfSlope(Math.max(yT / zN, yT / zF)) / rayH - 0.5), y1 = Math.ceil(pixOfSlope(Math.min(yB / zN, yB / zF)) / rayH - 0.5);
     if (x0 < grid.xr0) x0 = grid.xr0; if (x1 > grid.xr1 - 1) x1 = grid.xr1 - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
     const r2 = rad * rad;
     for (let xx = x0; xx <= x1; xx++) for (let yy = y0, i = xx * RH + y0; yy <= y1; yy++, i++) {
@@ -4591,7 +4602,7 @@ function splatGroundMarks(t) {
         const xPix = w2 + (dxw * rx + dzw * rz) * f / zc;
         if (xPix < xPix0 || xPix >= xPix1) continue;
         const hgt = zc < NEAR_SMOOTH ? terrainHeight(px, pz) : H[ci];
-        const yPix = vHor + (camY - hgt) * f / zc;
+        const yPix = pixOfSlope((hgt - camY) / zc);
         if (yPix < 0 || yPix >= grid.h) continue;
         const ri = Math.min(RW - 1, (xPix / rayW) | 0) * RH + Math.min(RH - 1, (yPix / rayH) | 0);
         if (kind[ri] !== K.TERRAIN || seg[ri] !== (TERRAIN_SEG | m)) continue;
@@ -4887,7 +4898,7 @@ function drawOverlays(t) {
   if (ffOn > 0) forEachFirefly(t, (fx, fy, fz, b) => {
     const rx = fx - vCamX, ry = fy - vCamY, rz = fz - vCamZ, zc = rx * vFx + rz * vFz;
     if (zc < 0.8 || b * ffOn < 0.25) return;
-    const sx = grid.w * 0.5 + (rx * vRx + rz * vRz) / zc * grid.f, sy = vHor - ry / zc * grid.f, c = Math.floor(sx / cellW), r = Math.floor(sy / cellH);
+    const sx = grid.w * 0.5 + (rx * vRx + rz * vRz) / zc * grid.f, sy = pixOfSlope(ry / zc), c = Math.floor(sx / cellW), r = Math.floor(sy / cellH);
     if (c < c0 || c >= c1 || r < 0 || r >= rows || cellDepth(c, r) < zc) return;
     GL[r * cols + c] = markAt(MK.dot, sx - c * cellW, sy - r * cellH); FG[r * cols + c] = FF[b > 0.6 ? FF.length - 1 : 1];
   });
@@ -5152,7 +5163,7 @@ function paintCells(t) {
   for (let x = xr0; x < xr1; x++) for (let y = Math.max(0, Math.ceil(hr)), i = x * RH + y; y < RH; y++, i++) {
     if (kind[i] !== K.TERRAIN || !(flags[i] & F_WATER)) continue;
     const below = y - hr, q = rayQ[y], tw = depth[i];
-    let ym = hr - below;
+    let ym = pixOfSlope(-q) / rayH - 0.5;
     for (let it = 0; it < 3; it++) {
       // (the nearer of the two rows it lies between: where a cliff meets the sky, taking whichever row
       // it rounds to makes the mirror hop between the cliff and the sky from frame to frame)
@@ -5161,7 +5172,7 @@ function paintCells(t) {
       const y2 = Math.min(y - 1, y1 + 1), j1 = x * RH + y1, j2 = x * RH + y2;
       const d1 = kind[j1] === K.SKY ? Infinity : depth[j1], d2 = kind[j2] === K.SKY ? Infinity : depth[j2], D = d1 < d2 ? d1 : d2;
       if (!(D > tw)) break;
-      ym = (vHor - q * (2 * tw / D - 1) * fz) / rayH - 0.5;
+      ym = pixOfSlope(q * (2 * tw / D - 1)) / rayH - 0.5;
     }
     // The ripple is fixed to the water (to the point this ray meets), not to the screen, so it stays put
     // as you walk, broad and gentle (a quick one frays the edge of a reflection into a comb); and the
@@ -5260,7 +5271,7 @@ function paintCells(t) {
     forEachFirefly(t, (fx, fy, fz, b) => {
       const rx = fx - vCamX, ry = fy - vCamY, rz = fz - vCamZ, zc = rx * vFx + rz * vFz;
       if (zc < 0.8) return;
-      const sx = grid.w * 0.5 + (rx * vRx + rz * vRz) / zc * grid.f, sy = vHor - ry / zc * grid.f;
+      const sx = grid.w * 0.5 + (rx * vRx + rz * vRz) / zc * grid.f, sy = pixOfSlope(ry / zc);
       const cc = Math.floor(sx / cellW), pr = Math.floor(sy / SH), xr = Math.floor(sx / rayW);
       if (cc < c0 - 1 || cc > c1 || pr < 0 || pr >= rows * 2 || xr < xm0 || xr >= xm1) return;
       if (depth[xr * RH + Math.min(RH - 1, Math.floor(sy / rayH))] < zc) return;   // behind a tree or a hill
@@ -5354,7 +5365,7 @@ const stats = { marchMs: 0, spriteMs: 0, marksMs: 0, cellMs: 0, drawMs: 0, edgeC
 const LOOK = { PAINTED: 0, MOSAIC: 1 };
 function renderFrame(t, poses, look) {
   const f = grid.f;
-  vF = f; vVd = view.dist; vHor = grid.h * 0.5 + cam.pitch;
+  vF = f; vVd = view.dist; vMidH = grid.h * 0.5; vTan = clamp(cam.pitch / f, -TILT_MAX, TILT_MAX); vHor = pixOfSlope(0);
   vFx = Math.cos(cam.yaw); vFz = Math.sin(cam.yaw); vRx = -vFz; vRz = vFx;
   vCamX = cam.x; vCamY = cam.y; vCamZ = cam.z; vTanX = Math.tan(FOV / 2);
   const s = skyState(clock.hours);
@@ -5366,9 +5377,9 @@ function renderFrame(t, poses, look) {
   lightsOn = activeLights.length > 0;
   winGlow = light.darkness > 0.05 ? 0.6 + 0.4 * light.darkness : 0;
   for (let x = 0; x < grid.RW; x++) rayP[x] = ((x + 0.5) * grid.rayW - grid.w * 0.5) / f;
-  for (let y = 0; y < grid.RH; y++) { rayQ[y] = -((y + 0.5) * grid.rayH - vHor) / f; rayInvS[y] = rayQ[y] < -1e-6 ? -1 / rayQ[y] : Infinity; }
+  for (let y = 0; y < grid.RH; y++) { rayQ[y] = slopeOfPix((y + 0.5) * grid.rayH); rayInvS[y] = rayQ[y] < -1e-6 ? -1 / rayQ[y] : Infinity; }
   if (skyPosRow.length !== grid.RH) skyPosRow = new Float32Array(grid.RH);
-  for (let y = 0; y < grid.RH; y++) { const e = (vHor - (y + 0.5) * grid.rayH) / (0.55 * f); skyPosRow[y] = e <= 0 ? 1 : e >= 1 ? 0 : 1 - e; }
+  for (let y = 0; y < grid.RH; y++) { const e = rayQ[y] / 0.55; skyPosRow[y] = e <= 0 ? 1 : e >= 1 ? 0 : 1 - e; }
   updateShadeMips();
   sunScreen = wx.storm > 0.55 ? null : projectBody(s.sunEl, s.sunAz);   // (behind rain clouds, neither shows)
   moonScreen = s.sunEl < 0.15 && wx.storm <= 0.55 ? projectBody(s.moonEl, s.moonAz) : null;
@@ -5994,8 +6005,11 @@ function merchantPose(m, dt) {
 // You walk as a hero seen from behind and above, as in Ocarina of Time. The simulation is v1's and
 // untouched: cam is still your eyes, and the mouse still turns them. The picture, though, is drawn
 // from viewCam, V3_DIST behind the hero along the way you look, and raised by an angle that the
-// mouse's up and down tilts (V3_PHI0 when level). It looks at the hero's head, so the hero stands in
-// the lower middle of the picture with the land ahead above them.
+// mouse's up and down tilts (V3_PHI0 when level): looking down lifts it up to V3_PHI_MAX over them,
+// looking up lowers it to V3_PHI_MIN and then tilts the view on up past them (by up to V3_UP). It
+// looks at the hero's head, so the hero stands in the lower middle of the picture with the land
+// ahead above them. (Since phase 4 the renderer turns each column's rays by the pitch rather than
+// sliding the picture, so looking far up or down no longer stretches it.)
 // - Rising ground behind the hero lifts the camera over it (up to V3_PHI_MAX), as in Ocarina of
 //   Time: at once when the ground comes up, easing back down after.
 // - Past that, or with a wall behind, the camera comes in front of it (at once), and eases back out
@@ -6004,7 +6018,7 @@ function merchantPose(m, dt) {
 // own eyes; flying is always first person. hero is what the renderer draws.
 const V3_WADE = 0.55, V3_SIDE = 0.25;   // (how deep the hero is drawn in water; the room the camera keeps from walls to either side:
                                         // less than a one-cell corridor leaves around a walker, whose body is 0.3 across RADIUS)
-const V3_DIST = 6.4, V3_PHI0 = 0.2, V3_PHI_MAX = 0.85, V3_AIM = 1.65, V3_AIM_HIGH = 1.2, V3_PIVOT = 1.85, V3_CLEAR = 0.5, V3_TILT = 1.3;
+const V3_DIST = 6.4, V3_PHI0 = 0.2, V3_PHI_MIN = -0.12, V3_PHI_MAX = 1.0, V3_AIM = 1.65, V3_AIM_HIGH = 1.2, V3_PIVOT = 1.85, V3_CLEAR = 0.5, V3_TILT = 1.55, V3_UP = 0.45;
 const view3 = { on: true, dist: V3_DIST, cur: V3_DIST, lift: 0, face: 0, walked: 0, lastX: NaN, lastZ: NaN, speed: 0, wade: 0, feet: 0, wall: V3_DIST + 1 };   // (wall: how far back a wall stops the camera)
 const viewCam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
 const hero = { on: 0, x: 0, y: 0, z: 0, face: 0, walked: 0, moving: 0, gear: 0, air: 0, gy: 0 };   // (air: 0 on the ground, 1 in a jump; gy: the ground under them)
@@ -6069,7 +6083,9 @@ function updateHero(dt) {
   // height a little behind, so you see them jump and step up, and the picture does not jolt.
   view3.feet = fresh ? player.feetY : view3.feet + (player.feetY - view3.feet) * Math.min(1, dt * 8);
   const pivot = view3.feet + V3_PIVOT, bx = -Math.cos(cam.yaw), bz = -Math.sin(cam.yaw);
-  const phiUser = clamp(V3_PHI0 - cam.pitch / grid.f * 0.6, -0.08, V3_PHI_MAX);
+  // (the mouse sets where you look, psi, up positive: looking down raises the camera over the hero, up
+  // to 57°; looking up lowers it toward their shoulders, and then tilts the view on up past them)
+  const psi = Math.atan(cam.pitch / grid.f), phiUser = clamp(V3_PHI0 - psi * 1.25, V3_PHI_MIN, V3_PHI_MAX);
   let need = -1;   // the lowest angle whose line from the pivot clears the ground behind by V3_CLEAR
   for (let h = 0.5, reach = Math.min(view3.dist, view3.wall + 0.5) * Math.cos(phiUser) + 0.01; h <= reach; h += 0.25) {   // (a wall behind: no rising for the ground beyond it)
     need = Math.max(need, Math.atan2(terrainHeight(cam.x + bx * h, cam.z + bz * h) + V3_CLEAR - pivot, h));
@@ -6096,8 +6112,10 @@ function updateHero(dt) {
   viewCam.y = cam.y + (pivot + D * sph - cam.y) * e;
   viewCam.yaw = cam.yaw;
   const aim = V3_AIM + (V3_AIM_HIGH - V3_AIM) * clamp((phi - 0.45) / 0.4, 0, 1);   // (from high up, lower, so their feet stay in the picture)
-  const look = clamp((view3.feet + aim - viewCam.y) / Math.max(0.5, hd) * grid.f, -grid.h * V3_TILT, grid.h * 1.3);   // looking at the hero's head
-  viewCam.pitch = cam.pitch + (look - cam.pitch) * smoothstep(0.35, 0.75, e);
+  const look = clamp((view3.feet + aim - viewCam.y) / Math.max(0.5, hd) * grid.f, -grid.f * V3_TILT, grid.f * V3_TILT);   // looking at the hero's head
+  const up = clamp(psi - (V3_PHI0 - V3_PHI_MIN) / 1.25, 0, V3_UP);   // (looking up further than the camera can go down)
+  const aimed = up > 0 ? Math.min(grid.f * V3_TILT, grid.f * Math.tan(Math.atan(look / grid.f) + up)) : look;
+  viewCam.pitch = cam.pitch + (aimed - cam.pitch) * smoothstep(0.35, 0.75, e);
   if (hd < 2) hero.on = 0;
 }
 function setThird(on) { view3.on = !!on; view3.lastX = NaN; view3.cur = view3.dist; view3.lift = 0; view3.wall = V3_DIST + 1; updateHero(0); }
@@ -6345,7 +6363,7 @@ window.TV = {
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
   renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0
-  defs: { KEYFRAMES, RAMP_NAMES, MAT, BIOME, BIOME_NAMES, W },   // for the tools that draw maps and palette sheets
+  defs: { KEYFRAMES, RAMP_NAMES, MAT, BIOME, BIOME_NAMES, W, TOWN, FORT, GATE_DIRS },   // for the tools that draw maps and palette sheets, and aim scenes at landmarks
 };
 })();
 </script>

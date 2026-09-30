@@ -232,3 +232,39 @@ Shots: `shots/phase4/step2/sheet-camera` (the same walk through the town's gate,
 - ⚠️ The towns hold fewer houses: 7 or 8 in a small castle's town (10 to 12 before), 8 to 11 in a fortress's, 14 to 17 in the citadel's.
 - ⚠️ On the steep forest walk of the tests, you see through the hero's eyes on 68 frames where before the back of their head filled the picture. The camera is where it was.
 - Tests: all pass, with the world checksums re-recorded. The house walks go into all 501 houses on the five test seeds.
+
+## After step 2, part 2: looking up and down, and room between the towns
+
+Martin (30 Sep):
+- "why does the camera warp when I look down in 3rd person? I should be able to look up and down in 3rd person too without warp; camera movement is very limited in that sense";
+- towns should be fewer: they are sometimes too close to each other, and there should be wide space for what comes later (animals and people);
+- and, for later: a second world of Ascii, a cyberpunk city (Night City: elevation, megabuildings), chosen at the start. Not to be worked on yet (see below).
+
+Shots: `shots/phase4/fixes/` (`sheet-look`: looking down, level and up, before and after).
+
+### Looking up and down
+
+- **What was wrong.** The renderer never really tilted. Looking up or down slid the picture up or down (the horizon moved) while each column's rays stayed level. So the further you looked, the more the picture stretched. The third-person camera had been kept to small angles because of it: it could barely look up at all, and looking down stretched the hero into a smear.
+- **The fix.** The renderer now turns each column's rays by the pitch, in the upright plane through the column (`pixOfSlope` and `slopeOfPix`).
+  - Every place that turned a height into a row of the screen goes through them: the ground and its walls, buildings, solids (trees, figures, the hero), flames and their glow, the sun and the moon, birds, fireflies, marks on the ground, shadows, water mirrors.
+  - Looking down 45° shows as wide a spread of land as looking straight ahead, turned down; upright things stay upright.
+  - The steepest pitch drawn is 58°, so the top and bottom rows stay short of straight up and down.
+- **The third-person camera:**
+  - moving the mouse down lifts it over the hero, up to 57°, looking down on them;
+  - moving it up lowers it toward their shoulders, then tilts the view on up past them (up to 26° more): the sky, the rooftops, the castle above.
+- **Numbers:**
+  - frames take 3 to 8% longer (looking down, more land is in view); 57 to 60 fps. ⚠️ The machine was busy.
+  - Workers and the main thread agree, byte for byte in both looks.
+  - Tests: all pass. A new third-person walk goes from the start into the town, looking far down and up; the camera never enters the ground or a building. On the forest walk, the camera no longer goes into the hero's eyes (it can now rise higher over the hill).
+- ⚠️ At the far end of looking up, the hero leaves the bottom of the picture.
+
+### Fewer towns, more room
+
+- Castles, each with its town, stand 360 cells apart (they were 300): four or five a world (five to seven before).
+- Villages: three (four before). Hamlets: four (six before).
+- Any two settlements (castles and towns, villages, hamlets) keep 80 cells of open country between them (villages and hamlets kept 14 before): room for the animals and people to come.
+- Landmarks move whenever world generation changes, so the scene tool now aims the scenes of castles, towns, villages, churches, taverns, towers, ruins, hamlets and your hero at them (`node tools/find-views.mjs --landmarks --write`).
+
+### A second world (not started)
+
+For later, in Martin's words: another world of Ascii, a cyberpunk city in the spirit of Night City, with elevation and megabuildings; you choose at the start which world to explore. Nothing is built for it yet. When it comes, it will want its own world generator and palette behind the same renderer and simulation, and a choice of world on the start screen.

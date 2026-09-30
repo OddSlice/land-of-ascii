@@ -47,6 +47,7 @@ In file order:
 - **`renderCore()` must stand alone.** Each worker is built from its source (`workerSource()`). Inside it, use only its own code, the constants and helpers `workerSource()` passes in, and the objects `world`, `cam`, `clock`, `view`, `cur`, `light` and `COL`. A new constant or helper used inside the core must be added to `workerSource()`. Main-thread-only things (`ui`, `player`, the DOM) stay outside.
 - **The third person is presentation only.** `cam` is your eyes, and v1's movement moves it. Every frame `updateHero` places `viewCam` behind the hero, and the renderer draws from it: the workers get it as their `cam`, and the main-thread render swaps it into `cam` for the frame and back. The simulation, the HUD and trade read `cam`, never `viewCam`. The camera must never end up inside the ground or a building (`test-sim.mjs` section 6).
 - **Workers and the main thread must agree.** Rendering with `?threads=0` must give the same pixels as the default workers, in both looks. Check it after renderer changes (diff two `tools/shoot.mjs` runs, one with `--threads 0`, with `--look painted` and `--look mosaic`). Anything that reads neighbouring columns must work within the columns a stripe computes (`grid.xr0`..`grid.xr1`, one cell wider than it draws). A choice about a whole solid (such as whether a plant is see-through) must be made from its box over the whole picture (`primBox[4]`, `primBox[5]`), not from the stripe's share of it.
+- **Looking up and down turns the view (phase 4).** The renderer turns each column's rays by the pitch (`pixOfSlope`, `slopeOfPix` in `renderCore`); it no longer slides the picture. Anything that puts a height on the screen must go through `pixOfSlope(slope)` (a slope being height over forward distance), never `vHor - slope * f`; `rayQ[row]` is each row's slope.
 - **Two looks.** Painted (the default since the step 1 review) and mosaic (step 1's; L switches, `?look=mosaic`). A renderer change must keep both working. The mosaic look draws rain, snow and fireflies as marks, and has no fog or aurora.
 - **Weather is the same for a given seed, day and hour.** `wx` reaches the workers with every frame, and the storm greying is applied to the palette before it is sent.
 - **Drawing rules:**
@@ -70,7 +71,7 @@ node tools/shoot.mjs --walk KeyW+Space --frames 14 hero   # hold keys for some f
 node tools/bench-v2.mjs          # frame timings (--threads 0, --browser firefox|webkit, --look painted|mosaic, --third)
 node tools/profile-v2.mjs road   # CPU profile of a scene
 node tools/probe.mjs road 'expr' # evaluate an expression in the page after showing a scene
-node tools/find-views.mjs --write              # re-aim the region views and the aerial (--seed N, --aerial-only, --classic for phase 1's six); scenes marked fixed: true are left alone
+node tools/find-views.mjs --write              # re-aim the region views and the aerial (--seed N, --aerial-only, --classic for phase 1's six, --landmarks for castles, towns, villages, towers, ruins and your hero); scenes marked fixed: true are left alone (except by --landmarks)
 node tools/map.mjs [seed...]     # region maps -> shots/phase2/map-<seed>.png
 node tools/palette.mjs           # the ground's ramps, day/dusk/night -> shots/phase2/palette.png
 node tools/sheet.mjs --out x.png --cols 2 --scale 0.5 a.png "Label" b.png "Label"   # contact sheets
@@ -112,7 +113,9 @@ Test harness notes:
 - **Phase 4 is under way**, following `docs/phase4.md`.
   - **Step 1 (castles with a purpose) is built:** castles round an Orthodox church (iconostasis, frescoes, candles, domes), a keep with its bell, a great hall; village chapels as small churches; ruins as ruined churches.
   - **Step 2 (castles spread out, each with a town) is built:** five to seven castles a world, 300 apart on commanding sites, each facing a walled town at its foot (a street climbing to the castle, a market square with a well, two-storey townhouses, a wall with towers and a gatehouse); you start before the biggest castle's town gate; watchtowers on the roads' passes; ruins and standing stones in the wild, off the roads.
+  - **After step 2:** the camera in the towns (wider streets and gates, no giant close-ups); looking up and down without stretching (the renderer turns the view); four or five castle towns a world, three villages, four hamlets, 80 cells of open country between any two.
   - Next: step 3 (roads that make sense), then ground that reads, then mountains you can climb.
+- **Later, not started:** a second world, a cyberpunk city (Night City: elevation, megabuildings), chosen at the start alongside this one (Martin, 30 Sep). See the end of `docs/phase4.md`.
 - **Speed on Martin's Mac** (M1 Max, painted look): on the 512 world, Chromium 5.7–7.5 ms a frame, Firefox 7.3–9.9 ms, WebKit 6.5–14.1 ms. The 1024 world has not been measured on an idle machine yet: with Chrome busy in the background it ran Chromium 8.4–12.5 ms, Firefox 12.3–17.1 ms. A world generates in about 2.3 s (0.5 s on the 512 world).
 - **Rough edges:**
   - turning still crawls a little (detail sliding across the pixels);
@@ -120,7 +123,7 @@ Test harness notes:
   - cliff faces right in front of you are blocky, with a break at the horizon line;
   - palm fronds are tubes up close, and canopies look faceted;
   - merchant faces and outfits are simple;
-  - third person: the camera goes into your eyes on slopes steeper than about 50°, with your back to a wall and in doors and gates (it snaps in; it never shows the hero from closer than 2 cells); looking down steeply stretches upright things a little (the tilt is a shear); a flower at the lens is a big flat blob; the hero's green tunic is close to the fields' green;
+  - third person: the camera goes into your eyes with your back to a wall and in doors and gates (it snaps in; it never shows the hero from closer than 2 cells); looking far up, the hero leaves the bottom of the picture; a flower at the lens is a big flat blob; the hero's green tunic is close to the fields' green;
   - gear: nothing to sell and no way to earn gold (v1's trade); what you own is always worn; the things at the belt are small;
   - settlements: on steep land a village gets few houses and steep grass between its plots; houses have one room;
   - towns: every town has the same plan, its streets wide for the camera (so a small castle's town holds only 7 or 8 houses); on a steep slope house footings show along the street; watchtowers stand where v1's roads happen to climb.

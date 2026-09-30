@@ -20,8 +20,8 @@
 //      day and hour, stays within 0..1, and over 60 days each kind comes about as often as meant; the
 //      day counts up as the clock passes midnight.
 //   6. Third person: walks from the start through the castle gate and back against its walls, down
-//      and up a steep hillside, and through a forest, stepping the camera behind the hero with every
-//      step. The camera is never inside the ground or a building; the hero faces the way they walk;
+//      and up a steep hillside, through a forest, and from the start into the town looking far down and up,
+//      stepping the camera behind the hero with every step. The camera is never inside the ground or a building; the hero faces the way they walk;
 //      V (setThird) and flying give back your own eyes; what you buy shows on the hero (hero.gear).
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs [--record]
@@ -398,11 +398,12 @@ for (const seed of SEEDS) {
 console.log('6. third person, seed 42');
 {
   await p2.evaluate(() => { const TV = window.TV; if (TV.world.seed !== 42) TV.regenerate(42); });
-  const WALKS = [   // start (x, z, yaw in degrees: null is where the game starts you), then [seconds, keys, yaw turn per second]
+  const WALKS = [   // start (x, z, yaw in degrees: null is where the game starts you), then [seconds, keys, yaw turn per second, pitch in pixels (the mouse's up and down)]
     ['from the start, through the gate, turning and backing into the walls', null, [[5, ['KeyW'], 0], [1.5, [], Math.PI / 1.5], [2.5, ['KeyS'], 0], [2, ['KeyA'], 0.6], [2, ['KeyS', 'KeyD'], -0.4]]],
     ['down and up a steep hillside', [564.5, 372.5, -135], [[2, ['KeyW'], 0], [1, [], Math.PI], [3, ['KeyW'], 0.3], [2, ['KeyS'], 0]]],
     ['through a pine forest', [88.5, 24.5, 0], [[3, ['KeyW'], 0.2], [2, ['KeyD'], 0], [3, ['KeyW', 'ShiftLeft'], -0.3]]],
     ['across the open field', [510.5, 276.5, 22], [[3, ['KeyW'], 0], [1, ['KeyD'], 0], [2, ['KeyS'], 0.5]]],
+    ['from the start into the town, looking far down and up', null, [[3, ['KeyW'], 0, -900], [3, ['KeyW'], 0, 1170], [2, [], 1.5, -600], [2, ['KeyS'], 0, 900], [2, [], -1.5, 1e4], [1, ['KeyA'], 0, -1e4]]],
   ];
   for (const [what, at, script] of WALKS) {
     const r = await p2.evaluate(({ at, script }) => {
@@ -413,9 +414,10 @@ console.log('6. third person, seed 42');
       TV.setMode('walk'); TV.setThird(true);
       let steps = 0, inGround = null, inWall = null, squeezed = 0, faceOff = 0, faceChecks = 0, clear = Infinity, steady = 0, lastDir = NaN;
       const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
-      for (const [secs, keys, turn] of script) {
+      for (const [secs, keys, turn, pitch] of script) {
         for (const k of Object.keys(TV.keys)) TV.keys[k] = false;
         for (const k of keys) TV.keys[k] = true;
+        c.pitch = pitch === undefined ? 0 : Math.max(-TV.grid.h, Math.min(TV.grid.h * 1.3, pitch));   // (as v1's mouse clamps it)
         for (let i = 0, n = Math.round(secs * 60); i < n; i++, steps++) {
           const x0 = c.x, z0 = c.z;
           c.yaw += turn / 60;
