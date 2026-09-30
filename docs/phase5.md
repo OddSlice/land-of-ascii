@@ -47,3 +47,35 @@ Shots: `shots/phase5/step1/` (`sheet-bag`: the bag and a merchant's panel; `shee
 - ⚠️ Through your own eyes (V) you do not see yourself eat; only the note says so.
 - ⚠️ From behind, the food shows while it is held up; at the mouth, your hero's head hides it.
 - Candles and the lucky pebble do nothing yet.
+
+## Step 2a: farms
+
+Shots: `shots/phase5/step2/` (`sheet-farms`: a village in its fields, a pasture, a windmill, where you start, and the mosaic look).
+
+### What changed
+
+- **Farmland round every village, hamlet and town** (`placeFarms`), in blocks of 12 cells squared on the settlement's middle, out to 30 cells past a village's edge (20 for a hamlet, 26 for a town). Only gentle, dry ground takes it: no roads (nor a cell either side), no water, no footprints, nothing steep, nothing far above or below the settlement. Trees keep off it.
+- **Fields** (most blocks): strips three or four cells wide of **wheat** (half of them), **greens** and **ploughed soil**, the rows running one way over each block, a row to a cell. Rows are drawn lighter and furrows darker, fading out by 64 cells, in both looks; between the rows of greens lies bare soil. Wheat takes the straw of the thatched roofs, and letters of its own in the painted look.
+- **Pastures** (about one block in six): grass, fenced round the edge with posts and two rails that follow the ground, and a gate of two cells on the side toward the settlement. The fences stand in the way, as tree trunks do. The animals come in step 3.
+- **Hay meadows** (about one in ten): two to four round haystacks, which you cannot walk through.
+- **A windmill for each village**, where the land allows: on the highest ground of its farmland that is out in the fields (most of the ground round it could be farmed) and clear of the roads. A round plaster tower on a stone footing, tapering up, a thatched cap, a door and a window toward the village, and four sails, each a stock and a sail of slats, turning slowly to face the village. Trees keep further off it. On seed 42, two of the three villages have one; the third has no open rise.
+
+### How it is built
+
+- `world.farm` holds what grows on each cell (`FARM`, plus 8 where the rows run along z); `paintGround` turns it into the fields' materials (`MAT.WHEAT`, `GREENS`, `SOIL`, and the 2s for rows along z). The renderer draws the rows from where each ray lands (`rowStripe`, `FIELD_ROWS`, `FIELD_SOIL`): in the march, near and far, and in the painted look's colours.
+- Fences, haystacks and the sails are **props**: `world.props` (where, which way, how big, what), in buckets as the trees are, built into solids near the eye (`buildProp`). A fence's posts stand on the ground under each; far off (past 70 cells) a fence has half the posts, and past 120 none (it would be thinner than the rays). The cells a fence or a haystack stands on go into the walking mask after the trees (`world.propBlocks`).
+- The windmill is a structure (`buildWindmill`), turned to face its village; the renderer draws and walks it as any other.
+- New landmark scenes, aimed by `node tools/find-views.mjs --landmarks --write`: `windmill` and `fields`.
+
+### Numbers
+
+- Seed 42: 9,800 cells of fields (5,400 of wheat, 1,800 of greens, 2,500 ploughed), 1,250 of pasture in 8 pastures, 2,600 of hay meadow with 68 haystacks, 45 runs of fence, two windmills.
+- Tests: all pass, with the world checksums re-recorded (the heights under the windmills, the ground's materials, fewer trees, the fences and haystacks in the walking mask, the windmills among the structures). Every gate, door and house walk still gets in; v1's movement still agrees with v2's.
+- Workers and the main thread agree, byte for byte in both looks, with 5 and 6 workers, over the start, a village from the air and on foot, the grassland, a pasture and a windmill.
+- Speed: drawn on one thread, the village from the air costs about 2% more (the rows add a little; fewer trees on the farmland take a little away).
+
+### Still open
+
+- ⚠️ The pastures are empty until step 3's animals.
+- ⚠️ You cannot open a gate: it is a gap. Fences are not jumped over.
+- The windmill has no inside; its door is painted dark.

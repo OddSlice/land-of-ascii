@@ -7,7 +7,7 @@
 // the six scenes phase 1 was measured on (castle vista, merchant on the road, campfire, merchant
 // close up by day and by lantern light, the spawn gate at night) at the same things in this world.
 // With --landmarks it aims the scenes of castles, towns, villages, churches, taverns, towers, ruins,
-// hamlets and your hero at those landmarks in this world (phase 4: they move whenever world
+// hamlets, windmills, fields and your hero at those landmarks in this world (phase 4: they move whenever world
 // generation changes); only their cameras change.
 // Prints scenes for tools/scenes.json (or merges them in with --write).
 //   node tools/find-views.mjs [--seed 42] [--hour 10.5] [--write] [--aerial-only | --classic | --landmarks]
@@ -138,6 +138,22 @@ const scenes = await page.evaluate(({ seed, hour, aerialOnly, classic, landmarks
     if (ruin) set('ruin', aim(ruin.cx + 20, ruin.baseY + 10, ruin.cz + 15, ruin.cx + 0.5, ruin.baseY + 3, ruin.cz + 0.5, 4));
     const H = S.find(s => s.type === 'hamlet');
     if (H) set('hamlet', onFoot(H.cx + 0.5, H.cz + 18.5, -Math.PI / 2));
+    // phase 5: a windmill from its village's side (its sails face the village), and a pasture on foot from
+    // before its gate, the fields round it
+    const mill = S.find(s => s.type === 'windmill');
+    if (mill) { const [ox, oz] = G[mill.gate], [px, pz] = turn(mill.gate, 1, 0); set('windmill', aim(mill.cx + 0.5 + ox * 24 - px * 5, mill.baseY + 9, mill.cz + 0.5 + oz * 24 - pz * 5, mill.cx + 0.5, mill.baseY + 7, mill.cz + 0.5, 4), { title: 'A windmill in its village\'s fields, sails turning (10:30)', seed, hour: 10.5, t: 1000 }); }
+    const V2 = S.find(s => s.type === 'village');
+    if (V2) {
+      let best = null;   // (the pasture cell nearest the village, then its block's middle)
+      for (let dz = -60; dz <= 60; dz++) for (let dx = -60; dx <= 60; dx++) { const f = w.farm[idx(V2.cx + dx, V2.cz + dz)] & 7; if (f === 4 && (!best || Math.hypot(dx, dz) < best.d)) best = { dx, dz, d: Math.hypot(dx, dz) }; }
+      if (best) {
+        let sx = 0, sz = 0, n = 0;
+        for (let dz = -11; dz <= 11; dz++) for (let dx = -11; dx <= 11; dx++) if ((w.farm[idx(V2.cx + best.dx + dx, V2.cz + best.dz + dz)] & 7) === 4) { sx += best.dx + dx; sz += best.dz + dz; n++; }
+        const mx = V2.cx + 0.5 + sx / n, mz = V2.cz + 0.5 + sz / n, l = Math.hypot(sx / n, sz / n) || 1, ux = -sx / n / l, uz = -sz / n / l;   // (toward the village)
+        const c = onFoot(mx + ux * 14, mz + uz * 14, Math.atan2(-uz, -ux)); c.pitch = -60;
+        set('fields', c, { title: 'A pasture and the fields round a village (10:30)', seed, hour: 10.5, t: 1000 });
+      }
+    }
   }
 
   if (!aerialOnly && !classic && !landmarks) {

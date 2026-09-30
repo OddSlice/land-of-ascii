@@ -1141,6 +1141,35 @@
         "yaw": -143.4,
         "pitch": -270
       }
+    },
+    {
+      "name": "windmill",
+      "cam": {
+        "x": 983.5,
+        "y": 53,
+        "z": 880.5,
+        "yaw": 11.8,
+        "pitch": -77
+      },
+      "title": "A windmill in its village's fields, sails turning (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000
+    },
+    {
+      "name": "fields",
+      "cam": {
+        "x": 994.58,
+        "y": 0,
+        "z": 857.35,
+        "yaw": -31.7,
+        "pitch": -60,
+        "ground": true
+      },
+      "title": "A pasture and the fields round a village (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000
     }
   ]
 }

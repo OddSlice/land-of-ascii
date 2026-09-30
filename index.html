@@ -161,8 +161,9 @@ const DAY_SECONDS = 240;                  // one full in-game day in real second
 const START_HOUR = 9;
 
 const MAT = { WATER: 0, GRASS: 1, ROCK: 2, SNOW: 3, HAZE: 4, STONE: 5, WOOD: 6, LEAF: 7, ROAD: 8, GRASS2: 9, SAND: 10, REDROCK: 11, DRYGRASS: 12, MUD: 13, REEDS: 14, PLASTER: 15, TILES: 16, THATCH: 17, GLASS: 18,
-  BRICK: 19, MARBLE: 20, FRESCO: 21, ICON: 22, GILD: 23, STARS: 24, BANNER: 25 };
-const MAT_COUNT = 26;   // (15 and up are only ever buildings: phase 3's settlements, phase 4's churches)
+  BRICK: 19, MARBLE: 20, FRESCO: 21, ICON: 22, GILD: 23, STARS: 24, BANNER: 25,
+  WHEAT: 26, WHEAT2: 27, GREENS: 28, GREENS2: 29, SOIL: 30, SOIL2: 31 };
+const MAT_COUNT = 32;   // (15 to 25 are only ever buildings: phase 3's settlements, phase 4's churches; 26 and up are phase 5's fields, their rows along x, or along z for the 2s)
 const ROBE_COUNT = 4;
 
 // Regions. Every cell of land belongs to one, picked from its climate and height; where two meet
@@ -183,7 +184,7 @@ const DEFAULT_CELL = 1;
 const RAYS_X = 2, RAYS_Y = 4;
 const NEAR_SMOOTH = 26;                   // nearer than this, terrain is sampled bilinearly (no flat blocks at your feet)
 // What a ray hit, recorded per ray and read by the cell stage.
-const K = { SKY: 0, TERRAIN: 1, WALL: 2, TOP: 3, UNDER: 4, TREE: 5, CONIFER: 6, BUSH: 7, TRUNK: 8, BOULDER: 9, MERCHANT: 10, CLOUD: 12, FLAME: 13, LOGS: 14, SUN: 16, MOON: 17, PALM: 18, CACTUS: 19, REED: 20, DOME: 21, NONE: 255 };
+const K = { SKY: 0, TERRAIN: 1, WALL: 2, TOP: 3, UNDER: 4, TREE: 5, CONIFER: 6, BUSH: 7, TRUNK: 8, BOULDER: 9, MERCHANT: 10, CLOUD: 12, FLAME: 13, LOGS: 14, SUN: 16, MOON: 17, PALM: 18, CACTUS: 19, REED: 20, DOME: 21, HAY: 22, NONE: 255 };
 const PART = { STAFF: 1, LANTERN: 2, BOOT: 3, LEG: 4, BELT: 5, ROBE: 6, HAND: 8, SLEEVE: 9, SKIN: 10, EYE: 11, BRIM: 12, CROWN: 13, PACK: 14, CLOAK: 15, STEEL: 16, GEAR: 17, SHIELD: 18, CAP: 19 };
 // What you have bought, as it shows on your hero: hero.gear holds these bits, and the tunic's colour in bits 12-13.
 const GEAR = { CLOAK: 1, BOOTS: 2, LANTERN: 4, ROPE: 8, KETTLE: 16, FLASK: 32, MAP: 64, CAP: 128, SWORD: 256, SHIELD: 512 };
@@ -484,6 +485,8 @@ const world = {
   tex: new Uint8Array(N),      // per-cell texture: 1 denser, 2 sparser, 3 carries a mark (tuft, crack...)
   trees: null,                 // typed arrays of tree positions, see placeTrees
   treeBuckets: null,
+  farm: new Uint8Array(N),     // (phase 5) what grows on each cell of farmland (FARM), see placeFarms
+  props: null, propBuckets: null, propBlocks: new Int32Array(0),   // fences, haystacks, windmill sails; the cells they block
   birds: [],
   clouds: [], wind: [0.6, 0],
   lights: [],                  // torches and campfires: {x, y, z, r, color, i, kind, phase, size}
@@ -562,7 +565,9 @@ function generateWorld(seed) {
   structureExtras();        // (phase 4: the castles' and towers' domes, bells, chimneys: from their templates into the world)
   castleFlags();
   buildBridges(seed);
+  placeFarms(seed);         // (phase 5: fields, pastures, hay meadows and windmills round the settlements; trees keep off them)
   placeTrees(seed);
+  for (const i of world.propBlocks) world.treeMask[i] = 1;   // (fences and haystacks stand in the way, as trunks do)
   spawnBirds(rng);
   spawnClouds(rng);
   spawnMerchants(rng);
@@ -898,8 +903,11 @@ function paintGround() {
 
       const slope = Math.max(Math.abs(dhdx), Math.abs(dhdz)), h = H[i], b = biome[i];
       const patch = fbmLand(x, z, seed + 777, 3);   // patches of rougher or drier ground
+      const fm = world.farm[i];
       if (road[i]) mat[i] = MAT.ROAD;             // includes fords: a road strip across water
       else if (water[i]) mat[i] = MAT.WATER;
+      else if (fm && (fm & 7) <= FARM.SOIL) mat[i] = FARM_MAT[fm & 7] + (fm & 8 ? 1 : 0);   // (phase 5: a field, its rows along x, or z for the 2s)
+      else if ((fm & 7) === FARM.PASTURE) mat[i] = MAT.GRASS;
       else if ((h > snowLine + (heat[i] - 0.5) * 20 * LIFT || b === BIOME.PEAKS) && slope < (b === BIOME.PEAKS ? 2.5 : 4)) mat[i] = MAT.SNOW;   // the peaks are snowy wherever snow can lie; steep faces stay bare
       else if (b === BIOME.BADLANDS) mat[i] = washMask[i] && slope < 1.6 ? MAT.SAND : patch > 0.62 && slope < 1.6 ? MAT.DRYGRASS : MAT.REDROCK;
       else if (slope > (b === BIOME.BEACH ? 2.5 : 4.5) || (b === BIOME.PEAKS && h > rockLine) || (b === BIOME.CLIFFS && seaDist[i] < 5 * LAND)) mat[i] = heat[i] > HOT_AT && (b === BIOME.BEACH || b === BIOME.CLIFFS) ? MAT.REDROCK : MAT.ROCK;
@@ -2343,6 +2351,144 @@ function bridgeLights() {
 }
 
 // =====================================================================
+//  FARMS  (phase 5: fields, pastures, hay meadows and windmills round the villages and towns)
+// =====================================================================
+// Round every village, hamlet and town lies its farmland, in blocks of FARM_BLOCK cells squared on the
+// settlement's middle, out to FARM_REACH past its own edge. Most blocks are fields in strips of wheat,
+// greens or ploughed soil, their rows running one way over the whole block; some are pastures, fenced,
+// with a gate on the side toward the settlement; a few are hay meadows with haystacks. Fields take only
+// gentle, dry ground: no roads (nor a cell either side), no water, no footprint, nothing steep, and not
+// far above or below the settlement. Each village has a windmill on the highest ground of its fields.
+// world.farm keeps per cell what grows there (FARM, plus 8 where the rows run along z), for the ground's
+// material (paintGround: MAT.WHEAT and so on, the 2s along z) and so the trees keep off (placeTrees).
+// Fences, haystacks and the windmills' sails are props: solids built near the eye as the plants are
+// (buildProp); the cells a fence or a haystack stands on cannot be walked through (world.propBlocks).
+const FARM_BLOCK = 12, FARM_REACH = { village: 30, hamlet: 20, town: 26 };
+const FARM = { WHEAT: 1, GREENS: 2, SOIL: 3, PASTURE: 4, MEADOW: 5 };
+const FARM_MAT = [0, MAT.WHEAT, MAT.GREENS, MAT.SOIL];
+const FARM_BIOMES = [BIOME.GRASSLAND, BIOME.FOREST, BIOME.PINES];
+const PROP = { FENCE: 0, HAYSTACK: 1, SAILS: 2 };
+const PROP_BUCKET = 32, PROP_BUCKETS = W / PROP_BUCKET;
+function placeFarms(seed) {
+  const { H, water, road, biome } = world, farm = world.farm || (world.farm = new Uint8Array(N));
+  farm.fill(0);
+  const P = { x: [], z: [], y: [], rot: [], size: [], kind: [] }, blocks = [];
+  const prop = (kind, x, z, y, rot, size) => { P.x.push(x); P.z.push(z); P.y.push(y); P.rot.push(rot); P.size.push(size); P.kind.push(kind); };
+  const at = (x, z) => (z & MASK) * W + (x & MASK);
+  // what no field may cover: every footprint with two cells round it, and the roads with a cell either side
+  const keepOff = new Uint8Array(N);
+  const keepOffStruct = s => { for (let lz = -2; lz < s.tpl.sz + 2; lz++) for (let lx = -2; lx < s.tpl.sx + 2; lx++) keepOff[at(s.x0 + lx, s.z0 + lz)] = 1; };
+  for (const s of world.structs) keepOffStruct(s);
+  for (let i = 0; i < N; i++) if (road[i]) { const x = i & MASK, z = (i / W) | 0; for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) keepOff[at(x + ox, z + oz)] = 1; }
+  const slope = i => { const x = i & MASK, z = (i / W) | 0; return Math.max(Math.abs(H[at(x + 1, z)] - H[at(x - 1, z)]), Math.abs(H[at(x, z + 1)] - H[at(x, z - 1)])) * 0.5; };
+  const good = (i, y) => !keepOff[i] && !water[i] && !farm[i] && H[i] > world.seaLevel + 1.5 && FARM_BIOMES.includes(biome[i]) && Math.abs(H[i] - y) < 14 && slope(i) <= 1.2;
+  const settlements = world.structs.filter(s => FARM_REACH[s.type]);
+  for (const s of settlements) {
+    const reach = s.half + FARM_REACH[s.type], y0 = s.baseY + 1;
+    if (s.type === 'village') placeWindmill(s, reach, keepOff, seed);
+    const nb = Math.ceil(reach / FARM_BLOCK) + 1;
+    for (let bz = -nb; bz < nb; bz++) for (let bx = -nb; bx < nb; bx++) {
+      const x0 = s.cx + bx * FARM_BLOCK, z0 = s.cz + bz * FARM_BLOCK, mx = bx * FARM_BLOCK + FARM_BLOCK / 2, mz = bz * FARM_BLOCK + FARM_BLOCK / 2;
+      if (Math.max(Math.abs(mx), Math.abs(mz)) > reach) continue;   // (past the farmland)
+      const cells = [];
+      for (let lz = 0; lz < FARM_BLOCK; lz++) for (let lx = 0; lx < FARM_BLOCK; lx++) { const i = at(x0 + lx, z0 + lz); if (good(i, y0)) cells.push([i, lx, lz]); }
+      if (cells.length < FARM_BLOCK * FARM_BLOCK * 0.5) continue;   // (no scraps of field between the roads)
+      const hk = hash2(x0, z0, seed + 501), alongZ = hash2(x0, z0, seed + 502) < 0.5;
+      if (hk < 0.18 && cells.length >= FARM_BLOCK * FARM_BLOCK * 0.9) {
+        // a pasture: fenced round its edge, with a gate of two cells in the middle of the side toward the settlement
+        for (const [i] of cells) farm[i] = FARM.PASTURE;
+        const inside = new Set(cells.map(c => c[1] + c[2] * FARM_BLOCK)), E = FARM_BLOCK - 1;
+        const gate = Math.abs(mx) > Math.abs(mz) ? (mx > 0 ? 3 : 1) : (mz > 0 ? 0 : 2);   // (sides: 0 the -z edge, 1 the +x edge, 2 the +z edge, 3 the -x edge)
+        for (let side = 0; side < 4; side++) {
+          let run = null;
+          const flush = () => {   // (a run of two cells or more is a fence, and cannot be walked through)
+            if (run && run.n > 1) { prop(PROP.FENCE, x0 + run.lx + 0.5, z0 + run.lz + 0.5, H[at(x0 + run.lx, z0 + run.lz)], side & 1 ? Math.PI / 2 : 0, run.n - 1); blocks.push(...run.cells); }
+            run = null;
+          };
+          for (let t = 0; t <= E; t++) {
+            const lx = side === 1 ? E : side === 3 ? 0 : t, lz = side === 0 ? 0 : side === 2 ? E : t;
+            const fenced = inside.has(lx + lz * FARM_BLOCK) && !(side === gate && (t === 5 || t === 6));
+            if (!fenced) { flush(); continue; }
+            if (!run) run = { lx, lz, n: 0, cells: [] };
+            run.n++; run.cells.push(at(x0 + lx, z0 + lz));
+          }
+          flush();
+        }
+      } else if (hk < 0.3) {
+        // a hay meadow: two to four haystacks, clear of the edges and of each other
+        for (const [i] of cells) farm[i] = FARM.MEADOW;
+        const want = 2 + ((hash2(x0, z0, seed + 505) * 3) | 0), stacks = [];
+        for (let k = 0; k < 40 && stacks.length < want; k++) {
+          const [i, lx, lz] = cells[(hash2(x0 + k, z0, seed + 506) * cells.length) | 0];
+          if (lx < 2 || lz < 2 || lx > FARM_BLOCK - 3 || lz > FARM_BLOCK - 3 || stacks.some(([ax, az]) => Math.max(Math.abs(ax - lx), Math.abs(az - lz)) < 3)) continue;
+          stacks.push([lx, lz]);
+          prop(PROP.HAYSTACK, x0 + lx + 0.5, z0 + lz + 0.5, H[i], hash2(lx, lz, seed + 507) * Math.PI, 0.85 + 0.3 * hash2(lz, lx, seed + 508));
+          blocks.push(i);
+        }
+      } else {
+        // fields: strips three or four cells wide across the rows, each of wheat (half of them), greens or ploughed soil
+        const sw = 3 + (hash2(x0, z0, seed + 503) < 0.5 ? 1 : 0);
+        for (const [i, lx, lz] of cells) {
+          const band = Math.floor((alongZ ? lx : lz) / sw), r = hash2(x0 * 7 + band, z0 * 3 + band, seed + 504);
+          farm[i] = (r < 0.5 ? FARM.WHEAT : r < 0.75 ? FARM.GREENS : FARM.SOIL) | (alongZ ? 8 : 0);
+        }
+      }
+    }
+  }
+  // the props, by where they stand (a fence by where its run starts: runs are at most FARM_BLOCK long)
+  const n = P.x.length, props = { n, x: Float32Array.from(P.x), z: Float32Array.from(P.z), y: Float32Array.from(P.y), rot: Float32Array.from(P.rot), size: Float32Array.from(P.size), kind: Uint8Array.from(P.kind) };
+  for (let i = 0; i < n; i++) { props.x[i] = ((props.x[i] % W) + W) % W; props.z[i] = ((props.z[i] % W) + W) % W; }
+  const buckets = Array.from({ length: PROP_BUCKETS * PROP_BUCKETS }, () => []);
+  for (let i = 0; i < n; i++) buckets[((props.z[i] / PROP_BUCKET) | 0) * PROP_BUCKETS + ((props.x[i] / PROP_BUCKET) | 0)].push(i);
+  world.props = props; world.propBuckets = buckets; world.propBlocks = Int32Array.from(blocks);
+
+  // A windmill: on the highest ground of the village's farmland where seven cells square are dry and
+  // gentle, well clear of the roads (its levelling reaches four cells out) and of the village, and out in
+  // the fields (most of the ground round it could be farmed); its door and its sails face the village.
+  function placeWindmill(s, reach, keepOff, seed) {
+    let best = null;
+    const open = (cx, cz) => { let n = 0; for (let dz = -8; dz <= 8; dz += 2) for (let dx = -8; dx <= 8; dx += 2) if (good(at(cx + dx, cz + dz), s.baseY + 1)) n++; return n >= 49; };   // (of 81)
+    for (let oz = -reach; oz <= reach; oz += 2) for (let ox = -reach; ox <= reach; ox += 2) {
+      if (Math.max(Math.abs(ox), Math.abs(oz)) < s.half + 8) continue;
+      const cx = (s.cx + ox) & MASK, cz = (s.cz + oz) & MASK;
+      let ok = true, mn = Infinity, mx = -Infinity;
+      for (let dz = -7; dz <= 7 && ok; dz++) for (let dx = -7; dx <= 7; dx++) {
+        const i = at(cx + dx, cz + dz);
+        if (road[i] || water[i] || H[i] < world.seaLevel + 2 || keepOff[i] && Math.max(Math.abs(dx), Math.abs(dz)) <= 5) { ok = false; break; }
+        if (Math.abs(dx) <= 3 && Math.abs(dz) <= 3) { mn = Math.min(mn, H[i]); mx = Math.max(mx, H[i]); }
+      }
+      if (!ok || mx - mn > 3 || !FARM_BIOMES.includes(biome[at(cx, cz)]) || !open(cx, cz)) continue;
+      const score = H[at(cx, cz)] + hash2(cx, cz, seed + 509);
+      if (!best || score > best.score) best = { cx, cz, score, y: Math.round((mn + mx) / 2) };
+    }
+    if (!best) return;
+    const { cx, cz, y } = best, vx = wrapDelta(s.cx - cx), vz = wrapDelta(s.cz - cz);
+    const dir = Math.abs(vx) > Math.abs(vz) ? (vx > 0 ? 1 : 3) : (vz > 0 ? 0 : 2), [gx, gz] = GATE_DIRS[dir];
+    flatten(cx, cz, 3, y);
+    const mill = { type: 'windmill', variant: 'windmill', cx, cz, half: 4, baseY: y, tpl: turnTemplate(buildWindmill(), dir).finalize(), x0: cx - 3, z0: cz - 3, radius: Math.hypot(7, 7) / 2 + 1, gate: dir };
+    world.structs.push(mill);
+    keepOffStruct(mill);
+    prop(PROP.SAILS, cx + 0.5 + gx * 3.7, cz + 0.5 + gz * 3.7, y + 8.8, Math.atan2(gz, gx), 4.6);   // (the hub, just out from the tower's face, turning on an axle toward the village)
+  }
+}
+// A tower mill: a round tower of plaster on a stone footing, tapering up, a door and a window toward
+// the village (+z, before turnTemplate), and a thatched cap. Its sails are a prop (buildProp).
+function buildWindmill() {
+  const S = 7, c = 3, T = makeTemplate(S, 12, S);
+  for (let y = 0; y <= 8; y++) {
+    const r = 3.3 - y * 0.12;
+    for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) {
+      const d = Math.hypot(x - c, z - c);
+      if (d <= r && (y === 0 || d > r - 1.35)) T.set(x, y, z, y <= 1 ? VOX.STONE : VOX.PLASTER);
+    }
+  }
+  for (let y = 9; y <= 11; y++) { const r = 2.6 - (y - 9) * 0.95; for (let x = 0; x < S; x++) for (let z = 0; z < S; z++) if (Math.hypot(x - c, z - c) <= r) T.set(x, y, z, VOX.THATCH); }
+  T.box(c, 1, S - 2, c, 2, S - 1, 0);   // the door
+  T.set(c, 5, S - 1, VOX.GLASS); T.set(c, 5, S - 2, 0);   // a window over it
+  return T;
+}
+
+// =====================================================================
 //  TREES + BIRDS  (sprites, not voxels)
 // =====================================================================
 const TREE_BUCKET = 32, TREE_BUCKETS = W / TREE_BUCKET;
@@ -2373,7 +2519,7 @@ function placeTrees(seed) {
       for (let lz = -1; lz <= s.tpl.sz; lz++) for (let lx = -1; lx <= s.tpl.sx; lx++) excl[((s.z0 + lz) & MASK) * W + ((s.x0 + lx) & MASK)] = 1;
       continue;
     }
-    const r = s.half + (s.type === 'castle' ? 16 : s.type === 'town' ? 22 : s.type === 'tower' ? 6 : 2);   // castles stand in a clearing, so their gate can be seen coming; towns in their fields
+    const r = s.half + (s.type === 'castle' ? 16 : s.type === 'town' ? 22 : s.type === 'tower' ? 6 : s.type === 'windmill' ? 9 : 2);   // castles stand in a clearing, so their gate can be seen coming; towns in their fields; windmills in theirs
     for (let oz = -r; oz <= r; oz++) for (let ox = -r; ox <= r; ox++) excl[((s.cz + oz) & MASK) * W + ((s.cx + ox) & MASK)] = 1;
   }
   for (let z = 0; z < W; z++) for (let x = 0; x < W; x++) if (road[z * W + x]) {
@@ -2387,7 +2533,7 @@ function placeTrees(seed) {
       const i = zr + x;
       const rule = REGION_TREES[biome[i]], low = biome[i] === BIOME.BEACH || biome[i] === BIOME.MARSH;   // sand and marsh lie low: their plants grow almost down to the water
       const peaks = biome[i] === BIOME.PEAKS, snowAt = snowLine + (heat[i] - 0.5) * 20 * LIFT;   // (the peaks are snowy all over: their few pines stand in it)
-      if (!rule || excl[i] || water[i] || H[i] < seaLevel + (low ? 0.45 : 1.5) || (!peaks && H[i] > snowAt)) continue;
+      if (!rule || excl[i] || world.farm[i] || water[i] || H[i] < seaLevel + (low ? 0.45 : 1.5) || (!peaks && H[i] > snowAt)) continue;
       const slope = Math.max(Math.abs(H[zr + ((x + 1) & MASK)] - H[zr + ((x - 1) & MASK)]), Math.abs(H[zp + x] - H[zm + x])) * 0.5;
       const rocky = slope > (peaks ? 2.5 : 4.5);   // bare rock, as the ground has it
       const r = hash2(x, z, seed + 99);
@@ -3017,7 +3163,7 @@ function compose() {
 //      marks, or a narrow ░▒▓ band on a seam between two tones, fog layers or lit ground.
 //   3. Compose. The glyph masks are painted into one ImageData.
 const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2, R.sand, R.redrock, R.drygrass, R.mud, R.reeds, R.plaster, R.tiles, R.thatch, R.glass,
-  R.brick, R.marble, R.fresco, R.gild, R.gild, R.fresco, R.robe0]);
+  R.brick, R.marble, R.fresco, R.gild, R.gild, R.fresco, R.robe0, R.thatch, R.thatch, R.leaf, R.leaf, R.mud, R.mud]);
 // Rock strata: where a face of rock stands across several rows, its rows fall into bands by height,
 // each a step of tone from the next, with crisp edges between them (the band is part of the
 // segment). Red rock is banded strongly, grey rock gently.
@@ -3030,6 +3176,15 @@ const DD_HALF = 12, DD_1 = 124, DD_2 = 289, DD_4 = 620;
 const WALL_RISE = 1.5, WALL_SLOPE = 3;   // a step whose ground climbs (or falls) more than this, and this steeply, holds a wall
 const STRATA_K = new Float32Array(Object.keys(MAT).length);
 STRATA_K[MAT.REDROCK] = 1; STRATA_K[MAT.ROCK] = 0.35;
+// Crop rows (phase 5): a field's rows run one way over it (FIELD_ROWS: 1 along x, 2 along z), a row to
+// each cell. rowStripe is 1 on a row's middle and -1 in the furrow between, and fades out by ROWS_FAR
+// (rows far off would only shimmer). The rows are lighter, the furrows darker; greens' furrows are
+// bare soil (FIELD_SOIL: the material drawn there).
+const FIELD_ROWS = new Uint8Array(Object.keys(MAT).length), FIELD_SOIL = new Uint8Array(Object.keys(MAT).length), ROWS_FAR = 64;
+FIELD_ROWS[MAT.WHEAT] = FIELD_ROWS[MAT.GREENS] = FIELD_ROWS[MAT.SOIL] = 1; FIELD_ROWS[MAT.WHEAT2] = FIELD_ROWS[MAT.GREENS2] = FIELD_ROWS[MAT.SOIL2] = 2;
+FIELD_SOIL[MAT.GREENS] = MAT.SOIL; FIELD_SOIL[MAT.GREENS2] = MAT.SOIL2;
+const rowStripe = (m, wx, wz, d) => d < ROWS_FAR ? Math.cos((FIELD_ROWS[m] === 1 ? wz : wx) * Math.PI * 2) * (1 - d / ROWS_FAR) : 0;
+const ROW_TONE = 0.14;
 const RAMP_LEN = Uint8Array.from(RAMP_NAMES, n => KEYFRAMES.day.ramps[n].length);
 const TERRAIN_SEG = K.TERRAIN << 24;
 let sunScreen = null, moonScreen = null;
@@ -3419,9 +3574,14 @@ function marchRays(t) {
         if (ci !== lastCi) { lastCi = ci; m = mat[ci]; kR = MAT_RAMP[m]; kS = TERRAIN_SEG | m; kSt = STRATA_K[m]; }
         let fl = 0, sh = sh0 + (tt - lo) * kSh, sg = kS;
         if (m === MAT.WATER) { sh += 0.12; fl = F_WATER; if (Math.sin(wx * 0.31 + t * 1.7) + Math.sin(wz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE; }
-        let pp = (sh - posLo) * posInv;
+        let pp = (sh - posLo) * posInv, rr = kR;
         if (face && kSt) { const band = Math.floor((camY + rayQ[r] * z) * STRATA_INV) & 3; pp += STRATA_POS[band] * kSt; sg |= band << 8; fl |= F_FACE; }
-        kind[i] = K.TERRAIN; seg[i] = sg; ramp[i] = kR; pos[i] = !(pp > 0) ? 0 : pp > 1 ? 1 : pp; depth[i] = tt;
+        else if (FIELD_ROWS[m]) {   // (crop rows: see rowStripe)
+          const st = rowStripe(m, wx, wz, tt);
+          pp += st * ROW_TONE;
+          if (FIELD_SOIL[m] && st < -0.25) { rr = MAT_RAMP[FIELD_SOIL[m]]; sg = TERRAIN_SEG | FIELD_SOIL[m]; }
+        }
+        kind[i] = K.TERRAIN; seg[i] = sg; ramp[i] = rr; pos[i] = !(pp > 0) ? 0 : pp > 1 ? 1 : pp; depth[i] = tt;
         lit[i] = w0 + (tt - lo) * kW; flags[i] = fl; left--;
       }
       lastShZ = z; lastSh = sh1; lastH = h;
@@ -3442,15 +3602,20 @@ function marchRays(t) {
       // Steep rock is banded by height, the more the steeper (strata fade in, not switch on).
       const lo = zPrev, sh0 = lastSh + wb, kSh = z > lo ? (sh - sh0) / (z - lo) : 0;
       const h0 = lastH, sl = z > lo ? (h - h0) / (z - lo) : 0, sOff = camY - h0 + sl * lo;
-      const bands = kSt ? kSt * smoothstep(1, 2, (sl > 0 ? sl : -sl) / Math.sqrt(dx * dx + dz * dz)) : 0;
+      const bands = kSt ? kSt * smoothstep(1, 2, (sl > 0 ? sl : -sl) / Math.sqrt(dx * dx + dz * dz)) : 0, rows = FIELD_ROWS[m] && lo < ROWS_FAR;
       for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
         if (gaps && kind[i] !== NONE) continue;
         const den = sl - rayQ[r];
         let tt = den > 1e-6 ? sOff / den : z;
         if (!(tt <= z)) tt = z; else if (tt < lo) tt = lo;
-        let p = posOf(sh0 + (tt - lo) * kSh), sg = kS;
+        let p = posOf(sh0 + (tt - lo) * kSh), sg = kS, rr = kR;
         if (bands > 0) { const band = Math.floor((camY + rayQ[r] * tt) * STRATA_INV) & 3; p += STRATA_POS[band] * bands; if (bands > 0.5) sg |= band << 8; }
-        kind[i] = K.TERRAIN; seg[i] = sg; ramp[i] = kR; pos[i] = p < 0 ? 0 : p > 1 ? 1 : p; depth[i] = tt; lit[i] = kL; flags[i] = fl;
+        if (rows) {   // (crop rows: see rowStripe)
+          const st = rowStripe(m, camX + dx * tt, camZ + dz * tt, tt);
+          p += st * ROW_TONE;
+          if (FIELD_SOIL[m] && st < -0.25) { rr = MAT_RAMP[FIELD_SOIL[m]]; sg = TERRAIN_SEG | FIELD_SOIL[m]; }
+        }
+        kind[i] = K.TERRAIN; seg[i] = sg; ramp[i] = rr; pos[i] = p < 0 ? 0 : p > 1 ? 1 : p; depth[i] = tt; lit[i] = kL; flags[i] = fl;
         if (gaps) left--;
       }
       if (!gaps) left -= ybuf - row;
@@ -4182,6 +4347,25 @@ function drawSprites(t, poses) {
       }
     }
   }
+  // Props (phase 5): fences, haystacks and windmill sails from their buckets within range; a fence by its
+  // middle, and not past FENCE_FAR (it would be thinner than the rays).
+  const props = world.props, propBuckets = world.propBuckets;
+  if (props) {
+    const bx0 = Math.floor((camX - zoneC) / PROP_BUCKET), bx1 = Math.floor((camX + zoneC) / PROP_BUCKET);
+    const bz0 = Math.floor((camZ - zoneC) / PROP_BUCKET), bz1 = Math.floor((camZ + zoneC) / PROP_BUCKET);
+    for (let bz = bz0; bz <= bz1; bz++) for (let bx = bx0; bx <= bx1; bx++) {
+      const list = propBuckets[((bz % PROP_BUCKETS + PROP_BUCKETS) % PROP_BUCKETS) * PROP_BUCKETS + ((bx % PROP_BUCKETS + PROP_BUCKETS) % PROP_BUCKETS)];
+      for (let k = 0; k < list.length; k++) {
+        const i = list[k], kind = props.kind[i], fence = kind === PROP.FENCE, half = fence ? props.size[i] * 0.5 : 0;
+        const ox = fence ? Math.cos(props.rot[i]) * half : 0, oz = fence ? Math.sin(props.rot[i]) * half : 0;
+        const dxw = wrapDelta(props.x[i] - camX), dzw = wrapDelta(props.z[i] - camZ), zc = (dxw + ox) * fx + (dzw + oz) * fz;
+        if (zc > (fence ? FENCE_FAR : zoneC)) continue;
+        const lat = (dxw + ox) * rx + (dzw + oz) * rz, reach = fence ? half + 1.5 : kind === PROP.SAILS ? props.size[i] + 1 : 2;
+        if (!inView(zc, lat, reach)) continue;
+        buildProp(i, kind, dxw, props.y[i] - camY, dzw, zc, t);
+      }
+    }
+  }
   // Merchants.
   for (let mi = 0; mi < world.merchants.length; mi++) {
     const m = world.merchants[mi];
@@ -4299,6 +4483,46 @@ function drawSprites(t, poses) {
     if (zc < 1 || zc > zoneC) continue;
     const lat = dxw * rx + dzw * rz, k = vF / zc;
     birdsOnScreen.push({ x: grid.w * 0.5 + lat * k, y: pixOfSlope((wy - camY) / zc), zc, frame: Math.floor(t * 4 + b.flap) % 3 });
+  }
+}
+
+// A prop (phase 5; x, y, z its place relative to the eye, y the ground under it). A fence: posts every
+// other cell (every fourth far off), each on the ground under it, and two rails between them; never
+// thinner than about a ray (as the plants). A haystack: a rounded stack of straw. A windmill's sails:
+// four stocks round the hub, turning slowly across the axle (rot: the way it points), each with a sail
+// of slats to one side.
+const FENCE_FAR = 120;
+function buildProp(i, kind, x, y, z, zc, t) {
+  const P = world.props, rot = P.rot[i], size = P.size[i], id = 0x80000 | (i & 0x3ffff), seg = (K.LOGS << 24) | id;
+  if (kind === PROP.FENCE) {
+    const n = Math.round(size), ux = Math.cos(rot), uz = Math.sin(rot), step = zc > 70 ? 4 : 2;
+    const fp = Math.max(0, zc) * grid.rayW / vF, pr = Math.max(0.07, fp * THIN * 0.5), rr = Math.max(0.045, fp * THIN * 0.45);
+    let lx = 0, lg = 0;
+    for (let k = 0; ; k = Math.min(n, k + step)) {
+      const gy = terrainHeight(P.x[i] + ux * k, P.z[i] + uz * k) - vCamY, px = x + ux * k, pz = z + uz * k;
+      pCapsule(px, gy - 0.1, pz, px, gy + 1.05, pz, pr, K.LOGS, seg, R.wood, LOOK_SOLID).posAdd = 0.05;
+      if (k > 0) for (const h of [0.42, 0.82]) pCapsule(x + ux * lx, lg + h, z + uz * lx, px, gy + h, pz, rr, K.LOGS, seg, R.wood, LOOK_SOLID).posAdd = 0.12;
+      lx = k; lg = gy;
+      if (k >= n) break;
+    }
+    return;
+  }
+  if (kind === PROP.HAYSTACK) {
+    const s = size, hseg = (K.HAY << 24) | id;
+    pVCone(x, y - 0.1, z, y + 1.3 * s, 1.05 * s, 0.6 * s, K.HAY, hseg, R.thatch, LOOK_SOLID);
+    pSphere(x, y + 1.25 * s, z, 0.66 * s, K.HAY, hseg, R.thatch, LOOK_SOLID).posAdd = 0.06;
+    if (zc < 60) shadowDiscs.push([x, z, y, 1.1 * s, zc]);
+    return;
+  }
+  // the sails
+  const ax = Math.cos(rot), az = Math.sin(rot), cx = -az, cz = ax, L = size, spin = t * 0.6 + (i % 7), cloth = (K.LOGS << 24) | (id ^ 0x40000);
+  pSphere(x, y, z, 0.3, K.LOGS, seg, R.dark, LOOK_SOLID);
+  pCapsule(x - ax * 1.2, y, z - az * 1.2, x, y, z, 0.13, K.LOGS, seg, R.wood, LOOK_SOLID);   // (the axle, out of the cap)
+  for (let k = 0; k < 4; k++) {
+    const a = spin + k * Math.PI / 2, ca = Math.cos(a), sa = Math.sin(a);
+    const dx = cx * ca, dy = sa, dz = cz * ca, ex = -cx * sa, ey = ca, ez = -cz * sa;   // (along the stock, and across it in the same plane)
+    pCapsule(x, y, z, x + dx * L, y + dy * L, z + dz * L, 0.08, K.LOGS, seg, R.wood, LOOK_SOLID);
+    if (zc < 160) for (const w of [0.3, 0.55, 0.8]) pCapsule(x + dx * 1 + ex * w, y + dy * 1 + ey * w, z + dz * 1 + ez * w, x + dx * L + ex * w, y + dy * L + ey * w, z + dz * L + ez * w, 0.12, K.LOGS, cloth, R.plaster, LOOK_SOLID);
   }
 }
 
@@ -4670,6 +4894,9 @@ MARK_SET[MAT.REDROCK] = [0.45, ['crag', 'pebbles', 'grit', 'crag']];
 MARK_SET[MAT.DRYGRASS] = [0.5, ['tick', 'pair', 'three', 'tick']];
 MARK_SET[MAT.MUD] = [0.3, ['dot', 'pebble', 'grit']];
 MARK_SET[MAT.REEDS] = [0.6, ['tufts', 'three', 'pair', 'tufts']];
+MARK_SET[MAT.WHEAT] = MARK_SET[MAT.WHEAT2] = [0.5, ['tick', 'pair', 'three', 'tick']];   // (phase 5: the fields)
+MARK_SET[MAT.GREENS] = MARK_SET[MAT.GREENS2] = [0.4, ['tufts', 'pair', 'tufts']];
+MARK_SET[MAT.SOIL] = MARK_SET[MAT.SOIL2] = [0.35, ['grit', 'pebbles', 'grit']];
 const MARK_IDS = MARK_SET.map(s => s && s[1].map(n => MK[n]));
 function splatGroundMarks(t) {
   const { cols, rows, cellW, cellH, RW, RH, rayW, rayH } = grid;
@@ -4786,6 +5013,7 @@ SPRITE_MARKS[K.BOULDER] = [0.35, ['crag', 'pebbles'].map(n => MK[n])];
 SPRITE_MARKS[K.PALM] = [0.3, ['club', 'leafo'].map(n => MK[n])];
 SPRITE_MARKS[K.CACTUS] = [0.3, [MK.needles]];
 SPRITE_MARKS[K.REED] = [0.35, [MK.tufts]];
+SPRITE_MARKS[K.HAY] = [0.4, ['three', 'pair'].map(n => MK[n])];
 const cIdx = new Int32Array(RAYS_X * RAYS_Y), cellOff = new Int32Array(RAYS_X * RAYS_Y);
 // Per cell, between the two passes: the list and position its colour comes from (−1 when the
 // cell is already drawn), and what it needs for marks.
@@ -5087,11 +5315,11 @@ RAMP_LETTER[R.reeds] = LT['|']; RAMP_LETTER[R.mud] = LT['_']; RAMP_LETTER[R.sand
 RAMP_LETTER[R.water] = LT['~']; RAMP_LETTER[R.rock] = LT['%']; RAMP_LETTER[R.redrock] = LT['='];
 RAMP_LETTER[R.snow] = LT['*']; RAMP_LETTER[R.road] = LT[':']; RAMP_LETTER[R.stone] = LT['#']; RAMP_LETTER[R.wood] = LT['+'];
 RAMP_LETTER[R.plaster] = LT['-']; RAMP_LETTER[R.tiles] = LT['w']; RAMP_LETTER[R.thatch] = LT['\\']; RAMP_LETTER[R.glass] = LT['#'];
-RAMP_LETTER[R.brick] = LT['=']; RAMP_LETTER[R.marble] = LT['+']; RAMP_LETTER[R.gild] = LT['*'];
+RAMP_LETTER[R.brick] = LT['=']; RAMP_LETTER[R.marble] = LT['+']; RAMP_LETTER[R.gild] = LT['*']; RAMP_LETTER[R.leaf] = LT['&'];   // (leaf: the greens in the fields)
 const KIND_LETTER = new Uint8Array(32);                   // solids, by kind
 KIND_LETTER[K.TREE] = LT['@']; KIND_LETTER[K.BUSH] = LT['&']; KIND_LETTER[K.CONIFER] = LT['^'];
 KIND_LETTER[K.TRUNK] = LT['|']; KIND_LETTER[K.BOULDER] = LT['%']; KIND_LETTER[K.LOGS] = LT['='];   // (domes: no letter, smooth metal)
-KIND_LETTER[K.PALM] = LT.w; KIND_LETTER[K.CACTUS] = LT['!']; KIND_LETTER[K.REED] = LT.i;
+KIND_LETTER[K.PALM] = LT.w; KIND_LETTER[K.CACTUS] = LT['!']; KIND_LETTER[K.REED] = LT.i; KIND_LETTER[K.HAY] = LT['\\'];
 const paint = { glyph: new Uint8Array(0), fg: new Uint32Array(0), bg: new Uint32Array(0) };   // per half cell: top, then bottom
 // Flowers: a scatter fixed to the world over grass and reed beds, each a small round bloom in one of
 // four colours (in reed beds, yellow irises), drawn near the eye and fading out by 28 cells.
@@ -5217,8 +5445,12 @@ function paintCells(t) {
       const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
       const a0 = (z0 & MASK) * W, a1 = ((z0 + 1) & MASK) * W, b0 = x0 & MASK, b1 = (x0 + 1) & MASK;
       const m00 = wMat[a0 + b0], m10 = wMat[a0 + b1], m01 = wMat[a1 + b0], m11 = wMat[a1 + b1];
+      // crop rows where the ray lands in a field (see rowStripe): lighter rows, darker furrows, bare soil between the greens
+      const cm = wMat[(Math.floor(fz + 0.5) & MASK) * W + (Math.floor(fx + 0.5) & MASK)], st = FIELD_ROWS[cm] && !(flags[i] & F_FACE) ? rowStripe(cm, fx + 0.5, fz + 0.5, d) : 0;
+      P += st * ROW_TONE;
+      const rampOf = mm => FIELD_SOIL[mm] && st < -0.25 ? MAT_RAMP[FIELD_SOIL[mm]] : MAT_RAMP[mm];
       if (flags[i] & F_FACE) { listColour(rp, P * (COL.near[rp].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; }   // a face: its own rock
-      else if (m00 === m10 && m00 === m01 && m00 === m11) { const rr = MAT_RAMP[m00]; listColour(rr, P * (COL.near[rr].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; ramp[i] = rr; }
+      else if (m00 === m10 && m00 === m01 && m00 === m11) { const rr = rampOf(m00); listColour(rr, P * (COL.near[rr].length - 1), 0); r = tmpC[0]; g = tmpC[1]; b = tmpC[2]; ramp[i] = rr; }
       else {
         r = g = b = 0;
         // Each material's share of the point is the bilinear weight of its cells; raising the shares to
@@ -5247,8 +5479,8 @@ function paintCells(t) {
         if (only !== -2 || m11 !== WA) n = addShare(only === WA ? WA : m11, w11, n);
         let sum = 0, lead = 0;
         for (let q = 0; q < n; q++) { const w = shareW[q] * shareW[q]; shareW[q] = w * w; sum += shareW[q]; if (shareW[q] > shareW[lead]) lead = q; }
-        for (let q = 0; q < n; q++) { const rr = MAT_RAMP[shareM[q]], w = shareW[q] / sum; listColour(rr, P * (COL.near[rr].length - 1), 0); r += tmpC[0] * w; g += tmpC[1] * w; b += tmpC[2] * w; }
-        ramp[i] = MAT_RAMP[shareM[lead]];   // (its letter is the leading ground's, where the ray meets it, not the march step's)
+        for (let q = 0; q < n; q++) { const rr = rampOf(shareM[q]), w = shareW[q] / sum; listColour(rr, P * (COL.near[rr].length - 1), 0); r += tmpC[0] * w; g += tmpC[1] * w; b += tmpC[2] * w; }
+        ramp[i] = rampOf(shareM[lead]);   // (its letter is the leading ground's, where the ray meets it, not the march step's)
       }
       if (d < 36 && bloomOpen > 0) {   // a flower here? (they close after dusk)
         const gx = fx + 0.5, gz = fz + 0.5, cx = Math.floor(gx), cz = Math.floor(gz), cm = wMat[(cz & MASK) * W + (cx & MASK)];
@@ -6145,7 +6377,7 @@ function setupGrid() {
 }
 
 function workerSource() {
-  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, GEAR, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, F_FLOWER, RAMP_NAMES, R };
+  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, PROP, PROP_BUCKET, PROP_BUCKETS, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, GEAR, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, F_FLOWER, RAMP_NAMES, R };
   return [
     "'use strict';",
     ...Object.entries(consts).map(([k, v]) => `const ${k} = ${JSON.stringify(v)};`),
@@ -6153,7 +6385,7 @@ function workerSource() {
     `const KEYFRAMES = { day: { ramps: ${JSON.stringify(KEYFRAMES.day.ramps)} } };`,
     `const clamp = ${clamp};`, `const smoothstep = ${smoothstep};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`, `const pack = ${pack};`,
     `${hash2}`, `${terrainHeight}`, `${skyState}`,
-    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, chimneys: [], flags: [], domes: [], bells: [] };`,
+    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, props: null, propBuckets: null, chimneys: [], flags: [], domes: [], bells: [] };`,
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
     `const cur = { ambient: 0.38, diffuse: 0.62, lights: 0, stars: 0 }, light = { lx: 0, ly: 1, lz: 0, darkness: 0, faceShade: new Float32Array(6) };`,
     `const wx = { rain: 0, snow: 0, fog: 0, wet: 0, aurora: 0, storm: 0 };`,
@@ -6194,7 +6426,7 @@ function syncWorkers() {
     const pkg = {
       seed: world.seed, H: world.H, mat: world.mat, fogTop: world.fogTop,
       structs: world.structs.map(s => ({ cx: s.cx, cz: s.cz, x0: s.x0, z0: s.z0, baseY: s.baseY, radius: s.radius, half: s.half, type: s.type, tpl: { sx: s.tpl.sx, sy: s.tpl.sy, sz: s.tpl.sz, spans: s.tpl.spans, topSolid: s.tpl.topSolid } })),
-      trees: world.trees, treeBuckets: world.treeBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds, chimneys: world.chimneys, flags: world.flags, domes: world.domes, bells: world.bells,
+      trees: world.trees, treeBuckets: world.treeBuckets, props: world.props, propBuckets: world.propBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds, chimneys: world.chimneys, flags: world.flags, domes: world.domes, bells: world.bells,
       merchants: world.merchants.map(m => ({ robe: m.robe, x: m.x, y: m.y, z: m.z, walked: m.walked })),
     };
     for (const wk of pool.workers) wk.postMessage({ type: 'world', world: pkg });
