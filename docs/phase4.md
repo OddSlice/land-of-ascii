@@ -268,3 +268,27 @@ Shots: `shots/phase4/fixes/` (`sheet-look`: looking down, level and up, before a
 ### A second world (not started)
 
 For later, in Martin's words: another world of Ascii, a cyberpunk city in the spirit of Night City, with elevation and megabuildings; you choose at the start which world to explore. Nothing is built for it yet. When it comes, it will want its own world generator and palette behind the same renderer and simulation, and a choice of world on the start screen.
+
+## After step 2, part 3: a camera rig, into the eyes at either end
+
+Martin, trying it (30 Sep): looking straight down, the camera stood over the hero and "smashed" them flat. How games handle it, he thought, is that the camera moves in to the character: looking fully down or fully up is first person.
+
+Shots: `shots/phase4/fixes/sheet-rig` (as far down as you can look, to as far up).
+
+### What games do
+
+- Unity's standard third-person camera, Cinemachine's free-look rig, orbits the character on three rings, a top, a middle and a bottom one, each with its own height and distance. The mouse slides the camera between them on a curve, and the bottom ring is usually low and close ([Unity's manual](https://docs.unity3d.com/Packages/com.unity.cinemachine@2.9/manual/CinemachineFreeLook.html)).
+- Camera kits change the distance along a curve as the pitch changes, and ease into the pitch limits ([Game Developer](https://gamedeveloper.com/design/third-person-camera-design-with-free-move-zone)); running full speed into a pitch limit is one of John Nesky's "50 camera mistakes" (GDC 2014; Nesky made Journey's camera: [GDC Vault](https://gdcvault.com/play/1020460/50-Camera)).
+
+### What changed
+
+- The camera rides a rig as you look up and down (`V3_RIG_DOWN`, `V3_RIG_UP`, `rigAt`), measured by how far you look, from level to as far as the mouse lets you:
+  - level: behind the hero, as before;
+  - halfway down: higher, and a little nearer;
+  - further down: it comes in without climbing higher, and nine-tenths of the way down it is in the hero's eyes, so looking steeply down is your own look at the ground;
+  - two-fifths of the way up: low (below their shoulders) and near, looking up past them;
+  - nine-tenths of the way up: in their eyes, looking at the sky.
+- It glides between these on smooth curves, easing into the ends. The rig's distance follows the mouse at once; a wall that pulls the camera in still lets it back out gently.
+- The hero is hidden whenever the camera is within 2 cells of them, so neither end ever shows the top or the back of their head filling the picture.
+- Over a slow sweep from level to all the way down and up, the camera never moves more than 0.3 cells in a step.
+- Tests: all pass. The walk from the start into the town looks halfway down and up (the rig), and all the way (the eyes).

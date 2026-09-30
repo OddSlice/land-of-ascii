@@ -20,7 +20,8 @@
 //      day and hour, stays within 0..1, and over 60 days each kind comes about as often as meant; the
 //      day counts up as the clock passes midnight.
 //   6. Third person: walks from the start through the castle gate and back against its walls, down
-//      and up a steep hillside, through a forest, and from the start into the town looking far down and up,
+//      and up a steep hillside, through a forest, and from the start into the town looking down and up (as far as
+//      you can, the camera goes into the eyes),
 //      stepping the camera behind the hero with every step. The camera is never inside the ground or a building; the hero faces the way they walk;
 //      V (setThird) and flying give back your own eyes; what you buy shows on the hero (hero.gear).
 // Page time is frozen in both, so the render loop never runs between the steps we take.
@@ -403,7 +404,7 @@ console.log('6. third person, seed 42');
     ['down and up a steep hillside', [564.5, 372.5, -135], [[2, ['KeyW'], 0], [1, [], Math.PI], [3, ['KeyW'], 0.3], [2, ['KeyS'], 0]]],
     ['through a pine forest', [88.5, 24.5, 0], [[3, ['KeyW'], 0.2], [2, ['KeyD'], 0], [3, ['KeyW', 'ShiftLeft'], -0.3]]],
     ['across the open field', [510.5, 276.5, 22], [[3, ['KeyW'], 0], [1, ['KeyD'], 0], [2, ['KeyS'], 0.5]]],
-    ['from the start into the town, looking far down and up', null, [[3, ['KeyW'], 0, -900], [3, ['KeyW'], 0, 1170], [2, [], 1.5, -600], [2, ['KeyS'], 0, 900], [2, [], -1.5, 1e4], [1, ['KeyA'], 0, -1e4]]],
+    ['from the start into the town, looking down and up', null, [[3, ['KeyW'], 0, -450], [3, ['KeyW'], 0, 400], [2, [], 1.5, -900], [2, ['KeyS'], 0, 250], [2, [], -1.5, 1e4], [1, ['KeyA'], 0, -300]]],
   ];
   for (const [what, at, script] of WALKS) {
     const r = await p2.evaluate(({ at, script }) => {
