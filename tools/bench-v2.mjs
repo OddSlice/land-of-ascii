@@ -3,7 +3,8 @@
 // speed; reports the median over several windows of the mean ms per stage (with workers, the
 // slowest stripe's), the wall time from dispatch to picture (frameMs), and the frame rate.
 // --threads N sets the number of render workers (0: draw on the main thread); --look painted|mosaic;
-// --third draws every scene with the hero in the third person (scenes marked third: true always are).
+// --third draws every scene with the hero in the third person (scenes marked third: true always are);
+// --pitch F looks up or down by F screen heights (-1 is all the way down, 1.3 all the way up) in every scene.
 import fs from 'node:fs';
 import path from 'node:path';
 import { startServer, launch, ROOT } from './lib/harness.mjs';
@@ -11,7 +12,7 @@ import { startServer, launch, ROOT } from './lib/harness.mjs';
 const args = process.argv.slice(2);
 const thirdAll = (i => i >= 0 && !!args.splice(i, 1))(args.indexOf('--third'));
 const opt = (k, d) => { const i = args.indexOf('--' + k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
-const browserName = opt('browser', 'chromium'), frames = +opt('frames', 60), runs = +opt('runs', 5), width = +opt('width', 1440), height = +opt('height', 900), pageFile = opt('page', 'index.html'), threads = opt('threads', null), look = opt('look', null);
+const browserName = opt('browser', 'chromium'), frames = +opt('frames', 60), runs = +opt('runs', 5), width = +opt('width', 1440), height = +opt('height', 900), pageFile = opt('page', 'index.html'), threads = opt('threads', null), look = opt('look', null), pitchF = opt('pitch', null);
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/scenes.json'), 'utf8'));
 const scenes = cfg.scenes.filter(s => !args.length || args.includes(s.name));
 const { server, port } = await startServer();
@@ -21,7 +22,7 @@ await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0
 const rows = [];
 for (const sc of scenes) {
   const c = sc.cam;
-  const cam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
+  const cam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: pitchF != null ? +pitchF * height : c.pitch };
   const r = await page.evaluate(async ({ seed, view, cam, hour, ground, merchants, frames, runs, weather, third, gear, tunic }) => {
     const TV = window.TV;
     if (TV.world.seed !== seed) TV.regenerate(seed);
@@ -50,7 +51,7 @@ for (const sc of scenes) {
     const med = k => { const v = wins.map(o => o[k]).sort((a, b) => a - b); return +v[v.length >> 1].toFixed(2); };
     return Object.fromEntries([...keys, 'fps', 'threads'].map(k => [k, med(k)]));
   }, { seed: sc.seed ?? cfg.seed, view: sc.view, cam, hour: sc.hour, ground: !!c.ground, merchants: sc.merchants, frames, runs, weather: sc.weather, third: thirdAll || !!sc.third, gear: sc.gear, tunic: sc.tunic });
-  rows.push({ scene: sc.name + (thirdAll || sc.third ? ' (3rd)' : ''), ...r });
+  rows.push({ scene: sc.name + (thirdAll || sc.third ? ' (3rd)' : '') + (pitchF != null ? ' @' + pitchF : ''), ...r });
 }
 console.table(rows);
 await browser.close(); server.close();

@@ -1,4 +1,5 @@
-// CPU profile of v2 in Chromium for one scene: node tools/profile-v2.mjs <scene> [--frames 90]
+// CPU profile of v2 in Chromium for one scene: node tools/profile-v2.mjs <scene> [--frames 90] [--pitch F]
+// (--pitch F: looking up or down by F screen heights, -1 all the way down, 1.3 all the way up)
 // Prints self time per function (and per line for the top functions).
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,14 +7,14 @@ import { startServer, launch, ROOT } from './lib/harness.mjs';
 
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf('--' + k); if (i < 0) return d; const v = args[i + 1]; args.splice(i, 2); return v; };
-const frames = +opt('frames', 90), jsFlags = opt('js-flags', '');
+const frames = +opt('frames', 90), jsFlags = opt('js-flags', ''), pitchF = opt('pitch', null);
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/scenes.json'), 'utf8'));
 const sc = cfg.scenes.find(s => s.name === (args[0] || 'vista'));
 const { server, port } = await startServer();
 const { browser, page } = await launch({ timeControl: false, jsFlags });
 await page.goto(`http://127.0.0.1:${port}/${process.env.PAGE || "index.html"}?seed=${cfg.seed}&threads=0`);   // (drawn on the main thread, so the profile sees the renderer; PAGE= to profile another copy)
 await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
-const c = sc.cam, cam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
+const c = sc.cam, cam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: pitchF != null ? +pitchF * page.viewportSize().height : c.pitch };
 const setup = async () => page.evaluate(({ seed, view, cam, hour, ground, merchants }) => {
   const TV = window.TV;
   if (TV.world.seed !== seed) TV.regenerate(seed);

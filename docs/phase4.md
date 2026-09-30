@@ -292,3 +292,64 @@ Shots: `shots/phase4/fixes/sheet-rig` (as far down as you can look, to as far up
 - The hero is hidden whenever the camera is within 2 cells of them, so neither end ever shows the top or the back of their head filling the picture.
 - Over a slow sweep from level to all the way down and up, the camera never moves more than 0.3 cells in a step.
 - Tests: all pass. The walk from the start into the town looks halfway down and up (the rig), and all the way (the eyes).
+
+## After step 2, part 4: true perspective, looking up and down
+
+Martin (30 Sep), after the rig: "but why is the world getting smashed when looked down".
+
+Shots: `shots/phase4/perspective/` (`sheet-perspective`: before and after, looking down on a castle, up at the sky, and the everyday view behind your hero).
+
+### What was wrong
+
+- Part 2 turned each column's rays up or down by the pitch, but each column kept its own way across the ground. A camera that really tilts does not: in the row at height q on the screen, a column looks across by its level amount divided by F = cos(pitch) − q·sin(pitch).
+- So wherever F is below 1, the old picture showed too narrow a slice of the world and stretched it across the screen:
+  - looking all the way down (44° at 1440×900), the bottom rows were stretched 2.6 times, the middle 1.4 times (the top a little squeezed);
+  - looking all the way up (51°), the top rows 4 times, the middle 1.6 times;
+  - behind your hero, who is always looked at a little from above (13° down), the bottom corners 16% too wide.
+- Upright things stayed upright on the screen, where a real tilted camera shows them leaning in (toward the bottom looking down, toward the top looking up).
+
+### The fix
+
+A tilted view is now drawn in two steps (`beginSource`, `endSource` in `renderCore`):
+
+1. **Source columns.** The march and the solids draw columns spaced as the screen's but spread as wide as the rows need (looking down, the bottom rows need the widest spread; looking up, the top rows). Each column is drawn only in the rows that take it (`srcTop`..`srcBot`); the rest is held (at no depth, so nothing claims it).
+2. **Each screen ray takes the source ray nearest its own direction** (`rayK` records which), and what was placed by the source's columns (glows, birds, the sun and the moon) moves across to where it is on the screen. The discs of the sun and the moon stay round.
+
+Everything that works out where a ray met the world from its column (the ground's colours in the painted look, the hero's shadow, the valley fog, the water's ripple, the aurora) uses that ray's own direction; marks placed on the screen (tufts on the ground, fireflies) are moved across by their row's F.
+
+Keeping the workers exact took three changes to the march:
+- **What the march draws in a row no longer depends on where it starts.** Skipping a block that nothing can show from used to make a step at the block's far edge, so the next step's ground depended on what had been skipped. Now the march passes the block's steps as if it had looked at them, and goes on from the same step either way. So each stripe can start a shared column at the rows it needs, and draw them exactly as another stripe does.
+- **The light a step blends from is the light as it is.** A step's rows blend the light from the step before; for water, that remembered light had water's touch of brightness in it, but only when the step before had been drawn. Now water's touch is added where water is drawn (it shifts the shading of water a little at its edges).
+- **Columns stop once nothing further can rise into them.** The march keeps the highest thing at each distance from the eye (in rings 32 cells wide) and, for the lowest row still open, how far a column must go before nothing beyond can reach it. Looking up, the sky's columns stop within a few dozen cells instead of walking to the horizon. Buildings none of which (nor the ground in them) can reach an open row are passed by.
+
+The identity check also turned up two old slips, where a picture depended on what a ray had held in an earlier frame (harmless while every thread held the same). Both are fixed, in the mosaic look:
+- a lamp's glow in the air checked whether the flame itself was hidden in the flame's own cell, which a neighbouring stripe may not hold. Now each column the glow reaches checks whether something stands in front of the flame's height;
+- the leaf and needle marks on trees and the joints of stone walls read where a neighbouring ray met the thing, even when that ray had met the ground behind it.
+
+### Numbers
+
+- Workers and the main thread agree, byte for byte in both looks, over 21 scenes with 4, 5, 6 and 7 workers (which put the stripes' edges in different places), and over five views looking all the way up or down (in town, on the road, in the forest, behind your hero). Switching the early stops off changes no pixel. (The old renderer drew the aurora scene differently with 4 or 5 workers; this one does not.)
+- Frame times at 1440×900 in Chromium (the slowest stripe's rays; frame from dispatch to picture):
+
+  | View | Scene | Before | After |
+  |---|---|---|---|
+  | Level, flying | road | 4.2 ms (7.1) | 4.5 ms (7.4) |
+  | | forest | 3.9 ms (6.1) | 4.2 ms (6.5) |
+  | Behind your hero (13° down) | village | 3.1 ms (6.4) | 5.6 ms (8.6) |
+  | | town | 3.7 ms (6.2) | 4.6 ms (6.9) |
+  | All the way down | road | 2.2 ms (5.7) | 3.7 ms (6.9) |
+  | | forest | 4.1 ms (7.0) | 8.3 ms (10.4) |
+  | | village | 3.1 ms (5.9) | 5.0 ms (7.4) |
+  | | town | 2.0 ms (5.1) | 5.1 ms (7.7) |
+  | All the way up | road | 3.1 ms (4.7) | 9.4 ms (9.9) |
+  | | forest | 2.1 ms (3.3) | 7.4 ms (8.5) |
+  | | village | 2.7 ms (3.7) | 7.7 ms (8.4) |
+  | | town | 2.3 ms (3.6) | 9.1 ms (9.2) |
+
+  Looking all the way up or down now shows much more of the world in the rows that were stretched (true perspective at the corners reaches 60° to 70° off to the side), and costs up to 10 ms a frame; every view stays within 60 fps in Chromium.
+
+- ⚠️ Behind your hero (the 13° everyday view) each stripe does about a quarter to a third more work: a stripe's upper rows look along columns its inner neighbour also draws, and both march them. Frames stay at 60 fps in Chromium and WebKit (WebKit behind your hero: 7.6–8.6 ms before, 8.2–9.9 after). ⚠️ In Firefox the road and the village behind your hero went from 9.0 to 11.9 ms and 9.1 to 12.2 ms a frame, 53–55 fps where they were 61–75 (the town: 8.7 to 8.8 ms). Firefox's timings swing a lot from run to run.
+- Letting the stripes follow the work (the slowest handing a column to its neighbour each frame) was tried and dropped: it gained under a millisecond, and a moving stripe edge would make any pixel that depends on where the edges fall flicker.
+- ⚠️ A screen row takes every source column only where F is 1: where the view is stretched it skips some, where squeezed it repeats a few. A thin post near the edge of a tilted view can come out a ray thinner or thicker.
+- ⚠️ A very tall window looking far up keeps a little of the old stretch in its top rows (F is held at 0.2 or more, or the source would need columns without end).
+- Tools: `bench-v2.mjs` and `profile-v2.mjs` take `--pitch` (in screen heights: −1 all the way down, 1.3 all the way up), `shoot.mjs` takes `--page` (another copy of the game, for before and after), and `sheet.mjs` takes `--crop x,y,w,h` for a close look.

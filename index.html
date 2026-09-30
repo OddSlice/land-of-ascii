@@ -2933,6 +2933,13 @@ const rays = {
   flags: new Uint8Array(0), refl: new Int32Array(0), reflAmt: new Float32Array(0),
 };
 let rayP = new Float32Array(0), rayQ = new Float32Array(0), rayInvS = new Float32Array(0);
+// A tilted view's source rays (beginSource): the same fields, over the srcN source columns this
+// stripe draws; each source column's way across (srcP) and the rows of it drawn (srcTop..srcBot);
+// and for every screen ray, the source column it took (rayK, counted from the stripe's first).
+const srcRays = { kind: new Uint8Array(0), seg: new Int32Array(0), ramp: new Uint8Array(0), pos: new Float32Array(0), depth: new Float32Array(0),
+  lit: new Float32Array(0), u: new Float32Array(0), v: new Float32Array(0), w: new Float32Array(0), flags: new Uint8Array(0) };
+const RAY_FIELDS = Object.keys(srcRays);
+let srcP = new Float32Array(0), srcTop = new Int32Array(0), srcBot = new Int32Array(0), srcN = 0, rayK = new Int32Array(0);
 const cellMark = { type: new Int8Array(0), hash: new Float32Array(0), px: new Float32Array(0), py: new Float32Array(0), up: new Uint8Array(0) };
 
 function setView(w, h, preset, c0, c1, buf) {
@@ -2951,6 +2958,7 @@ function setView(w, h, preset, c0, c1, buf) {
   rays.depth = new Float32Array(nr); rays.lit = new Float32Array(nr); rays.u = new Float32Array(nr); rays.v = new Float32Array(nr); rays.w = new Float32Array(nr);
   rays.flags = new Uint8Array(nr); rays.refl = new Int32Array(nr); rays.reflAmt = new Float32Array(nr);
   rayP = new Float32Array(grid.RW); rayQ = new Float32Array(grid.RH); rayInvS = new Float32Array(grid.RH);
+  rowF = new Float64Array(grid.RH).fill(1); rowS = new Float64Array(grid.RH); rayK = new Int32Array(nr);
   cellMark.type = new Int8Array(n); cellMark.hash = new Float32Array(n); cellMark.px = new Float32Array(n); cellMark.py = new Float32Array(n); cellMark.up = new Uint8Array(n);
   grid.buf = buf || new Uint32Array(grid.cols * cw * grid.rows * ch);
   paint.glyph = new Uint8Array(n * 2); paint.fg = new Uint32Array(n * 2); paint.bg = new Uint32Array(n * 2);
@@ -3022,12 +3030,26 @@ let vHor = 0, vFx = 1, vFz = 0, vRx = 0, vRz = 1, vCamX = 0, vCamY = 0, vCamZ = 
 const TILT_MAX = 1.6;   // the steepest pitch drawn, as a slope (58°: the top and bottom rows stay short of straight up and down)
 function pixOfSlope(s) { const d = 1 + s * vTan; return d > 1e-9 ? vMidH - vF * (s - vTan) / d : s > vTan ? -1e9 : 1e9; }
 function slopeOfPix(y) { const q = (vMidH - y) / vF, d = 1 - q * vTan; return d > 1e-9 ? (q + vTan) / d : 1e9; }
+// Turning the columns alone kept each column's way across the ground, so a tilted view showed too
+// narrow a slice of the world in its lower rows (looking down; the upper ones looking up) and
+// stretched it across the screen. A camera that really tilts sees, in the row at height q, the
+// direction across of its column divided by F = cos(pitch) − q·sin(pitch): wider where F is less
+// than 1. So a tilted view is drawn in two steps (beginSource, endSource). The march and the
+// sprites draw source columns, spaced as the screen's but spread as wide as the rows need, each
+// only as far down or up as some row takes it; then every screen ray takes the source ray nearest
+// its own direction. vTilt is whether this frame does; rowF[y] is F for ray row y; a source
+// column's number counts on from the screen's own (0 is its first column, and they run past both
+// edges), and vK0 is the first one this stripe draws.
+let vTilt = false, vCos = 1, vSin = 0, vK0 = 0;
+const F_FLOOR = 0.2;   // (the least F drawn: a tall window looking far up would otherwise need source columns without end)
+let rowF = new Float64Array(0), rowS = new Float64Array(0);   // (rowS[y]: source columns per unit of lateral slope, in that row)
+const fOfPix = y => vTilt ? Math.max(F_FLOOR, vCos - (vMidH - y) / vF * vSin) : 1;   // F at a height on the screen, in pixels
 let shAmb = 0.38, shDiff = 0.62, posLo = 0, posInv = 1, lightsOn = false, winGlow = 0;   // (winGlow: how brightly windows glow, after dark)
 const FOG_LUT = new Float32Array(1025);
 for (let k = 0; k <= 1024; k++) { const u = (k / 1024 - 0.15) / 0.85; FOG_LUT[k] = u <= 0 ? 0 : Math.pow(u, 1.4) * 0.93; }
 const fogAt = d => { const k = d * 1024 / vVd; return k >= 1024 ? 0.93 : FOG_LUT[k | 0]; };
 
-function projectBody(el, az) {   // sun or moon, in pixels
+function projectBody(el, az) {   // sun or moon, in pixels (in a tilted view, where the source rays have it: endSource moves it)
   const dAz = wrapAngle(az - cam.yaw);
   if (el < -0.06 || Math.abs(dAz) > Math.PI / 2 - 0.05) return null;
   return { x: grid.w / 2 + Math.tan(dAz) * vF, y: pixOfSlope(Math.tan(el) / Math.cos(dAz)), r: 0.05 * vF };
@@ -3042,7 +3064,12 @@ function collectActive(vd) {
     const dxw = wrapDelta(s.cx - cam.x), dzw = wrapDelta(s.cz - cam.z);
     if (Math.hypot(dxw, dzw) - s.radius > vd) continue;
     const shiftX = Math.round(cam.x + dxw - s.cx), shiftZ = Math.round(cam.z + dzw - s.cz);   // 0 or ±W
-    active.push({ s, si: world.structs.indexOf(s), ux0: s.x0 + shiftX, uz0: s.z0 + shiftZ, ux1: s.x0 + shiftX + s.tpl.sx, uz1: s.z0 + shiftZ + s.tpl.sz });
+    const A = { s, si: world.structs.indexOf(s), ux0: s.x0 + shiftX, uz0: s.z0 + shiftZ, ux1: s.x0 + shiftX + s.tpl.sx, uz1: s.z0 + shiftZ + s.tpl.sz, top: s.baseY + s.tpl.sy };
+    // (top: the highest it or the ground in and around it rises, what the march can draw there;
+    // the ground's heights far off are averaged over up to 8 cells, so 8 cells around)
+    for (let bz = Math.floor((A.uz0 - 8) / BLOCK); bz <= Math.floor((A.uz1 + 8) / BLOCK); bz++)
+      for (let bx = Math.floor((A.ux0 - 8) / BLOCK); bx <= Math.floor((A.ux1 + 8) / BLOCK); bx++) { const m = blockMax[(bz & BM) * NB + (bx & BM)]; if (m > A.top) A.top = m; }
+    active.push(A);
   }
 }
 const MAX_INT = 32;
@@ -3141,6 +3168,8 @@ function mipShade(x, z, l) {   // bilinear, from level l
 // has already painted, which is most of the ground most of the time.
 const BLOCK = 16, NB = W / BLOCK, BM = NB - 1;
 const blockMax = new Float32Array(NB * NB);
+const RING = 32;   // (the march's reach test: marchRays)
+let ringTop = new Float32Array(0), ringMax = new Float32Array(0);
 let blockMaxOf = -1;
 function updateBlockMax() {
   if (blockMaxOf === world.seed && world.H === blockMaxH) return;
@@ -3263,8 +3292,44 @@ function marchRays(t) {
   const { kind, seg, ramp, pos, depth, lit, u, v, flags } = rays;
   const NONE = K.NONE;
   kind.fill(NONE, grid.xr0 * RH, grid.xr1 * RH);
-  collectActive(vd);
   updateBlockMax();
+  collectActive(vd);
+  // The highest thing the march draws at each distance from the eye, in rings RING cells wide: the
+  // ground's blocks and the structures, each in the ring of its nearest point, and its neighbours'
+  // (far off, the heights are averaged over a few cells). stopDepth says how deep a column must go
+  // before nothing beyond can rise into the lowest row still open; past it the rest is sky.
+  const nRing = Math.ceil(vd / RING) + 2;
+  if (ringTop.length < nRing + 1) { ringTop = new Float32Array(nRing + 1); ringMax = new Float32Array(nRing + 1); }
+  ringMax.fill(-Infinity, 0, nRing + 1);
+  const bR = Math.ceil(vd / BLOCK) + 1, cbx = Math.floor(camX / BLOCK), cbz = Math.floor(camZ / BLOCK);
+  for (let bz = cbz - bR; bz <= cbz + bR; bz++) {
+    const nz = Math.max(bz * BLOCK - camZ, camZ - (bz + 1) * BLOCK, 0);
+    for (let bx = cbx - bR; bx <= cbx + bR; bx++) {
+      const nx = Math.max(bx * BLOCK - camX, camX - (bx + 1) * BLOCK, 0), d = Math.sqrt(nx * nx + nz * nz);
+      if (d > vd) continue;
+      const j = (d / RING) | 0, m = blockMax[(bz & BM) * NB + (bx & BM)];
+      if (m > ringMax[j]) ringMax[j] = m;
+    }
+  }
+  for (let a = 0; a < active.length; a++) {
+    const A = active[a], nx = Math.max(A.ux0 - camX, camX - A.ux1, 0), nz = Math.max(A.uz0 - camZ, camZ - A.uz1, 0);
+    const j = Math.min(nRing - 1, (Math.sqrt(nx * nx + nz * nz) / RING) | 0), top = A.s.baseY + A.s.tpl.sy;
+    if (top > ringMax[j]) ringMax[j] = top;
+  }
+  for (let j = 0; j < nRing; j++) ringTop[j] = Math.max(j > 0 ? ringMax[j - 1] : -Infinity, ringMax[j], ringMax[j + 1]) - camY;
+  // A thing in ring j is at least j·RING from the eye, which a column's ray (across by p) reaches at
+  // depth j·RING·kq, kq = 1/√(1 + p²); rising h over the eye, it shows in a row of slope s only nearer
+  // than h/s. So past the greatest such h/s over the rings it can reach from, nothing can.
+  let kq = 1, stopY = -1, stopZ = Infinity;
+  const stopDepth = () => {
+    if (ybuf === stopY) return stopZ;
+    stopY = ybuf;
+    const s = slopeOfPix((ybuf - 0.5) * rayH);
+    if (!(s > 0)) return (stopZ = Infinity);
+    let zs = 0;
+    for (let j = 0; j < nRing; j++) { const h = ringTop[j]; if (h > s * j * RING * kq && h / s > zs) zs = h / s; }
+    return (stopZ = zs);
+  };
 
   // Per-column state shared by the helpers below.
   let col = 0, ybuf = 0, left = 0, dx = 0, dz = 0, zPrev = 0, gaps = false, lastShZ = -1, lastSh = 0, lastH = 0;
@@ -3286,7 +3351,8 @@ function marchRays(t) {
 
   // The ground at the previous step, looked up if the march did not draw it (it was hidden, or a
   // block was skipped): a step is always a slope from the ground before it, never a flat guess, so
-  // what you see does not change with whether the step before happened to be in view.
+  // what you see does not change with whether the step before happened to be in view. (So lastSh is
+  // always the light as it is: water's touch brighter is added where water is drawn.)
   function prevGround(lo, near) {
     if (lastShZ === lo) { if (lastSh !== lastSh) lastSh = marchShade(camX + dx * lo, camZ + dz * lo, lo); return; }
     const x = camX + dx * lo, y = camZ + dz * lo;
@@ -3306,11 +3372,11 @@ function marchRays(t) {
     prevGround(zPrev, near);
     const riseNow = h - lastH;
     if ((riseNow > WALL_RISE || riseNow < -WALL_RISE) && (riseNow > 0 ? riseNow : -riseNow) > WALL_SLOPE * (z - zPrev)) {
-      const mW = mat[idx];
-      let shW = near ? smoothShade(px, pz) : marchShade(px, pz, z), flW = 0;
+      const mW = mat[idx], shP = near ? smoothShade(px, pz) : marchShade(px, pz, z);
+      let shW = shP, flW = 0;
       if (mW === MAT.WATER) { shW += 0.12; flW = F_WATER; }
       wallAt(z, row, h, shW, TERRAIN_SEG | mW, MAT_RAMP[mW], warm ? warmAt(px, h, pz) : 0, flW);
-      lastShZ = z; lastSh = shW; lastH = h;
+      lastShZ = z; lastSh = shP; lastH = h;   // (the light as it is, water's touch added only where it is drawn: see prevGround)
       ybuf = row;
       return;
     }
@@ -3347,10 +3413,10 @@ function marchRays(t) {
       ybuf = row;
       return;
     }
-    const m = mat[idx];
-    let sh = marchShade(px, pz, z), fl = 0;
+    const m = mat[idx], shP = marchShade(px, pz, z);
+    let sh = shP, fl = 0, wb = 0;
     if (m === MAT.WATER) {
-      sh += 0.12; fl = F_WATER;                       // water reflects the sky: a touch brighter than land
+      wb = 0.12; sh += wb; fl = F_WATER;              // water reflects the sky: a touch brighter than land
       if (z < vd * 0.6 && Math.sin(px * 0.31 + t * 1.7) + Math.sin(pz * 0.23 - t * 1.1) > 0.8) fl |= F_RIPPLE;
     }
     const kS = TERRAIN_SEG | m, kR = MAT_RAMP[m], kL = warm ? warmAt(px, h, pz) : 0, kSt = STRATA_K[m];
@@ -3359,7 +3425,7 @@ function marchRays(t) {
       // this one, as a sloped segment), lit by the light blended between the two steps. A row keeps
       // the same ground as the steps slide over bumps, so the colour holds still as the camera moves.
       // Steep rock is banded by height, the more the steeper (strata fade in, not switch on).
-      const lo = zPrev, sh0 = lastSh, kSh = z > lo ? (sh - sh0) / (z - lo) : 0;
+      const lo = zPrev, sh0 = lastSh + wb, kSh = z > lo ? (sh - sh0) / (z - lo) : 0;
       const h0 = lastH, sl = z > lo ? (h - h0) / (z - lo) : 0, sOff = camY - h0 + sl * lo;
       const bands = kSt ? kSt * smoothstep(1, 2, (sl > 0 ? sl : -sl) / Math.sqrt(dx * dx + dz * dz)) : 0;
       for (let r = row, i = col * RH + row; r < ybuf; r++, i++) {
@@ -3374,7 +3440,7 @@ function marchRays(t) {
       }
       if (!gaps) left -= ybuf - row;
     }
-    lastShZ = z; lastSh = sh; lastH = h;
+    lastShZ = z; lastSh = shP; lastH = h;
     ybuf = row;
   }
 
@@ -3427,7 +3493,7 @@ function marchRays(t) {
     // the ground before the wall, and the face (read a little past its foot, on its own cell)
     const tA = (lo + tw) * 0.5, mA = mat[(Math.floor(camZ + dz * tA) & MASK) * W + (Math.floor(camX + dx * tA) & MASK)];
     let shA = lastSh, flA = 0;
-    if (mA === MAT.WATER) { flA = F_WATER; if (Math.sin((camX + dx * tA) * 0.31 + t * 1.7) + Math.sin((camZ + dz * tA) * 0.23 - t * 1.1) > 0.8) flA |= F_RIPPLE; }
+    if (mA === MAT.WATER) { shA += 0.12; flA = F_WATER; if (Math.sin((camX + dx * tA) * 0.31 + t * 1.7) + Math.sin((camZ + dz * tA) * 0.23 - t * 1.1) > 0.8) flA |= F_RIPPLE; }
     const sA = TERRAIN_SEG | mA, rA = MAT_RAMP[mA], pA = posOf(shA);
     // the face is the side of the highest of the four cells whose heights meet at its middle (the
     // heights blend between cell centres, so half of every wall stands over the cell below it)
@@ -3481,6 +3547,7 @@ function marchRays(t) {
     let face = Math.abs(txIn - tIn) < 1e-6 ? (stepX > 0 ? 1 : 0) : Math.abs(tzIn - tIn) < 1e-6 ? (stepZ > 0 ? 3 : 2) : -1;
 
     while (tt < tOut && left > 0) {
+      if (tt > stopDepth()) return;   // (nothing further can rise into an open row: see ringTop)
       let tn = tmx < tmz ? tmx : tmz;
       if (tn > tOut) tn = tOut;
       terrainAt((iz & MASK) * W + (ix & MASK), tt, camX + dx * tt, camZ + dz * tt);
@@ -3561,6 +3628,16 @@ function marchRays(t) {
     const p = rayP[col];
     dx = fx + rx * p; dz = fz + rz * p;
     ybuf = RH; left = RH; gaps = false; lastShZ = -1;
+    if (vTilt) {
+      // A source column (beginSource) is drawn only in rows srcTop..srcBot. The rest is held with
+      // nothing in it, at no depth (so no sprite claims it either): below, as if the ground at your
+      // feet had filled it (the march starts there), and above, where it stops once the rows below
+      // are full. (What the march draws in a row does not depend on where it starts or stops.)
+      const top = srcTop[col], bot = srcBot[col], i0 = col * RH;
+      if (top > 0) { kind.fill(K.SKY, i0, i0 + top); depth.fill(0, i0, i0 + top); }
+      if (bot < RH) { kind.fill(K.SKY, i0 + bot, i0 + RH); depth.fill(0, i0 + bot, i0 + RH); ybuf = bot; }
+      left = bot - top;
+    }
 
     // Which active structures does this column's ray cross, and where (nearest first)?
     let nInt = 0;
@@ -3585,11 +3662,15 @@ function marchRays(t) {
     // the DDA takes over until the ray leaves it. Once the last footprint is behind us no
     // structure work happens at all.
     let k = 0, z = 1.0, blockExit = 0;
-    zPrev = 0.3; ddS = 0;
+    zPrev = 0.3; ddS = 0; kq = 1 / Math.sqrt(1 + p * p); stopY = -1;
     while (z < vd && left > 0) {
+      if (z > stopDepth()) break;   // (nothing further can rise into an open row: see ringTop)
       if (k < nInt && intT0[k] <= z) {
-        marchStructure(active[intRef[k]], intT0[k], intT1[k]);
-        if (intT1[k] > z) { z = intT1[k]; zPrev = z; }
+        // (a structure none of which, nor the ground in it, can rise into an open row is passed by:
+        // walking it would draw nothing, and the march goes on from its far side either way)
+        const A = active[intRef[k]], t0 = intT0[k], t1 = intT1[k], s = slopeOfPix((ybuf - 0.5) * rayH), n0 = camY + s * t0, n1 = camY + s * t1;
+        if (!(A.top < (n0 < n1 ? n0 : n1))) marchStructure(A, t0, t1);
+        if (t1 > z) { z = t1; zPrev = z; }
         k++;
         continue;
       }
@@ -3605,7 +3686,16 @@ function marchRays(t) {
           let zEnd = blockExit < vd ? blockExit : vd;
           if (k < nInt && intT0[k] < zEnd) zEnd = intT0[k];
           const D = -slopeOfPix((ybuf - 0.5) * rayH), need0 = camY - D * z, need1 = camY - D * zEnd;
-          if (blockMax[(bz & BM) * NB + (bx & BM)] < (need0 < need1 ? need0 : need1)) { zPrev = z; z = zEnd; continue; }
+          if (blockMax[(bz & BM) * NB + (bx & BM)] < (need0 < need1 ? need0 : need1)) {
+            // Pass the block's steps without looking (none could show): on to the first step past
+            // it, from the last one in it, as if each had been looked at and found hidden. (Jumping
+            // to the block's edge made a step there, so what the march drew next depended on which
+            // blocks it had skipped, and so on what it had drawn already, and where it started.)
+            let zl = z, nz = ddNext(z);
+            if (k < nInt && intT0[k] < nz) nz = intT0[k];
+            while (nz < zEnd) { zl = nz; nz = ddNext(nz); if (k < nInt && intT0[k] < nz) nz = intT0[k]; }
+            zPrev = zl; lastShZ = -1; z = nz; continue;
+          }
         }
         const idx = (Math.floor(pz) & MASK) * W + (Math.floor(px) & MASK);
         const hf = marchHeight(px, pz, z);
@@ -3620,13 +3710,13 @@ function marchRays(t) {
 
     // Whatever is still unclaimed above the terrain is sky, or the sun or moon.
     if (left > 0) {
-      const pxX = (col + 0.5) * rayW;
+      const pxX = (col + vK0 + 0.5) * rayW;
       for (let r = 0, i = col * RH; r < ybuf; r++, i++) {
         if (kind[i] !== NONE) continue;
         let kd = K.SKY;
-        const pyY = (r + 0.5) * rayH;
-        if (sunScreen) { const ex = pxX - sunScreen.x, ey = pyY - sunScreen.y; if (ex * ex + ey * ey <= sunR2) kd = K.SUN; }
-        if (moonScreen && kd === K.SKY) { const ex = pxX - moonScreen.x, ey = pyY - moonScreen.y; if (ex * ex + ey * ey <= moonR2) kd = K.MOON; }
+        const pyY = (r + 0.5) * rayH, fr = rowF[r];   // (tilted, the discs are round on the screen: narrower across in the source)
+        if (sunScreen) { const ex = (pxX - sunScreen.x) * fr, ey = pyY - sunScreen.y; if (ex * ex + ey * ey <= sunR2) kd = K.SUN; }
+        if (moonScreen && kd === K.SKY) { const ex = (pxX - moonScreen.x) * fr, ey = pyY - moonScreen.y; if (ex * ex + ey * ey <= moonR2) kd = K.MOON; }
         kind[i] = kd; seg[i] = kd === K.SKY ? 0 : kd << 24; ramp[i] = kd === K.SKY ? R.sky : kd === K.SUN ? R.sun : R.moon;
         pos[i] = kd === K.SKY ? skyPosRow[r] : 1; depth[i] = Infinity; lit[i] = 0; flags[i] = 0;
       }
@@ -3807,6 +3897,7 @@ function primScreenBox(p) {
   let x0 = Math.floor((grid.w * 0.5 + sx0 * f) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + sx1 * f) / rayW - 0.5);
   let y0 = Math.floor(pixOfSlope(sy1) / rayH - 0.5), y1 = Math.ceil(pixOfSlope(sy0) / rayH - 0.5);
   primBox[4] = x0; primBox[5] = x1;   // (the same in every stripe, for choices that must agree across them)
+  x0 -= vK0; x1 -= vK0;               // (a tilted view's source columns are counted from the first this stripe draws)
   if (x0 < grid.xr0) x0 = grid.xr0; if (x1 > grid.xr1 - 1) x1 = grid.xr1 - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
   if (x0 > x1 || y0 > y1) return false;
   primBox[0] = x0; primBox[1] = x1; primBox[2] = y0; primBox[3] = y1;
@@ -3821,7 +3912,7 @@ function rasterPrim(p) {
   if (lens < LENS_CUT || !primScreenBox(p)) return;
   const x0 = primBox[0], x1 = primBox[1], y0 = primBox[2], y1 = primBox[3], zN = primNear;
   const see = p.see && (lens < LENS_SEE || primBox[5] >= heroBox[0] && primBox[4] <= heroBox[1] && y1 >= heroBox[2] && y0 <= heroBox[3] && p.cx * vFx + p.cz * vFz - p.rad * 0.5 < heroBox[4]);
-  const see4 = see && lens < LENS_SEE4;   // (one ray in four: x and y both even)
+  const see4 = see && lens < LENS_SEE4;   // (one ray in four: x and y both even; x counted over the whole picture, x + vK0)
   const RH = grid.RH, P = rayP, Q = rayQ;
   const fx = vFx, fz = vFz, rx = vRx, rz = vRz, cX = vCamX, cY = vCamY, cZ = vCamZ;
   const { kind, seg, ramp, pos, depth, lit, u, v, w, flags } = rays;
@@ -3845,15 +3936,17 @@ function rasterPrim(p) {
     if (top > ya) ya = top; if (bot < yb) yb = bot;
     return ya <= yb;
   };
+  // (a tilted view's source column is drawn only in rows srcTop..srcBot: no need to try the others)
+  const bandRows = x => { if (vTilt) { const t = srcTop[x], b = srcBot[x] - 1; if (ya < t) ya = t; if (yb > b) yb = b; } return ya <= yb; };
   if (type === P_SPHERE) {
     const r = p.r, ir = 1 / r, cc = cx * cx + cy * cy + cz * cz - r * r, zcS = cx * fx + cz * fz, xcS = cx * rx + cz * rz;
     const A = cy * cy - cc;
     for (let x = x0; x <= x1; x++) {
       const pp = P[x], a0 = 1 + pp * pp, b0 = zcS + pp * xcS, dwx = fx + rx * pp, dwz = fz + rz * pp;
-      if (!rowsOf(A, b0 * cy, b0 * b0 - a0 * cc)) continue;
+      if (!rowsOf(A, b0 * cy, b0 * b0 - a0 * cc) || !bandRows(x)) continue;
       for (let y = ya, i = x * RH + ya; y <= yb; y++, i++) {
         const di = depth[i];
-        if (di <= zN || see && ((x + y) & 1 || see4 && (x & 1))) continue;
+        if (di <= zN || see && ((x + vK0 + y) & 1 || see4 && ((x + vK0) & 1))) continue;
         const q = Q[y], a = a0 + q * q, b = b0 + q * cy, h = b * b - a * cc;
         if (h < 0) continue;
         const t = (b - Math.sqrt(h)) / a;
@@ -3876,10 +3969,10 @@ function rasterPrim(p) {
     for (let x = x0; x <= x1; x++) {
       const pp = P[x], dlx = ax0 + ax1 * pp, dlz = az0 + az1 * pp;
       const aP = dlx * dlx + dlz * dlz, bP = dlx * clx + dlz * clz, dwx = fx + rx * pp, dwz = fz + rz * pp;
-      if (!rowsOf(A, bP * iey * cly, bP * bP - aP * cc)) continue;
+      if (!rowsOf(A, bP * iey * cly, bP * bP - aP * cc) || !bandRows(x)) continue;
       for (let y = ya, i = x * RH + ya; y <= yb; y++, i++) {
         const di = depth[i];
-        if (di <= zN || see && ((x + y) & 1 || see4 && (x & 1))) continue;
+        if (di <= zN || see && ((x + vK0 + y) & 1 || see4 && ((x + vK0) & 1))) continue;
         const q = Q[y], dly = q * iey, a = aP + dly * dly, b = bP + dly * cly, h = b * b - a * cc;
         if (h < 0) continue;
         const t = (b - Math.sqrt(h)) / a;
@@ -3915,9 +4008,10 @@ function rasterPrim(p) {
         const top = Math.floor(pixOfSlope(qMax) / rayH - 0.5), bot = Math.ceil(pixOfSlope(qMin) / rayH - 0.5);
         if (top > ya) ya = top; if (bot < yb2) yb2 = bot;
       }
+      if (vTilt) { const t = srcTop[x], b = srcBot[x] - 1; if (ya < t) ya = t; if (yb2 > b) yb2 = b; }
       for (let y = ya, i = x * RH + ya; y <= yb2; y++, i++) {
         const di = depth[i];
-        if (di <= zN || see && ((x + y) & 1 || see4 && (x & 1))) continue;
+        if (di <= zN || see && ((x + vK0 + y) & 1 || see4 && ((x + vK0) & 1))) continue;
         const q = Q[y], M1 = k * q, a = g2 - M1 * M1, b = g1 - M0 * M1, c = g0 - M0 * M0;
         let tHit = di, nx = 0, ny = 0, nz = 0;
         const disc = b * b - a * c;
@@ -3954,9 +4048,11 @@ function rasterPrim(p) {
   for (let x = x0; x <= x1; x++) {
     const pp = P[x], p2 = 1 + pp * pp, dwx = fx + rx * pp, dwz = fz + rz * pp;
     rdx = dwx; rdz = dwz;
-    for (let y = y0, i = x * RH + y0; y <= y1; y++, i++) {
+    ya = y0; yb = y1;
+    if (!bandRows(x)) continue;
+    for (let y = ya, i = x * RH + ya; y <= yb; y++, i++) {
       const di = depth[i];
-      if (di <= zN || see && ((x + y) & 1 || see4 && (x & 1))) continue;
+      if (di <= zN || see && ((x + vK0 + y) & 1 || see4 && ((x + vK0) & 1))) continue;
       const q = Q[y];
       rdy = q; rr2 = p2 + q * q;
       const d = type === P_CAPSULE ? hitCapsule(p) : type === P_CYLINDER ? hitCylinder(p) : hitCone(p);
@@ -3981,7 +4077,7 @@ function rasterFlame(L, cx, cy, cz, t, li) {
   const sway = 0.12 * Math.sin(t * 6.1 + L.phase * 2);
   const fh = L.size * flick, fw = L.size * 0.55, base = cy - 0.15 * L.size;
   const k = vF / zc;
-  let x0 = Math.floor((grid.w * 0.5 + (xc - fw * 1.2) * k) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + (xc + fw * 1.2) * k) / rayW - 0.5);
+  let x0 = Math.floor((grid.w * 0.5 + (xc - fw * 1.2) * k) / rayW - 0.5) - vK0, x1 = Math.ceil((grid.w * 0.5 + (xc + fw * 1.2) * k) / rayW - 0.5) - vK0;
   const pTip = pixOfSlope((base + fh) / zc), pBase = pixOfSlope(base / zc);
   let y0 = Math.floor(pTip / rayH - 0.5), y1 = Math.ceil(pBase / rayH - 0.5);
   if (x0 < grid.xr0) x0 = grid.xr0; if (x1 > grid.xr1 - 1) x1 = grid.xr1 - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
@@ -4496,7 +4592,7 @@ function castShadows() {
     const zc = sx * vFx + sz * vFz, xc = sx * vRx + sz * vRz;
     if (zc - rad < 0.3) continue;
     const zN = zc - rad, zF = zc + rad, k0 = vF / zN, k1 = vF / zF;
-    let x0 = Math.floor((grid.w * 0.5 + Math.min((xc - rad) * k0, (xc - rad) * k1)) / rayW - 0.5), x1 = Math.ceil((grid.w * 0.5 + Math.max((xc + rad) * k0, (xc + rad) * k1)) / rayW - 0.5);
+    let x0 = Math.floor((grid.w * 0.5 + Math.min((xc - rad) * k0, (xc - rad) * k1)) / rayW - 0.5) - vK0, x1 = Math.ceil((grid.w * 0.5 + Math.max((xc + rad) * k0, (xc + rad) * k1)) / rayW - 0.5) - vK0;
     const yT = y + rad * 0.7, yB = y - rad * 0.7;
     let y0 = Math.floor(pixOfSlope(Math.max(yT / zN, yT / zF)) / rayH - 0.5), y1 = Math.ceil(pixOfSlope(Math.min(yB / zN, yB / zF)) / rayH - 0.5);
     if (x0 < grid.xr0) x0 = grid.xr0; if (x1 > grid.xr1 - 1) x1 = grid.xr1 - 1; if (y0 < 0) y0 = 0; if (y1 > RH - 1) y1 = RH - 1;
@@ -4549,7 +4645,9 @@ function splatGroundMarks(t) {
   const camX = vCamX, camY = vCamY, camZ = vCamZ, fx = vFx, fz = vFz, rx = vRx, rz = vRz, f = vF, tanH = vTanX * 1.05;
   const { H, mat } = world;
   const w2 = grid.w * 0.5, seed = world.seed, xPix0 = grid.c0 * cellW, xPix1 = Math.min(grid.w, grid.c1 * cellW);
-  const sL = (xPix0 - w2) / f, sR = (xPix1 - w2) / f;   // this stripe's slice of the view, as lateral slopes
+  // this stripe's slice of the view, as lateral slopes (tilted, wider in the rows whose F is least)
+  let sL = (xPix0 - w2) / f, sR = (xPix1 - w2) / f;
+  if (vTilt) { const fa = fOfPix(0), fb = fOfPix(grid.h); sL = Math.min(sL / fa, sL / fb); sR = Math.max(sR / fa, sR / fb); }
   // Points per unit of ground for a cell to see MARK_PER_CELL of them at distance z: a cell covers
   // about (cw·ch/f²)·z·(z² + h²)/h of ground, h being the eye's height above the ground below it.
   const hgt = Math.max(EYE, camY - terrainHeight(camX, camZ));
@@ -4599,11 +4697,12 @@ function splatGroundMarks(t) {
         if (!set) continue;
         const hk = ((hB >>> 8) & 255) / 256;
         if (hk > set[0]) continue;
-        const xPix = w2 + (dxw * rx + dzw * rz) * f / zc;
-        if (xPix < xPix0 || xPix >= xPix1) continue;
+        let xPix = w2 + (dxw * rx + dzw * rz) * f / zc;
+        if (!vTilt && (xPix < xPix0 || xPix >= xPix1)) continue;
         const hgt = zc < NEAR_SMOOTH ? terrainHeight(px, pz) : H[ci];
         const yPix = pixOfSlope((hgt - camY) / zc);
         if (yPix < 0 || yPix >= grid.h) continue;
+        if (vTilt) { xPix = w2 + (xPix - w2) * fOfPix(yPix); if (xPix < xPix0 || xPix >= xPix1) continue; }   // (across by F of its row)
         const ri = Math.min(RW - 1, (xPix / rayW) | 0) * RH + Math.min(RH - 1, (yPix / rayH) | 0);
         if (kind[ri] !== K.TERRAIN || seg[ri] !== (TERRAIN_SEG | m)) continue;
         const dd = depth[ri] - zc;
@@ -4808,7 +4907,7 @@ function shadeCells(t) {
       GL[ci] = SPACE; FG[ci] = bg; BG[ci] = bg; continue;
     }
     const sm = SPRITE_MARKS[kd];
-    if (sm) {
+    if (sm && kind[im] === kd) {   // (the middle ray on the thing itself: only a sprite's rays hold where they met it)
       // a lattice fixed to the object's surface in 3D, no finer than about a cell and a half
       const d = depth[im], Ls = Math.pow(2, Math.ceil(Math.log2(Math.max(0.05, 1.6 * d * cellW / f))));
       const obj = seg[im] & 0xfffff, gx = Math.floor(u[im] / Ls), gy = Math.floor(v[im] / Ls), gz = Math.floor(w[im] / Ls);
@@ -4839,7 +4938,7 @@ function mortarFor(idx, cellH, cellW, f) {
   for (let y = 1; y < cellH; y++) if (Math.floor(vTop - (y - 0.5) * slope) !== Math.floor(vTop - (y + 0.5) * slope)) lines |= 1 << y;
   const parity0 = Math.floor(vTop - 0.5 * slope) & 1;
   let jE = -1, jO = -1;
-  if (slope <= 1 / 7) {                              // near enough for the joints between stones
+  if (slope <= 1 / 7 && seg[idx[1]] === seg[i0]) {  // near enough for the joints between stones (and the ray beside on the same face)
     const ua = u[i0], ub = u[idx[1]], du = (ub - ua) / grid.rayW, u0 = ua - du * grid.rayW * 0.5;
     for (let x = 1; x < cellW; x++) {
       const a = u0 + du * (x - 0.5), b = u0 + du * (x + 0.5);
@@ -4863,15 +4962,17 @@ function drawOverlays(t) {
   const c0 = grid.c0, c1 = grid.c1;
   if (light.darkness > 0.3) for (const gw of glows) {
     if (gw.zc > 150) continue;
-    const fc = gw.x / cellW, fr = gw.y / cellH;
-    if (fc < 0 || fc >= cols || fr < 0 || fr >= rows || cellDepth(fc | 0, fr | 0) < gw.zc - 1) continue;   // the flame itself is hidden
+    const fc = gw.x / cellW, fr = gw.y / cellH, frc = fr | 0;
+    if (fc < 0 || fc >= cols || fr < 0 || fr >= rows) continue;
+    // (no glow in a column where something stands in front of the flame at its height: asked of
+    // each column the glow reaches, not of the flame's own, which another stripe may hold)
     const R0 = clamp(gw.hPx / cellH * 2.4, 1.5, 9) * (gw.fire ? 1.3 : gw.li < 0 ? 0.55 : 0.8);
     for (let r = Math.floor(fr - R0); r <= Math.ceil(fr + R0 * 0.6); r++) for (let c = Math.floor(fc - R0 * 2); c <= Math.ceil(fc + R0 * 2); c++) {
       if (c < c0 || c >= c1 || r < 0 || r >= rows) continue;
       const dx = (c + 0.5 - fc) / 2, dy = r + 0.5 - fr, q = Math.sqrt(dx * dx + dy * dy) / R0;
       if (q >= 1) continue;
       const i = r * cols + c;
-      if (GL[i] !== SPACE || cellDepth(c, r) < gw.zc - 2) continue;   // tint only plain cells, and nothing in front of the fire
+      if (GL[i] !== SPACE || cellDepth(c, r) < gw.zc - 2 || cellDepth(c, frc) < gw.zc - 1) continue;   // tint only plain cells, and nothing in front of the fire
       const lv = q < 0.35 ? 2 : q < 0.7 ? 1 : 0;
       if (lv === 0 && hash2(c, r, 5) > 0.5) continue;
       GL[i] = SHADE[lv + 1]; FG[i] = litP[Math.min(litP.length - 1, q < 0.35 ? 3 : 2)];
@@ -4879,7 +4980,7 @@ function drawOverlays(t) {
     if (gw.fire) for (let k = 0; k < 7; k++) {         // sparks rise off a campfire and wink out
       const h = hash2(k, gw.li, 17), life = (t * (0.35 + 0.25 * h) + h) % 1;
       const c = Math.round(fc + (h - 0.5) * 3 + Math.sin(life * 6 + k) * 0.8), r = Math.round(fr - gw.hPx / cellH * 0.5 - 1 - life * 8);
-      if (c < c0 || c >= c1 || r < 0 || r >= rows || life > 0.85 || cellDepth(c, r) < gw.zc - 2) continue;
+      if (c < c0 || c >= c1 || r < 0 || r >= rows || life > 0.85 || cellDepth(c, r) < gw.zc - 2 || cellDepth(c, frc) < gw.zc - 1) continue;
       const i = r * cols + c;
       GL[i] = markAnywhere(life < 0.3 ? MK.spark : MK.ember, h); FG[i] = solidColor(R.fire, 0.95 - life * 0.5, 0, 0, K.FLAME);
     }
@@ -4898,7 +4999,7 @@ function drawOverlays(t) {
   if (ffOn > 0) forEachFirefly(t, (fx, fy, fz, b) => {
     const rx = fx - vCamX, ry = fy - vCamY, rz = fz - vCamZ, zc = rx * vFx + rz * vFz;
     if (zc < 0.8 || b * ffOn < 0.25) return;
-    const sx = grid.w * 0.5 + (rx * vRx + rz * vRz) / zc * grid.f, sy = pixOfSlope(ry / zc), c = Math.floor(sx / cellW), r = Math.floor(sy / cellH);
+    const sy = pixOfSlope(ry / zc), sx = grid.w * 0.5 + (rx * vRx + rz * vRz) / zc * grid.f * fOfPix(sy), c = Math.floor(sx / cellW), r = Math.floor(sy / cellH);
     if (c < c0 || c >= c1 || r < 0 || r >= rows || cellDepth(c, r) < zc) return;
     GL[r * cols + c] = markAt(MK.dot, sx - c * cellW, sy - r * cellH); FG[r * cols + c] = FF[b > 0.6 ? FF.length - 1 : 1];
   });
@@ -5002,10 +5103,12 @@ function paintCells(t) {
   let fogR = 0, fogG = 0, fogB = 0, camInFog = 0;
   if (aur > 0) {   // the aurora's pattern: along the sky by column (where curtains hang, their fine rays),
     // and up it by row (the lower edge, and the colour: green low, violet high)
-    if (aurCol.length < grid.RW * 2) aurCol = new Float32Array(grid.RW * 2);
+    // (by source column in a tilted view, where a screen column's rays look different ways across)
+    const ax0 = vTilt ? 0 : grid.xr0, ax1 = vTilt ? srcN : grid.xr1, P = vTilt ? srcP : rayP;
+    if (aurCol.length < Math.max(grid.RW, ax1) * 2) aurCol = new Float32Array(Math.max(grid.RW, ax1) * 2);
     if (aurRow.length < RH * 4) { aurRow = new Float32Array(RH * 4); aurCol2 = new Float32Array(RH); }
-    for (let x = grid.xr0; x < grid.xr1; x++) {   // (every ray column this stripe computes, margins included)
-      const az = cam.yaw + Math.atan(rayP[x]), north = 0.35 + 0.65 * Math.max(0, -Math.sin(az));
+    for (let x = ax0; x < ax1; x++) {   // (every ray column this stripe computes, margins included)
+      const az = cam.yaw + Math.atan(P[x]), north = 0.35 + 0.65 * Math.max(0, -Math.sin(az));
       const band = 0.5 + 0.5 * Math.sin(az * 2.3 + Math.sin(az * 5.1 + t * 0.07) * 1.4 + t * 0.03);
       const streaks = 0.65 + 0.35 * Math.sin(az * 31 + t * 0.35 + Math.sin(az * 11 + t * 0.2) * 2.5);
       aurCol[x * 2] = band; aurCol[x * 2 + 1] = band * band * streaks * north;
@@ -5040,8 +5143,8 @@ function paintCells(t) {
         if (d > 1 && d < 5) { const gl = Math.exp(-(d - 1) * 0.9) * 0.85; r += (glowR - r) * gl; g += (glowG - g) * gl; b += (glowB - b) * gl; }
       }
       if (aur > 0 && aurRow[y * 4] > 0) {   // aurora: curtains hanging across the northern half of the sky, fixed to the compass
-        const band = aurCol[x * 2], e = aurRow[y * 4 + 1];
-        const a = aur * aurCol[x * 2 + 1] * aurRow[y * 4] * (1 - smoothstep(0.3 + 0.3 * band, 0.95, e));
+        const ax = vTilt ? rayK[i] : x, band = aurCol[ax * 2], e = aurRow[y * 4 + 1];
+        const a = aur * aurCol[ax * 2 + 1] * aurRow[y * 4] * (1 - smoothstep(0.3 + 0.3 * band, 0.95, e));
         if (a > 0.01) { r += aurRow[y * 4 + 2] * a; g += aurRow[y * 4 + 3] * a; b += aurCol2[y] * a; }
       }
       if (camInFog > 0) { const a = camInFog * vfog * 0.9; r += (fogR - r) * a; g += (fogG - g) * a; b += (fogB - b) * a; }
@@ -5068,13 +5171,14 @@ function paintCells(t) {
     if (k === K.TERRAIN) {
       if (flags[i] & F_SHADOW) P = P > 0.18 ? P - 0.18 : 0;
       if (wetDark > 0 && !(flags[i] & F_WATER)) P -= wetDark;   // wet after rain
-      if (hero.on && depth[i] < 40) {   // the hero's own soft shadow on the ground under their feet
-        const pr = rayP[x], d = depth[i], ex = vCamX + (vFx + vRx * pr) * d - hero.x, ez = vCamZ + (vFz + vRz * pr) * d - hero.z, r2 = ex * ex + ez * ez;
+      const pr = vTilt ? srcP[rayK[i]] : rayP[x], d = depth[i];   // (the ray's way across: its source column's, in a tilted view)
+      if (hero.on && d < 40) {   // the hero's own soft shadow on the ground under their feet
+        const ex = vCamX + (vFx + vRx * pr) * d - hero.x, ez = vCamZ + (vFz + vRz * pr) * d - hero.z, r2 = ex * ex + ez * ez;
         if (r2 < 0.36) P -= 0.22 * (1 - r2 / 0.36);
       }
       // the ground: the colours of the four cells around the point the ray met, blended by how near
       // it lies to each, so colour flows across the ground instead of jumping from cell to cell
-      const pr = rayP[x], d = depth[i], fx = vCamX + (vFx + vRx * pr) * d - 0.5, fz = vCamZ + (vFz + vRz * pr) * d - 0.5;
+      const fx = vCamX + (vFx + vRx * pr) * d - 0.5, fz = vCamZ + (vFz + vRz * pr) * d - 0.5;
       if (near > 0 && !(flags[i] & F_WATER)) P += (mottle(fx * 0.45, fz * 0.45, seed + 9) - 0.5) * 0.14 * near;   // a painter's mottle
       const x0 = Math.floor(fx), z0 = Math.floor(fz), tx = fx - x0, tz = fz - z0;
       const a0 = (z0 & MASK) * W, a1 = ((z0 + 1) & MASK) * W, b0 = x0 & MASK, b1 = (x0 + 1) & MASK;
@@ -5144,7 +5248,7 @@ function paintCells(t) {
       r += (tmpC[3] - r) * fg; g += (tmpC[4] - g) * fg; b += (tmpC[5] - b) * fg;
     }
     if (vfog > 0) {   // dawn fog lying in the valleys: thicker the deeper in it a thing stands and the further off it is
-      const d = depth[i], pr = rayP[x], deep = fogTopAt(vCamX + (vFx + vRx * pr) * d, vCamZ + (vFz + vRz * pr) * d) - (vCamY + rayQ[y] * d);
+      const d = depth[i], pr = vTilt ? srcP[rayK[i]] : rayP[x], deep = fogTopAt(vCamX + (vFx + vRx * pr) * d, vCamZ + (vFz + vRz * pr) * d) - (vCamY + rayQ[y] * d);
       let a = deep > -0.5 ? smoothstep(-0.5, 3, deep) * (1 - Math.exp(-d / 10)) : 0;
       if (camInFog > 0) a = Math.max(a, camInFog * (1 - Math.exp(-d / 10)));
       a *= vfog;
@@ -5179,7 +5283,7 @@ function paintCells(t) {
     // mirror is read between rows, blended, so it glides rather than jumping a row at a time. (A
     // mirror row above the top of the screen takes the top row: the water near your feet still
     // mirrors the sky above, instead of stopping at a line.)
-    const pw = rayP[x], wxw = vCamX + (vFx + vRx * pw) * tw, wzw = vCamZ + (vFz + vRz * pw) * tw;
+    const pw = vTilt ? srcP[rayK[i]] : rayP[x], wxw = vCamX + (vFx + vRx * pw) * tw, wzw = vCamZ + (vFz + vRz * pw) * tw;
     const wave = Math.sin(wxw * 0.8 + wzw * 0.5 + t * 1.7) * (0.3 + below * 0.0045) + Math.sin(wxw * 0.31 - wzw * 0.74 + t * 1.1) * (0.18 + below * 0.0025);
     const yf = Math.max(0, ym + wave), y0 = Math.floor(yf), fy = yf - y0;
     if (y0 >= RH) continue;
@@ -5271,7 +5375,7 @@ function paintCells(t) {
     forEachFirefly(t, (fx, fy, fz, b) => {
       const rx = fx - vCamX, ry = fy - vCamY, rz = fz - vCamZ, zc = rx * vFx + rz * vFz;
       if (zc < 0.8) return;
-      const sx = grid.w * 0.5 + (rx * vRx + rz * vRz) / zc * grid.f, sy = pixOfSlope(ry / zc);
+      const sy = pixOfSlope(ry / zc), sx = grid.w * 0.5 + (rx * vRx + rz * vRz) / zc * grid.f * fOfPix(sy);
       const cc = Math.floor(sx / cellW), pr = Math.floor(sy / SH), xr = Math.floor(sx / rayW);
       if (cc < c0 - 1 || cc > c1 || pr < 0 || pr >= rows * 2 || xr < xm0 || xr >= xm1) return;
       if (depth[xr * RH + Math.min(RH - 1, Math.floor(sy / rayH))] < zc) return;   // behind a tree or a hill
@@ -5360,6 +5464,67 @@ function composePainted() {
   }
 }
 
+// ---- a tilted view: the source columns, and each screen ray taken from them ----------------------
+// Step 1 (before the march): the screen column x, in ray row y, looks across along rayP[x] / rowF[y],
+// and the source column nearest that is floor(rayP[x] · rowS[y] + kC), counted like the screen's
+// (0 its first column; kC is where the middle of the screen falls, in columns). Find the ones this stripe's rays take, swap them in as the rays to draw
+// (with rayP, grid.xr0..xr1 and vK0), and work out which rows of each to draw: srcTop..srcBot, the
+// rows that take it in this stripe. (Two stripes that share a column draw its rows alike, whichever
+// rows each draws: what the march draws in a row does not depend on where it starts or stops.)
+let scrP = null, scrX0 = 0, scrX1 = 0;
+function beginSource() {
+  const { RH, rayW } = grid, kC = grid.w / (2 * rayW);
+  const pa = rayP[grid.xr0], pb = rayP[grid.xr1 - 1];
+  let k0 = Infinity, k1 = -Infinity;
+  for (let y = 0; y < RH; y++) {
+    const s = rowS[y], a = Math.floor(pa * s + kC), b = Math.floor(pb * s + kC);
+    if (a < k0) k0 = a; if (b > k1) k1 = b;
+  }
+  const n = k1 - k0 + 1;
+  if (srcP.length < n) { srcP = new Float32Array(n + 64); srcTop = new Int32Array(n + 64); srcBot = new Int32Array(n + 64); }
+  if (srcRays.kind.length < n * RH) {   // (with room to spare, as the view tilts further)
+    const cap = (n + 64) * RH;
+    srcRays.kind = new Uint8Array(cap); srcRays.seg = new Int32Array(cap); srcRays.ramp = new Uint8Array(cap); srcRays.pos = new Float32Array(cap); srcRays.depth = new Float32Array(cap);
+    srcRays.lit = new Float32Array(cap); srcRays.u = new Float32Array(cap); srcRays.v = new Float32Array(cap); srcRays.w = new Float32Array(cap); srcRays.flags = new Uint8Array(cap);
+  }
+  srcTop.fill(RH, 0, n); srcBot.fill(0, 0, n);
+  for (let y = 0; y < RH; y++) {   // (each row's run of columns in this stripe)
+    const s = rowS[y], a = Math.floor(pa * s + kC) - k0, b = Math.floor(pb * s + kC) - k0;
+    for (let c = a; c <= b; c++) { if (srcTop[c] === RH) srcTop[c] = y; srcBot[c] = y + 1; }
+  }
+  for (let c = 0; c < n; c++) srcP[c] = ((c + k0 + 0.5) * rayW - grid.w * 0.5) / vF;
+  srcN = n; vK0 = k0;
+  scrP = rayP; scrX0 = grid.xr0; scrX1 = grid.xr1;
+  rayP = srcP; grid.xr0 = 0; grid.xr1 = n;
+  for (const f of RAY_FIELDS) { const a = rays[f]; rays[f] = srcRays[f]; srcRays[f] = a; }
+}
+// Step 2 (after the sprites and shadows): swap the screen's rays back and fill each from the source
+// ray nearest its own direction (where it met things, u v w, only for what keeps it: not the sky or
+// the ground). Then move what was placed by the source's columns (the glows, the birds, the sun and
+// the moon) across to where it is on the screen: its row's F times as far from the middle.
+function endSource() {
+  for (const f of RAY_FIELDS) { const a = rays[f]; rays[f] = srcRays[f]; srcRays[f] = a; }
+  const k0 = vK0;
+  rayP = scrP; grid.xr0 = scrX0; grid.xr1 = scrX1; vK0 = 0;
+  const RH = grid.RH, kC = grid.w / (2 * grid.rayW);
+  const { kind, seg, ramp, pos, depth, lit, u, v, w, flags } = rays;
+  const sK = srcRays.kind, sS = srcRays.seg, sR = srcRays.ramp, sP = srcRays.pos, sD = srcRays.depth, sL = srcRays.lit, sU = srcRays.u, sV = srcRays.v, sW = srcRays.w, sF = srcRays.flags;
+  for (let x = grid.xr0; x < grid.xr1; x++) {
+    const p = rayP[x];
+    for (let y = 0, i = x * RH; y < RH; y++, i++) {
+      const c = Math.floor(p * rowS[y] + kC) - k0, j = c * RH + y, kd = sK[j];
+      rayK[i] = c;
+      kind[i] = kd; seg[i] = sS[j]; ramp[i] = sR[j]; pos[i] = sP[j]; depth[i] = sD[j]; lit[i] = sL[j]; flags[i] = sF[j];
+      if (kd > K.TERRAIN) { u[i] = sU[j]; v[i] = sV[j]; w[i] = sW[j]; }
+    }
+  }
+  const w2 = grid.w * 0.5;
+  for (const g of glows) g.x = w2 + (g.x - w2) * fOfPix(g.y);
+  for (const b of birdsOnScreen) b.x = w2 + (b.x - w2) * fOfPix(b.y);
+  if (sunScreen) sunScreen.x = w2 + (sunScreen.x - w2) * fOfPix(sunScreen.y);
+  if (moonScreen) moonScreen.x = w2 + (moonScreen.x - w2) * fOfPix(moonScreen.y);
+}
+
 // The whole frame, for this stripe: rays, cells, pixels. Returns how long each stage took.
 const stats = { marchMs: 0, spriteMs: 0, marksMs: 0, cellMs: 0, drawMs: 0, edgeCells: 0 };
 const LOOK = { PAINTED: 0, MOSAIC: 1 };
@@ -5378,15 +5543,25 @@ function renderFrame(t, poses, look) {
   winGlow = light.darkness > 0.05 ? 0.6 + 0.4 * light.darkness : 0;
   for (let x = 0; x < grid.RW; x++) rayP[x] = ((x + 0.5) * grid.rayW - grid.w * 0.5) / f;
   for (let y = 0; y < grid.RH; y++) { rayQ[y] = slopeOfPix((y + 0.5) * grid.rayH); rayInvS[y] = rayQ[y] < -1e-6 ? -1 / rayQ[y] : Infinity; }
+  // a tilted view is drawn through source columns (beginSource); rowF[y] is each ray row's F
+  vTilt = vTan > 1e-4 || vTan < -1e-4;
+  const th = Math.atan(vTan);
+  vCos = vTilt ? Math.cos(th) : 1; vSin = vTilt ? Math.sin(th) : 0;
+  for (let y = 0; y < grid.RH; y++) {
+    const F = vCos - (vMidH - (y + 0.5) * grid.rayH) / f * vSin;
+    rowF[y] = vTilt ? (F > F_FLOOR ? F : F_FLOOR) : 1; rowS[y] = f / (rowF[y] * grid.rayW);
+  }
   if (skyPosRow.length !== grid.RH) skyPosRow = new Float32Array(grid.RH);
   for (let y = 0; y < grid.RH; y++) { const e = rayQ[y] / 0.55; skyPosRow[y] = e <= 0 ? 1 : e >= 1 ? 0 : 1 - e; }
   updateShadeMips();
   sunScreen = wx.storm > 0.55 ? null : projectBody(s.sunEl, s.sunAz);   // (behind rain clouds, neither shows)
   moonScreen = s.sunEl < 0.15 && wx.storm <= 0.55 ? projectBody(s.moonEl, s.moonAz) : null;
+  if (vTilt) beginSource();
   marchRays(t);
   const t1 = performance.now();
   drawSprites(t, poses);
   if (look !== LOOK.PAINTED) castShadows();
+  if (vTilt) endSource();
   const t2 = performance.now();
   if (look !== LOOK.PAINTED) { splatGroundMarks(t); reflectWater(); }
   const t3 = performance.now();
@@ -5442,7 +5617,7 @@ function message(msg, reply) {
   }
 }
 // (for the tools: where on the map a ray landed, from its column and depth)
-const rayAt = (x, r) => { const i = x * grid.RH + r, d = rays.depth[i], pr = rayP[x]; return { x: vCamX + (vFx + vRx * pr) * d, y: vCamY + rayQ[r] * d, z: vCamZ + (vFz + vRz * pr) * d, d, kind: rays.kind[i], flags: rays.flags[i] }; };
+const rayAt = (x, r) => { const i = x * grid.RH + r, d = rays.depth[i], pr = vTilt ? srcP[rayK[i]] : rayP[x]; return { x: vCamX + (vFx + vRx * pr) * d, y: vCamY + rayQ[r] * d, z: vCamZ + (vFz + vRz * pr) * d, d, kind: rays.kind[i], flags: rays.flags[i] }; };
 return { setView, renderFrame, message, rays, atlas, cellMark, grid, stats, paint, rayAt };
 }
 
