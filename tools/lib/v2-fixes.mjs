@@ -77,3 +77,9 @@ FIXES.push({
   from: '    const count = 4 + ((rng() * 2) | 0);',
   to: '    const count = 7 + ((rng() * 3) | 0);',
 });
+// Phase 5, step 1: your bag (docs/phase5.md).
+FIXES.push({
+  why: 'phase 5: food makes you well fed for a while, and well fed you sprint a quarter faster (fedSprint: 1 unless you have eaten; the tests give v1 one that is always 1)',
+  from: '    const speed = WALK_SPEED * (shift ? SPRINT_MULT : 1) * dt;',
+  to: '    const speed = WALK_SPEED * (shift ? SPRINT_MULT * fedSprint() : 1) * dt;',
+});

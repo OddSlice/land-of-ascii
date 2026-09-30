@@ -17,6 +17,7 @@
   #hud { position: fixed; top: 12px; left: 12px; font-size: 13px; line-height: 1.5; background: rgba(6,6,6,.55); border: 1px solid rgba(216,200,160,.14); padding: 7px 11px; pointer-events: none; }
   #hud .row { white-space: pre; }
   #hud .lbl { color: #9d9380; }
+  #hud .row[hidden] { display: none; }
   #seed { pointer-events: auto; font: inherit; color: var(--hud); background: transparent; border: 0; border-bottom: 1px solid var(--hud-dim); width: 8ch; padding: 0; outline: none; -moz-appearance: textfield; }
   #seed::-webkit-outer-spin-button, #seed::-webkit-inner-spin-button { -webkit-appearance: none; }
   #seed:focus { border-bottom-color: var(--hud); }
@@ -65,6 +66,19 @@
   #panel button:disabled { color: #5a5548; border-color: #3a3630; cursor: default; }
   #panel .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid #3a3630; }
   #panel .msg { color: var(--hud-dim); min-height: 1.5em; margin-top: 6px; }
+  /* The panel's lists in groups (BUY and SELL when trading; WORN, CARRIED, FOOD AND DRINK in your bag) */
+  #panel { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; z-index: 5; }
+  #panel button { white-space: nowrap; }
+  #panel td.name { white-space: nowrap; }
+  #panel tr.sec td { padding: 12px 0 3px; font-size: 11px; letter-spacing: .14em; color: var(--hud); }
+  #panel tr.sec:first-child td { padding-top: 2px; }
+  #panel tr.sec td small { font-size: 11px; letter-spacing: normal; color: var(--hud-dim); margin-left: 8px; }
+  #panel td.none { color: var(--hud-dim); padding: 3px 0 3px 2ch; }
+  #panel td.name { padding-left: 2ch; padding-right: 10px; }
+  #panel td.state { color: var(--hud-dim); white-space: nowrap; padding-right: 10px; }
+  #panel td.state.on { color: var(--amber); }
+  #panel button:focus-visible { outline: 1px solid var(--amber); outline-offset: 1px; }
+  #panel .fed { color: var(--amber); }
 
   #hint { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(0,0,0,.55); cursor: pointer; user-select: none; }
   #hint h1 { margin: 0; font-size: 22px; letter-spacing: .35em; font-weight: normal; }
@@ -89,6 +103,7 @@
   <div class="row"><span class="lbl">MODE </span><span id="mode">WALK</span></div>
   <div class="row"><span class="lbl">LOOK </span><span id="look">PAINTED</span></div>
   <div class="row"><span class="lbl">GOLD </span><span id="gold">100</span></div>
+  <div class="row" id="fedRow" hidden><span class="lbl">FED  </span><span id="fed"></span></div>
   <div class="row"><span class="lbl">SEED </span><input id="seed" type="number" min="0" max="999999" step="1" title="Type a seed and press Enter (mouse must be released)"></div>
 </div>
 
@@ -110,7 +125,7 @@ F fly mode · R new seed · T time ×10 · − / + resolution · [ / ] view dist
 <div id="hint">
   <h1>LAND OF ASCII</h1>
   <p>Click to explore</p>
-  <div class="keys"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span><span><kbd>Space</kbd> jump</span><span><kbd>mouse</kbd> look around</span><span><kbd>E</kbd> talk and trade</span></div>
+  <div class="keys"><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span><span><kbd>Space</kbd> jump</span><span><kbd>mouse</kbd> look around</span><span><kbd>E</kbd> talk and trade</span><span><kbd>I</kbd> your bag</span></div>
   <div class="keys"><span><kbd>V</kbd> your hero or your own eyes</span><span><kbd>L</kbd> painted or mosaic</span><span><kbd>H</kbd> all the keys</span></div>
   <small class="touch">This needs a keyboard and a mouse.</small>
 </div>
@@ -4562,12 +4577,31 @@ function buildHero(x, y, z, zc, t) {
     sph(0.13, 0.9 + bob, ff, 0.018, PART.GEAR, R.drygrass);
   }
   if (has(GEAR.MAP)) { const mf = back(0.98) - 0.03; cap(-0.1, 0.98 + bob, mf, 0.1, 0.98 + bob, mf, 0.028, PART.GEAR, R.sand, 0.1); }
-  // arms swing against the legs
+  // arms swing against the legs; eating (hero.eat, 0 to 1), the right hand holds the food up beside
+  // the head (so it shows from behind), then brings it to the mouth for two bites, and it gets smaller
+  const eat = hero.eat, ek = eat > 0 ? smoothstep(0, 0.2, eat) * (1 - smoothstep(0.85, 1, eat)) : 0;
+  const toMouth = smoothstep(0.36, 0.5, eat), bite = 0.5 - 0.5 * Math.cos(clamp((eat - 0.5) / 0.36, 0, 1) * Math.PI * 4);   // (in and out twice)
   for (const side of [-1, 1]) {   // (in a jump, out to the sides)
     const a = (mv ? -sw * side * 0.22 : 0) * ground, ex = side * (0.26 + air * 0.08), hx = side * (0.27 + air * 0.17), hy = 0.9 + air * 0.22;
-    cap(side * 0.22, 1.38 + bob, 0, ex, 1.14 + bob + air * 0.04, a * 0.5, 0.06, PART.SLEEVE, tunic);
-    cap(ex, 1.14 + bob + air * 0.04, a * 0.5, hx, hy + 0.03 + bob, a, 0.055, PART.SLEEVE, tunic, 0.05);
-    sph(hx, hy + bob, a, 0.05, PART.HAND, R.skin);
+    let eX = ex, eY = 1.14 + bob + air * 0.04, eF = a * 0.5, hX = hx, hY = hy + bob, hF = a;
+    if (side > 0 && ek > 0) {   // (the elbow out, the hand beside the head, then at the mouth)
+      const tx = 0.34 + (0.13 - 0.05 * bite - 0.34) * toMouth, ty = 1.5 + (0.03 + 0.04 * bite) * toMouth, tf = 0.02 + (0.17 - 0.02 * bite) * toMouth;
+      eX += (0.36 - 0.08 * toMouth - eX) * ek; eY += (1.16 + bob - eY) * ek; eF += (0.02 + 0.14 * toMouth - eF) * ek;
+      hX += (tx - hX) * ek; hY += (ty + bob - hY) * ek; hF += (tf - hF) * ek;
+    }
+    cap(side * 0.22, 1.38 + bob, 0, eX, eY, eF, 0.06, PART.SLEEVE, tunic);
+    cap(eX, eY, eF, hX, hY + 0.03, hF, 0.055, PART.SLEEVE, tunic, 0.05);
+    sph(hX, hY, hF, 0.05, PART.HAND, R.skin);
+    if (side > 0 && ek > 0) {   // the food in the hand, toward the mouth
+      // (smaller after each bite; held up, it points up past the head, and at the mouth toward it)
+      const k = 1 - 0.25 * smoothstep(0.54, 0.6, eat) - 0.25 * smoothstep(0.72, 0.78, eat), f = hero.food, ux = -0.14 * toMouth, uy = 0.15 - 0.11 * toMouth;
+      if (f === 0) ell(hX + ux * 0.35, hY + 0.03 + uy * 0.35, hF + 0.02, 0.07 + 0.03 * toMouth * k, 0.1 - 0.04 * toMouth, 0.065, PART.GEAR, R.wood, 0.3);   // a loaf
+      else if (f === 1) cone(hX, hY + 0.03, hF + 0.02, hX + ux * k, hY + 0.03 + uy * k, hF + 0.03, 0.07, 0.014, PART.GEAR, R.bloomY, 0.05);   // a wedge of cheese
+      else if (f === 2) {                                                                                                          // a salted fish, tail below the hand
+        cap(hX, hY + 0.03, hF + 0.02, hX + ux * 0.9 * k, hY + 0.03 + uy * 0.9 * k, hF + 0.02, 0.04, PART.GEAR, R.stone, 0.25);
+        cone(hX, hY, hF + 0.02, hX - ux * 0.45, hY - uy * 0.45, hF + 0.02, 0.012, 0.05, PART.GEAR, R.stone, 0.1);
+      } else { ell(hX - 0.02, hY + 0.07, hF + 0.01, 0.045, 0.07, 0.04, PART.GEAR, R.wood, 0.05); sph(hX - 0.03, hY + 0.15, hF + 0.01, 0.018, PART.GEAR, R.drygrass); }   // the flask
+    }
   }
   // head: neck, face, golden hair (from behind you see mostly hair), eyes when near; or under a
   // long pointed cap in the tunic's colour, drooping back
@@ -5587,7 +5621,7 @@ function applyFrame(d) {
   for (let k = 0; k < 6; k++) light.faceShade[k] = d.light[4 + k];
   cur.ambient = d.cur[0]; cur.diffuse = d.cur[1]; cur.lights = d.cur[2]; cur.stars = d.cur[3];
   wx.rain = d.wx[0]; wx.snow = d.wx[1]; wx.fog = d.wx[2]; wx.wet = d.wx[3]; wx.aurora = d.wx[4]; wx.storm = d.wx[5];
-  hero.on = d.hero[0]; hero.x = d.hero[1]; hero.y = d.hero[2]; hero.z = d.hero[3]; hero.face = d.hero[4]; hero.walked = d.hero[5]; hero.moving = d.hero[6]; hero.gear = d.hero[7]; hero.air = d.hero[8]; hero.gy = d.hero[9];
+  hero.on = d.hero[0]; hero.x = d.hero[1]; hero.y = d.hero[2]; hero.z = d.hero[3]; hero.face = d.hero[4]; hero.walked = d.hero[5]; hero.moving = d.hero[6]; hero.gear = d.hero[7]; hero.air = d.hero[8]; hero.gy = d.hero[9]; hero.eat = d.hero[10]; hero.food = d.hero[11];
   let o = 0;
   for (const L of COL.near) { L.set(d.col.subarray(o, o + L.length)); o += L.length; }
   for (const L of COL.far) { L.set(d.col.subarray(o, o + L.length)); o += L.length; }
@@ -5869,7 +5903,7 @@ function update(dt) {
     if (shift) cam.y -= speed * 0.7;
     cam.y = clamp(cam.y, terrainHeight(cam.x, cam.z) + 1, HEIGHT_SCALE * 2);   // soft floor so the debug camera stays above the map
   } else {
-    const speed = WALK_SPEED * (shift ? SPRINT_MULT : 1) * dt;
+    const speed = WALK_SPEED * (shift ? SPRINT_MULT * fedSprint() : 1) * dt;
     if (ml > 0) walkMove(mx * speed, mz * speed);
 
     if (keys.Space && player.grounded) { player.vy = JUMP_V; player.grounded = false; }
@@ -5938,21 +5972,39 @@ function closePanel() {
   requestLock();
 }
 
+// The panel's lists, in groups (phase 5, rebuilt from v1's goods list): a row is a name, a price or
+// a note, how many you have or how it is, and a button. Trading, a merchant's goods to buy and what
+// is in your bag to sell them; the bag itself (openBag) draws on the same panel.
+function panelSection(title, note) {
+  const tr = document.createElement('tr'), td = document.createElement('td');
+  tr.className = 'sec'; td.colSpan = 4; td.textContent = title;
+  if (note) { const sm = document.createElement('small'); sm.textContent = note; td.appendChild(sm); }
+  tr.appendChild(td); panelGoods.appendChild(tr);
+}
+function panelNone(text) {
+  const tr = document.createElement('tr'), td = document.createElement('td');
+  td.className = 'none'; td.colSpan = 4; td.textContent = text;
+  tr.appendChild(td); panelGoods.appendChild(tr);
+}
+function panelRow(name, price, state, label, disabled, onClick, on) {
+  const tr = document.createElement('tr');
+  const a = document.createElement('td'); a.className = 'name'; a.textContent = name;
+  const b = document.createElement('td'); b.className = 'price'; b.textContent = price;
+  const c = document.createElement('td'); c.className = 'state' + (on ? ' on' : ''); c.textContent = state;
+  const d = document.createElement('td'); d.className = 'act';
+  if (label) { const btn = document.createElement('button'); btn.textContent = label; btn.disabled = !!disabled; btn.addEventListener('click', onClick); d.appendChild(btn); }
+  tr.append(a, b, c, d); panelGoods.appendChild(tr);
+}
 function renderGoods() {
   const m = ui.merchant;
   panelGoods.innerHTML = '';
-  for (const g of m.goods) {
-    const tr = document.createElement('tr');
-    const name = document.createElement('td'); name.textContent = g.name;
-    const price = document.createElement('td'); price.className = 'price'; price.textContent = g.price + ' gold';
-    const owned = document.createElement('td'); owned.className = 'owned'; owned.textContent = g.owned ? 'owned ×' + g.owned : '';
-    const act = document.createElement('td'); act.className = 'act';
-    const btn = document.createElement('button'); btn.textContent = 'Buy'; btn.disabled = g.price > ui.gold;
-    btn.addEventListener('click', () => buy(g));
-    act.appendChild(btn);
-    tr.append(name, price, owned, act);
-    panelGoods.appendChild(tr);
-  }
+  document.getElementById('panelClose').textContent = 'Close  (Esc)';
+  panelSection('BUY');
+  for (const g of m.goods) panelRow(g.name, g.price + ' gold', bag.items[g.name] ? 'you have ' + bag.items[g.name] : '', 'Buy', g.price > ui.gold, () => buy(g));
+  panelSection('SELL', 'for half what it costs');
+  const mine = bagNames();
+  if (!mine.length) panelNone('nothing in your bag yet');
+  for (const n of mine) panelRow(n, sellPrice(m, n) + ' gold', '×' + bag.items[n], 'Sell', false, () => sell(n));
   document.getElementById('panelGold').textContent = ui.gold;
   hud.gold.textContent = ui.gold;
 }
@@ -5960,8 +6012,21 @@ function renderGoods() {
 function buy(g) {
   if (!ui.open || g.price > ui.gold) return;
   ui.gold -= g.price;
-  g.owned++;
+  bagAdd(g.name);
   panelMsg.textContent = 'Bought ' + g.name.toLowerCase() + ' for ' + g.price + ' gold.';
+  renderGoods();
+}
+// What a merchant pays for a good of yours: half their own price for it, or half what it usually costs.
+function sellPrice(m, n) {
+  const g = m.goods.find(x => x.name === n), G = GOODS.find(x => x[0] === n);
+  return Math.max(1, Math.floor((g ? g.price : G ? (G[1] + G[2]) / 2 : 2) / 2));
+}
+function sell(n) {
+  if (!ui.open || !ui.merchant || !(bag.items[n] > 0)) return;
+  const p = sellPrice(ui.merchant, n);
+  ui.gold += p;
+  bagTake(n);
+  panelMsg.textContent = 'Sold ' + n.toLowerCase() + ' for ' + p + ' gold.';
   renderGoods();
 }
 
@@ -6092,7 +6157,7 @@ function workerSource() {
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
     `const cur = { ambient: 0.38, diffuse: 0.62, lights: 0, stars: 0 }, light = { lx: 0, ly: 1, lz: 0, darkness: 0, faceShade: new Float32Array(6) };`,
     `const wx = { rain: 0, snow: 0, fog: 0, wet: 0, aurora: 0, storm: 0 };`,
-    `const hero = { on: 0, x: 0, y: 0, z: 0, face: 0, walked: 0, moving: 0, gear: 0, air: 0, gy: 0 };`,
+    `const hero = { on: 0, x: 0, y: 0, z: 0, face: 0, walked: 0, moving: 0, gear: 0, air: 0, gy: 0, eat: 0, food: 0 };`,
     `const COL = { near: RAMP_NAMES.map(n => new Uint32Array(KEYFRAMES.day.ramps[n].length)), far: RAMP_NAMES.map(() => new Uint32Array(3)), glow: 0, bird: 0 };`,
     `${renderCore}`,
     `const core = renderCore();`,
@@ -6214,7 +6279,7 @@ function rigAt(psi) {
 }
 const view3 = { on: true, dist: V3_DIST, cur: V3_DIST, lift: 0, face: 0, walked: 0, lastX: NaN, lastZ: NaN, speed: 0, wade: 0, feet: 0, wall: V3_DIST + 1 };   // (wall: how far back a wall stops the camera)
 const viewCam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 };
-const hero = { on: 0, x: 0, y: 0, z: 0, face: 0, walked: 0, moving: 0, gear: 0, air: 0, gy: 0 };   // (air: 0 on the ground, 1 in a jump; gy: the ground under them)
+const hero = { on: 0, x: 0, y: 0, z: 0, face: 0, walked: 0, moving: 0, gear: 0, air: 0, gy: 0, eat: 0, food: 0 };   // (eat: how far through a bite, 0 for none; food: what; air: 0 on the ground, 1 in a jump; gy: the ground under them)
 function solidAt(x, y, z) {   // inside a voxel of a building?
   const h = structAt(x, z);
   if (!h) return false;
@@ -6222,8 +6287,109 @@ function solidAt(x, y, z) {   // inside a voxel of a building?
   if (sp) for (let i = 0; i < sp.length; i += 3) if (y >= h.s.baseY + sp[i] && y <= h.s.baseY + sp[i + 1] + 1) return true;
   return false;
 }
-// What you have bought shows on your hero: every good you own (from any merchant) that can be worn
-// or carried, and the tunic you bought last. hero.gear carries it to the renderer.
+// =====================================================================
+//  YOUR BAG  (phase 5)
+// =====================================================================
+// What you have bought (items: name -> how many), what you have taken off or put away (off), how long
+// you stay well fed (fed, in seconds) and what you are eating (eat: which food, how far through).
+// I opens it, drawn on the trade panel; food makes you well fed, and well fed you sprint faster
+// (fedSprint, listed in v2-fixes). The bag goes with you to a new world, as your gold does.
+const bag = { items: {}, off: {}, fed: 0, eat: null };
+const FED_MAX = 300, FED_SPRINT = 1.25, EAT_TIME = 1.8;   // (well fed for 5 minutes at most, sprinting a quarter faster; eating takes 1.8 s)
+// Where each good goes in the bag; food, how long it keeps you well fed, which it is (the hero's
+// hand shows it: buildHero) and how it tastes.
+const ITEM = {
+  'Loaf of bread': { group: 'food', verb: 'Eat', fed: 90, food: 0, taste: 'Still warm from the oven.' },
+  'Wheel of cheese': { group: 'food', verb: 'Eat', fed: 180, food: 1, taste: 'Sharp, and very good.' },
+  'Salted fish': { group: 'food', verb: 'Eat', fed: 120, food: 2, taste: 'Salty. You could drink a river.' },
+  'Flask of cider': { group: 'food', verb: 'Drink', fed: 60, food: 3, taste: 'Sweet and cold.' },
+  'Pointed cap': { group: 'worn' }, 'Wool cloak': { group: 'worn' }, 'Leather boots': { group: 'worn' },
+  'Red tunic': { group: 'worn' }, 'Blue tunic': { group: 'worn' }, 'Russet tunic': { group: 'worn' },
+  'Iron lantern': { group: 'carried', note: 'lights the way after dark' }, 'Short sword': { group: 'carried' }, 'Round shield': { group: 'carried' },
+  'Rope, twenty feet': { group: 'carried' }, 'Copper kettle': { group: 'carried' }, 'Map fragment': { group: 'carried' },
+  'Tallow candle': { group: 'odds' }, 'Lucky pebble': { group: 'odds', note: 'for luck' },
+};
+const BAG_GROUPS = [['worn', 'WORN'], ['carried', 'CARRIED'], ['food', 'FOOD AND DRINK'], ['odds', 'ODDS AND ENDS']];
+const bagNames = () => GOODS.map(G => G[0]).filter(n => bag.items[n] > 0);   // (in the merchants' order)
+function bagAdd(n) { bag.items[n] = (bag.items[n] || 0) + 1; updateGear(); }
+function bagTake(n) { if (bag.items[n] > 0 && --bag.items[n] === 0) { delete bag.items[n]; delete bag.off[n]; } updateGear(); }
+const fedSprint = () => bag.fed > 0 ? FED_SPRINT : 1;
+const clockOf = sec => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+const wearing = n => TUNIC_OF[n] ? wardrobe.tunic === TUNIC_OF[n] : !bag.off[n];
+
+function openBag() {   // (as openPanel: the game waits and the mouse is free while it is open)
+  if (ui.open) return;
+  ui.open = true; ui.merchant = null;
+  for (const k in keys) keys[k] = false;
+  player.vy = 0;
+  promptEl.hidden = true;
+  document.getElementById('panelName').textContent = 'YOUR BAG';
+  panelMsg.textContent = '';
+  renderBag();
+  panel.hidden = false;
+  if (document.pointerLockElement) document.exitPointerLock();
+  hint.hidden = true;
+}
+function renderBag() {
+  panelGoods.innerHTML = '';
+  document.getElementById('panelClose').textContent = 'Close  (I or Esc)';
+  document.getElementById('panelGreet').innerHTML = bag.fed > 0 ? `<span class="fed">Well fed for ${clockOf(bag.fed)}:</span> you sprint faster.` : 'Food and drink make you well fed for a while: you sprint faster.';
+  const names = bagNames();
+  if (!names.length) panelNone('Nothing yet. Merchants walk the roads: E to talk and trade.');
+  for (const [grp, title] of BAG_GROUPS) {
+    const list = names.filter(n => ITEM[n] && ITEM[n].group === grp);
+    if (!list.length) continue;
+    panelSection(title);
+    for (const n of list) {
+      const it = ITEM[n], label = n + (bag.items[n] > 1 ? ' ×' + bag.items[n] : '');
+      if (grp === 'food') panelRow(label, `well fed ${clockOf(it.fed)}`, '', it.verb, !!bag.eat, () => eatItem(n));
+      else if (grp === 'odds') panelRow(label, it.note || '', '', '', true);
+      else {
+        const on = wearing(n), worn = grp === 'worn';
+        panelRow(label, it.note || '', on ? (worn ? 'worn' : 'carried') : 'in the bag', on ? (worn ? 'Take off' : 'Put away') : (worn ? 'Wear' : 'Carry'), false, () => toggleItem(n), on);
+      }
+    }
+  }
+  document.getElementById('panelGold').textContent = ui.gold;
+  hud.gold.textContent = ui.gold;
+}
+// Eat or drink: one fewer in the bag, well fed for longer, and the bag closes so you see your hero
+// lift it to their mouth.
+function eatItem(n) {
+  const it = ITEM[n];
+  if (!it || it.group !== 'food' || !(bag.items[n] > 0) || bag.eat) return;
+  bagTake(n);
+  bag.fed = Math.min(FED_MAX, bag.fed + it.fed);
+  bag.eat = { food: it.food, t: 0 };
+  if (ui.open) closePanel();
+  toast(it.verb === 'Drink' ? 'YOU DRINK' : 'YOU EAT', n.toUpperCase(), `${it.taste} Well fed for ${clockOf(bag.fed)}: you sprint faster.`);
+}
+// Wear or take off, carry or put away: what shows on your hero (and whether the lantern lights).
+function toggleItem(n) {
+  if (TUNIC_OF[n]) wardrobe.tunic = wardrobe.tunic === TUNIC_OF[n] ? 0 : TUNIC_OF[n];   // (taking off a tunic puts the green one back on)
+  else if (bag.off[n]) delete bag.off[n]; else bag.off[n] = true;
+  updateGear();
+  if (ui.open && !ui.merchant) renderBag();
+}
+window.addEventListener('keydown', e => {
+  if (e.target === seedInput || e.repeat || e.code !== 'KeyI') return;
+  if (ui.open && !ui.merchant) closePanel(); else if (!ui.open) openBag();
+});
+// Every frame: the well-fed time runs down, a bite goes on, the hero's hand is told, and the HUD's
+// FED line shows while you are well fed.
+const fedRow = document.getElementById('fedRow'), fedEl = document.getElementById('fed');
+function updateBag(dt) {
+  if (bag.fed > 0) bag.fed = Math.max(0, bag.fed - dt);
+  if (bag.eat && (bag.eat.t += dt / EAT_TIME) >= 1) bag.eat = null;
+  hero.eat = bag.eat ? Math.max(1e-3, bag.eat.t) : 0; hero.food = bag.eat ? bag.eat.food : 0;
+  if (fedRow.hidden === bag.fed > 0) fedRow.hidden = !(bag.fed > 0);
+  const txt = clockOf(bag.fed);
+  if (bag.fed > 0 && fedEl.textContent !== txt) fedEl.textContent = txt;
+}
+
+// What you have bought shows on your hero: every good in your bag that is worn or carried (unless
+// you have taken it off or put it away), and your tunic: the one you bought last, or put on. hero.gear
+// carries it to the renderer.
 const GEAR_OF = {
   'Wool cloak': GEAR.CLOAK, 'Leather boots': GEAR.BOOTS, 'Iron lantern': GEAR.LANTERN, 'Rope, twenty feet': GEAR.ROPE, 'Copper kettle': GEAR.KETTLE,
   'Flask of cider': GEAR.FLASK, 'Map fragment': GEAR.MAP, 'Pointed cap': GEAR.CAP, 'Short sword': GEAR.SWORD, 'Round shield': GEAR.SHIELD,
@@ -6232,14 +6398,13 @@ const TUNIC_OF = { 'Red tunic': 1, 'Blue tunic': 2, 'Russet tunic': 3 };   // (0
 const wardrobe = { tunic: 0, had: {}, force: null };   // (force: gear the tools set for pictures, or null)
 function updateGear() {
   let bits = 0;
-  const owned = {};
-  for (const m of world.merchants) for (const g of m.goods) if (g.owned > 0) {
-    bits |= GEAR_OF[g.name] || 0;
-    if (TUNIC_OF[g.name]) owned[g.name] = (owned[g.name] || 0) + g.owned;
+  for (const n in bag.items) if (bag.items[n] > 0 && !bag.off[n]) bits |= GEAR_OF[n] || 0;
+  for (const n in TUNIC_OF) {
+    const have = bag.items[n] || 0;
+    if (have > (wardrobe.had[n] || 0)) wardrobe.tunic = TUNIC_OF[n];   // (a tunic just bought is put on)
+    wardrobe.had[n] = have;
   }
-  for (const n in owned) if (owned[n] > (wardrobe.had[n] || 0)) wardrobe.tunic = TUNIC_OF[n];   // (a tunic just bought is put on)
-  if (wardrobe.tunic && !Object.keys(owned).some(n => TUNIC_OF[n] === wardrobe.tunic)) wardrobe.tunic = 0;   // (a new world: back in green)
-  wardrobe.had = owned;
+  if (wardrobe.tunic && !Object.keys(TUNIC_OF).some(n => TUNIC_OF[n] === wardrobe.tunic && bag.items[n] > 0)) wardrobe.tunic = 0;   // (sold: back in green)
   hero.gear = wardrobe.force != null ? wardrobe.force : bits | wardrobe.tunic << 12;
 }
 // For the tools: wear these (GEAR names, e.g. ['CLOAK', 'LANTERN']) and this tunic (0 green, 1 red,
@@ -6348,7 +6513,7 @@ function drawLegend(s) {
   const rows = [
     ['MOVE', item(kbd('W') + kbd('A') + kbd('S') + kbd('D'), s.fly ? 'fly' : 'walk'), item(kbd('Space'), s.fly ? 'up' : 'jump'), item(kbd('Shift'), s.fly ? 'down' : 'sprint'), item(kbd('F'), pickOf(['walk', 'fly'], s.fly ? 1 : 0))],
     ['CAMERA', item(kbd('mouse'), s.drag ? 'drag to look' : 'look around'), item(kbd('V'), pickOf(['your hero', 'your own eyes'], s.third ? 0 : 1)), s.drag ? '' : item(kbd('Esc'), 'free the mouse')],
-    ['WORLD', item(kbd('E'), 'talk and trade'), item(kbd('T'), 'time ' + pickOf(['×1', '×10'], s.fast ? 1 : 0)), item(kbd('R'), 'a new world'), item(kbd('[') + kbd(']'), `view <span class="opt on">${s.view}</span>`)],
+    ['WORLD', item(kbd('E'), 'talk and trade'), item(kbd('I'), 'your bag'), item(kbd('T'), 'time ' + pickOf(['×1', '×10'], s.fast ? 1 : 0)), item(kbd('R'), 'a new world'), item(kbd('[') + kbd(']'), `view <span class="opt on">${s.view}</span>`)],
     ['STYLE', item(kbd('L'), pickOf(['painted', 'mosaic'], s.look)), `<span class="note">${LOOK_NOTES[s.look]}</span>`],
     ['DETAIL', item(kbd('−') + kbd('+'), pickOf(CELL_PRESETS.map(([w, h]) => `${w}×${h}`), s.cells)), `<span class="note">${DETAIL_NOTES[s.cells]}</span>`],
     ['', item(kbd('H'), 'hide these keys')],
@@ -6403,7 +6568,7 @@ function frameDesc(t, dt) {
   return {
     type: 'frame', gen: pool.gen, t, poses, look: looks.mode, merchants: merch, col,
     cam: [viewCam.x, viewCam.y, viewCam.z, viewCam.yaw, viewCam.pitch], hours: clock.hours, viewDist: view.dist,
-    hero: [hero.on, hero.x, hero.y, hero.z, hero.face, hero.walked, hero.moving, hero.gear, hero.air, hero.gy],
+    hero: [hero.on, hero.x, hero.y, hero.z, hero.face, hero.walked, hero.moving, hero.gear, hero.air, hero.gy, hero.eat, hero.food],
     light: [light.lx, light.ly, light.lz, light.darkness, ...light.faceShade], cur: [cur.ambient, cur.diffuse, cur.lights, cur.stars],
     wx: [wx.rain, wx.snow, wx.fog, wx.wet, wx.aurora, wx.storm],
   };
@@ -6510,6 +6675,7 @@ function frame(now) {
   if (lightJob.step >= 0) lightSlice();                                  // (the light, a slice a frame)
   else if (lightTimer > 0.2) { lightBegin(); lightSlice(); lightTimer = 0; }
 
+  updateBag(dt);
   updateHero(dt);
   const desc = frameDesc(now / 1000, dt);
   for (const k in frameStats) frameStats[k] = 0;
@@ -6552,6 +6718,7 @@ window.TV = {
   setHour: h => { clock.hours = h; updateLighting(); },
   setWeather, updateWeather, weather, wx, weatherAt,
   setThird, updateHero, view3, viewCam, hero, terrainHeight, solidAt, setGear, wardrobe, GEAR,
+  bag, bagAdd, bagTake, eatItem, toggleItem, openBag, updateBag, sell, sellPrice, fedSprint,
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
   renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0

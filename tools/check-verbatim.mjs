@@ -9,6 +9,8 @@
 // at their heart). The collision code that walks you through them is still v1's (movement, below).
 // Retired in phase 4 step 2: the gate torches (v1 972-986, placeLights), since castle gates and tower
 // doors now face any way (castles face their towns, towers their roads).
+// Retired in phase 5 (your bag): the trade panel's goods list and buying (v1 2127-2152, renderGoods
+// and buy), rebuilt to sell as well and to put what you buy in your bag.
 //   node tools/check-verbatim.mjs
 import fs from 'node:fs';
 import path from 'node:path';
@@ -27,7 +29,8 @@ const SECTIONS = [   // [first line, last line, what]
   [1223, 1306, 'camera and input (up to the cell-size key)'],
   [1311, 1321, 'view distance, resize'],
   [1322, 1487, 'movement: walking, collision, flying'],
-  [2083, 2235, 'talking and trade, HUD, world lifecycle'],
+  [2083, 2126, 'talking: the nearest merchant, opening and closing the panel'],
+  [2153, 2235, 'the panel\'s close button, HUD, world lifecycle'],
 ];
 let bad = 0;
 for (const [a, b, what] of SECTIONS) {

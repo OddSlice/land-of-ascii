@@ -23,7 +23,8 @@
 //      and up a steep hillside, through a forest, and from the start into the town looking down and up (as far as
 //      you can, the camera goes into the eyes),
 //      stepping the camera behind the hero with every step. The camera is never inside the ground or a building; the hero faces the way they walk;
-//      V (setThird) and flying give back your own eyes; what you buy shows on the hero (hero.gear).
+//      V (setThird) and flying give back your own eyes; your bag: what you buy shows on the hero
+//      (hero.gear) unless put away, eating makes you well fed, merchants buy back at half price.
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs [--record]
 import fs from 'node:fs';
@@ -38,7 +39,7 @@ const { server, port } = await startServer();
 const { browser, page: p1 } = await launch();
 const v1Fixed = applyFixes(fs.readFileSync(path.join(ROOT, 'reference/v1-index.html'), 'utf8'));
 await p1.route('**/reference/v1-index.html*', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: v1Fixed }));
-await p1.addInitScript(() => { window.deckAt = () => -Infinity; window.spawnAt = s => [s.cx + 0.5, ((s.cz + s.half + 14) & 1023) + 0.5, -Math.PI / 2]; });   // (v1's own world has no bridges and starts as v1 did; v2's, taken below, brings its decks, and the session starts where v2 does)
+await p1.addInitScript(() => { window.fedSprint = () => 1; window.deckAt = () => -Infinity; window.spawnAt = s => [s.cx + 0.5, ((s.cz + s.half + 14) & 1023) + 0.5, -Math.PI / 2]; });   // (v1's own world has no bridges and starts as v1 did; v2's, taken below, brings its decks, and the session starts where v2 does)
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await p2.addInitScript(TIME_CONTROL);
 p2.on('pageerror', e => console.error('[v2 pageerror]', e.message));
@@ -469,25 +470,48 @@ console.log('6. third person, seed 42');
   });
   if (!(r.third && r.eyes && r.fly && r.back)) fail(`switching views: ${JSON.stringify(r)}`);
   else console.log('  V gives your own eyes and back; flying is always your own eyes');
-  // what you buy shows on your hero: a good you own sets its gear, the tunic bought last is worn, and
-  // a new world (new merchants, nothing owned) starts you in green with nothing on
+  // what you buy goes in your bag and shows on your hero: a good you own sets its gear, the tunic
+  // bought last is worn; what you take off or put away does not show; eating takes one, makes you
+  // well fed (sprinting faster) and lifts the food to the hero's mouth; a merchant pays half; the
+  // bag goes with you to a new world
   const g = await p2.evaluate(() => {
-    const TV = window.TV, G = TV.GEAR;
-    TV.regenerate(42); TV.setGear(null); TV.updateHero(0);
+    const TV = window.TV, G = TV.GEAR, B = TV.bag;
+    TV.regenerate(42); TV.setGear(null);
+    for (const n in B.items) delete B.items[n];
+    for (const n in B.off) delete B.off[n];
+    B.fed = 0; B.eat = null; TV.wardrobe.tunic = 0; TV.wardrobe.had = {}; TV.updateHero(0);
     const start = TV.hero.gear;
-    const own = n => { for (const m of TV.world.merchants) for (const it of m.goods) if (it.name === n) { it.owned++; TV.updateHero(0); return true; } return false; };
+    const own = n => { TV.bagAdd(n); TV.updateHero(0); return true; };
     const tunic = () => TV.hero.gear >> 12 & 3, steps = [];
-    steps.push(own('Lucky pebble') ? TV.hero.gear === 0 : 'no pebble');
+    steps.push(own('Lucky pebble') && TV.hero.gear === 0);
     steps.push(own('Wool cloak') && TV.hero.gear === G.CLOAK);
     steps.push(own('Iron lantern') && TV.hero.gear === (G.CLOAK | G.LANTERN));
+    TV.toggleItem('Iron lantern'); TV.updateHero(0); steps.push(TV.hero.gear === G.CLOAK);                  // (put away: no lantern)
+    TV.toggleItem('Iron lantern'); TV.updateHero(0); steps.push(TV.hero.gear === (G.CLOAK | G.LANTERN));   // (carried again)
     steps.push(own('Red tunic') && tunic() === 1);
     steps.push(own('Blue tunic') && tunic() === 2);
     steps.push(own('Red tunic') && tunic() === 1);   // (a second red one: red again)
+    TV.toggleItem('Red tunic'); TV.updateHero(0); steps.push(tunic() === 0);   // (taken off: green)
+    own('Wheel of cheese'); own('Wheel of cheese');
+    const sprint0 = TV.fedSprint();
+    TV.eatItem('Wheel of cheese'); TV.updateBag(0.9);
+    steps.push(B.items['Wheel of cheese'] === 1 && B.fed > 170 && TV.fedSprint() > sprint0 && TV.hero.eat > 0.4 && TV.hero.food === 1);
+    TV.updateBag(1); steps.push(B.eat === null && TV.hero.eat === 0);   // (the bite is over)
+    const m = TV.world.merchants[0], gold = TV.ui.gold;
+    TV.openPanel(m);
+    const price = TV.sellPrice(m, 'Lucky pebble');
+    TV.sell('Lucky pebble');
+    steps.push(TV.ui.gold === gold + price && !B.items['Lucky pebble'] && price >= 1);
+    TV.closePanel();
     TV.regenerate(42); TV.updateHero(0);
-    return { start, steps, after: TV.hero.gear };
+    const after = TV.hero.gear === (G.CLOAK | G.LANTERN), kept = B.items['Wool cloak'] === 1 && B.items['Wheel of cheese'] === 1;
+    for (const n in B.items) delete B.items[n];
+    for (const n in B.off) delete B.off[n];
+    B.fed = 0; B.eat = null; TV.wardrobe.tunic = 0; TV.wardrobe.had = {}; TV.updateHero(0);   // (as before, for what follows)
+    return { start, steps, after, kept };
   });
-  if (g.start !== 0 || g.after !== 0 || !g.steps.every(v => v === true)) fail(`gear: ${JSON.stringify(g)}`);
-  else console.log('  what you buy shows on your hero (a cloak, a lantern, the tunic bought last); a new world starts you with nothing on');
+  if (g.start !== 0 || !g.after || !g.kept || !g.steps.every(v => v === true)) fail(`bag: ${JSON.stringify(g)}`);
+  else console.log('  your bag: what you buy shows on your hero (a cloak, a lantern, the tunic bought last); put away, it does not; eating makes you well fed and lifts the food to the mouth; a merchant pays half; the bag goes with you to a new world');
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');
