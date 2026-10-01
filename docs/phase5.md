@@ -5,7 +5,7 @@ Martin's direction (30 Sep), after true perspective: back to adding more to the 
 The plan, agreed the same day (his choices from three questions: food gives a small boost, merchants buy back at half price, and objects come before animals and people):
 
 1. **Your bag.** I opens it: everything you have bought, in groups (worn, carried, food and drink, odds and ends). Eat or drink food: your hero lifts it to their mouth, and you are well fed for a while (you sprint faster). Wear or take off, carry or put away: you choose what shows on your hero. Merchants buy what you have for half its price.
-2. **Farms and village life (objects).** What the phase 2 brief listed and was never built: fields with crop rows, fences and pastures by villages and hamlets, haystacks, woodpiles, carts and barrels, market stalls with awnings in the town squares, a windmill with turning sails, docks on lakes, signposts at crossroads.
+2. **Farms and village life (objects).** What the phase 2 brief listed and was never built: fields with crop rows, fences and pastures by villages and hamlets, haystacks, woodpiles, carts and barrels, market stalls with awnings in the town squares, a windmill with turning sails, docks on lakes, signposts at crossroads. Built in two parts: 2a the farms (fields, pastures, haystacks, windmills), 2b life in the villages and towns (stalls, barrels, woodpiles, carts, signposts).
 3. **Animals.** Sheep and cows grazing the pastures, deer in forests that bolt when you come near.
 4. **People.** Villagers with a day (fields, the well, the market, home at night), guards at the town gates, a greeting when you talk to them.
 
@@ -79,3 +79,38 @@ Shots: `shots/phase5/step2/` (`sheet-farms`: a village in its fields, a pasture,
 - ⚠️ The pastures are empty until step 3's animals.
 - ⚠️ You cannot open a gate: it is a gap. Fences are not jumped over.
 - The windmill has no inside; its door is painted dark.
+
+## Step 2b: village and town life
+
+Shots: `shots/phase5/step2b/` (`sheet-life`: the market square, a stall, barrels, a woodpile, a farm cart, a crossroads).
+
+### What changed
+
+- **Market stalls in every town's market square**, one in each corner the two streets leave free, facing the market street. Four posts, a counter with goods on it, and an awning of stripes (a colour and plain canvas) sloping down over the front, its stripes ending in a scalloped edge. The two in the corners with a torch post are two cells wide, beside the post; the other two are three wide.
+- **Barrels** against the wall beside the taverns' doors (two) and the smithies' (one).
+- **Woodpiles:** logs stacked along the wall beside the door, at about half the cottages, longhouses and townhouses.
+- **Carts** beside every barn and about a third of the farmhouses (longhouses) outside the towns: along the front wall, sacks on the bed, the shafts down on the ground at one end.
+- **Signposts.** Where the road leaves every village, hamlet and town, two cells off it: a board pointing along the road and one pointing home. At every crossroads out in the country: a board along each road, up to four (roads that leave within 35 degrees of each other share one).
+- You cannot walk through any of them. Near the camera, or between it and your hero, they are drawn see-through, as the plants are (and now the fences, haystacks and sails too).
+
+### How it is built
+
+- One list of props for the farms and the villages (`newProps`, `addProp`), indexed into `world.props` once both have laid theirs (`indexProps`). New kinds: `PROP.STALL`, `BARREL`, `WOODPILE`, `CART`, `SIGNPOST` and `ARM` (a crossroads' third and fourth boards, on the same post).
+- `placeLife` lays them, after the farms. A spot must be dry and off the roads (a town's street will do, beside its houses), with nothing built there (`solidAt`), no other prop, and out of every door's way (the door's cell and three out, three wide). `buildTown` gives its market's corners (`stalls`: where, which way, how wide).
+- Crossroads: road cells round which a ring of cells five out (`MEET_RING`) crosses three roads or more, away from anything built, are gathered into meetings; one signpost to 24 cells of road.
+- `buildProp` builds each from solids. `PROP_FAR` leaves each kind out past its own distance (100 cells for barrels, woodpiles and signposts, 160 for stalls and carts); posts and shafts are never thinner than about a ray (as the fences' and the plants'); past 50 cells an awning has fewer, wider stripes, and past 90 the goods and sacks are left out.
+- New fixed scenes: `market`, `stall`, `barrels`, `woodpile`, `farm-cart`, `crossroads`.
+
+### Numbers
+
+- Seed 42: 16 market stalls in 4 towns, 19 barrels, 28 woodpiles, 4 carts (a barn's, three farmhouses'), 16 signposts (11 where roads leave settlements, 5 at crossroads).
+- Tests: all pass, with the world checksums re-recorded (the cells the new things stand on join the walking mask; towns carry their stalls). Every gate, door and house walk still gets in (70 houses on seed 42, 62 to 83 on the others); v1's movement still agrees with v2's.
+- Workers and the main thread agree, byte for byte in both looks, with 4, 5, 6 and 7 workers, over the market square, a stall, the barrels, a woodpile, a farm cart, a crossroads, the town market street, a village and a hamlet.
+- Speed (Chromium, 6 workers, on a quiet machine): the market square and the town market street hold 60 fps, a frame 6.7 and 7.2 ms (6.7 and 7.1 before); the village and the crossroads do not change. Drawn on one thread, the four stalls cost about 2 ms in the market (two thirds of it the awnings' stripes). Firefox: about 1.4 ms more on the town market street (10.7 ms), the same elsewhere.
+
+### Still open
+
+- ⚠️ Docks on lakes, in the plan's list for this step, are not built yet.
+- ⚠️ The stalls have no one behind them, and the boards on the signposts are blank: the people come in step 4.
+- A world has few barns (one on seed 42), so most carts stand by farmhouses.
+- Capsules (the awnings' stripes, posts, branches) are tested over their whole box on screen; a tighter bound per column would make every solid of that kind cheaper.

@@ -1170,6 +1170,98 @@
       "seed": 42,
       "hour": 10.5,
       "t": 1000
+    },
+    {
+      "name": "market",
+      "title": "The market square: stalls under striped awnings, facing the market street (11:00)",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 48.5,
+        "y": 0.0,
+        "z": 268.5,
+        "yaw": -90.0,
+        "pitch": 0.0,
+        "ground": true
+      }
+    },
+    {
+      "name": "stall",
+      "title": "A market stall: a striped awning over its counter and goods (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 43.5,
+        "y": 165.96,
+        "z": 265.5,
+        "yaw": 90.0,
+        "pitch": -334.0
+      }
+    },
+    {
+      "name": "barrels",
+      "title": "Barrels by the tavern door in the town where you start (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 46.6,
+        "y": 172.5,
+        "z": 253.0,
+        "yaw": 0.0,
+        "pitch": -375.0
+      }
+    },
+    {
+      "name": "woodpile",
+      "title": "Logs stacked by a cottage door (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 464.53,
+        "y": 29.73,
+        "z": 277.68,
+        "yaw": -135.0,
+        "pitch": -334.0
+      }
+    },
+    {
+      "name": "farm-cart",
+      "title": "A cart beside a farmhouse (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 480.5,
+        "y": 35.35,
+        "z": 298.5,
+        "yaw": 180.0,
+        "pitch": -402.0
+      }
+    },
+    {
+      "name": "crossroads",
+      "title": "A signpost where three roads meet (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 923.42,
+        "y": 61.95,
+        "z": 892.11,
+        "yaw": 20.0,
+        "pitch": -402.0
+      }
     }
   ]
 }
