@@ -542,6 +542,7 @@ const world = {
   treeBuckets: null,
   farm: new Uint8Array(N),     // (phase 5) what grows on each cell of farmland (FARM), see placeFarms
   props: null, propBuckets: null, propBlocks: new Int32Array(0),   // fences, haystacks, windmill sails; the cells they block
+  pastures: [], animals: [], herd: new Float32Array(0), herdN: 0,    // (phase 5: the animals, and those near you as the renderer gets them)
   birds: [],
   clouds: [], wind: [0.6, 0],
   lights: [],                  // torches and campfires: {x, y, z, r, color, i, kind, phase, size}
@@ -626,6 +627,7 @@ function generateWorld(seed) {
   indexProps(props);
   placeTrees(seed);
   for (const i of world.propBlocks) world.treeMask[i] = 1;   // (fences and haystacks stand in the way, as trunks do)
+  placeAnimals(seed);       // (phase 5: sheep, cows, chickens, ducks and deer, where they belong)
   spawnBirds(rng);
   spawnClouds(rng);
   spawnMerchants(rng);
@@ -2447,6 +2449,7 @@ function indexProps(P) {   // (by where they stand; a fence by where its run sta
 function placeFarms(seed, P) {
   const { H, water, road, biome } = world, farm = world.farm || (world.farm = new Uint8Array(N));
   farm.fill(0);
+  world.pastures = [];   // (where each pasture's block starts: the animals graze in them)
   const blocks = P.blocks, prop = (kind, x, z, y, rot, size) => addProp(P, kind, x, z, y, rot, size);
   const at = (x, z) => (z & MASK) * W + (x & MASK);
   // what no field may cover: every footprint with two cells round it, and the roads with a cell either side
@@ -2471,6 +2474,7 @@ function placeFarms(seed, P) {
       if (hk < 0.18 && cells.length >= FARM_BLOCK * FARM_BLOCK * 0.9) {
         // a pasture: fenced round its edge, with a gate of two cells in the middle of the side toward the settlement
         for (const [i] of cells) farm[i] = FARM.PASTURE;
+        world.pastures.push({ x0, z0 });
         const inside = new Set(cells.map(c => c[1] + c[2] * FARM_BLOCK)), E = FARM_BLOCK - 1;
         const gate = Math.abs(mx) > Math.abs(mz) ? (mx > 0 ? 3 : 1) : (mz > 0 ? 0 : 2);   // (sides: 0 the -z edge, 1 the +x edge, 2 the +z edge, 3 the -x edge)
         for (let side = 0; side < 4; side++) {
@@ -2671,6 +2675,172 @@ function buildWindmill() {
   T.box(c, 1, S - 2, c, 2, S - 1, 0);   // the door
   T.set(c, 5, S - 1, VOX.GLASS); T.set(c, 5, S - 2, 0);   // a window over it
   return T;
+}
+
+// =====================================================================
+//  ANIMALS  (phase 5)
+// =====================================================================
+// Sheep or cows in every pasture, a flock of sheep on open grass near each village and hamlet, hens
+// before about half the village houses, ducks on the water nearest each settlement, and herds of deer
+// in the forests' clearings. Each has a patch of its own (x0..x1, z0..z1: a pasture's flock shares the
+// pasture out, so none stands on another) and keeps to a timetable that is a function of the time alone
+// (animalAt): it turns, walks to a new spot and grazes (or pecks, or dabbles) there; so a frame shows
+// the same whenever it is drawn. Only near you does an animal remember anything (updateAnimals): it
+// moves off as you come close (a deer bolts, and keeps away a while), never out of its pen, and goes
+// back to its timetable once you have gone.
+const ANIMAL = { SHEEP: 0, COW: 1, CHICKEN: 2, DUCK: 3, DEER: 4 };
+// per kind: seconds between moves (least, and spread), walking and running speed (cells a second), how
+// near you may come before it moves off (shy), how far it will go (flee), how wide its pen reaches past
+// its patch (pen; -1: it has none), and its stride
+const ANIMAL_KIND = [
+  { slot: [7, 6], walk: 0.5, run: 2.6, shy: 2.4, flee: 4, pen: 0, stride: 0.75 },    // sheep
+  { slot: [10, 8], walk: 0.45, run: 2.2, shy: 2.8, flee: 4, pen: 0, stride: 1.1 },   // cow
+  { slot: [2.5, 2.5], walk: 1.1, run: 3.4, shy: 2.0, flee: 3, pen: 2, stride: 0.3 }, // hen
+  { slot: [6, 6], walk: 0.35, run: 1.4, shy: 3.5, flee: 4, pen: 0, stride: 0.5 },    // duck
+  { slot: [9, 8], walk: 0.8, run: 8.5, shy: 14, flee: 34, pen: -1, stride: 1.25 },   // deer
+];
+const HERD_STRIDE = 10, HERD_NEAR = 180;   // (what the renderer gets of each: kind, x, y, z, heading, gait, head down, speed, which, number; and how near)
+function placeAnimals(seed) {
+  const list = [], { water, road, treeMask, biome, farm, H } = world, at = (x, z) => (Math.floor(z) & MASK) * W + (Math.floor(x) & MASK);
+  const add = (kind, x0, z0, x1, z1, v, pen) => list.push({ kind, x0, z0, x1, z1, v, pen, k: list.length, ox: 0, oz: 0, h: 0, gait: 0, gz: 0, spd: 0, wait: 0, lx: NaN, lz: NaN });
+  // a flock or herd sharing a rectangle out: a patch each, in a grid; their pen the whole rectangle
+  const share = (kind, x0, z0, x1, z1, n, salt, pen) => {
+    const cols = Math.max(1, Math.round(Math.sqrt(n * (x1 - x0) / (z1 - z0)))), rows = Math.ceil(n / cols), w = (x1 - x0) / cols, d = (z1 - z0) / rows;
+    for (let k = 0; k < n; k++) {
+      const c = k % cols, r = (k / cols) | 0;
+      add(kind, x0 + c * w, z0 + r * d, x0 + (c + 1) * w, z0 + (r + 1) * d, (hash2(k, salt, seed + 811) * 8) | 0, pen === undefined ? [x0, z0, x1, z1] : pen);
+    }
+  };
+  const settled = (x, z, d) => world.structs.some(s => Math.hypot(wrapDelta(x - s.cx), wrapDelta(z - s.cz)) < s.radius + d);
+  // the pastures: sheep (5 to 8) or cows (2 to 4), inside the fence
+  for (const p of world.pastures) {
+    const cows = hash2(p.x0, p.z0, seed + 801) < 0.35, n = cows ? 2 + ((hash2(p.z0, p.x0, seed + 802) * 3) | 0) : 5 + ((hash2(p.z0, p.x0, seed + 803) * 4) | 0);
+    share(cows ? ANIMAL.COW : ANIMAL.SHEEP, p.x0 + 1.9, p.z0 + 1.9, p.x0 + FARM_BLOCK - 1.9, p.z0 + FARM_BLOCK - 1.9, n, p.x0 * 7 + p.z0);
+  }
+  // a flock on open grass 30 to 90 cells out from each village and hamlet: 14 cells across, no trees,
+  // water, roads, fields or buildings in it, and not steep
+  const open = (cx, cz) => {
+    const h0 = H[at(cx, cz)];
+    if (settled(cx, cz, 6)) return false;
+    for (let oz = -8; oz <= 8; oz++) for (let ox = -8; ox <= 8; ox++) {
+      const i = at(cx + ox, cz + oz);
+      if (water[i] || road[i] || treeMask[i] || farm[i] || biome[i] !== BIOME.GRASSLAND && biome[i] !== BIOME.FOREST || Math.abs(H[i] - h0) > 4.5) return false;
+    }
+    return true;
+  };
+  for (const s of world.structs) {
+    if (s.type !== 'village' && s.type !== 'hamlet') continue;
+    for (let k = 0; k < 80; k++) {
+      const a = hash2(k, s.cx, seed + 821) * Math.PI * 2, r = s.half + 30 + hash2(s.cz, k, seed + 822) * 60, cx = Math.floor(s.cx + Math.cos(a) * r) + 0.5, cz = Math.floor(s.cz + Math.sin(a) * r) + 0.5;
+      if (!open(cx, cz)) continue;
+      share(ANIMAL.SHEEP, cx - 7, cz - 7, cx + 7, cz + 7, 6 + ((hash2(k, s.cz, seed + 823) * 5) | 0), s.cx + k);
+      break;
+    }
+  }
+  // hens before about half the cottages, longhouses and barns of the villages and hamlets
+  for (const s of world.structs) for (const h of s.houses || []) {
+    if (s.type !== 'village' && s.type !== 'hamlet' || h.kind !== 'cottage' && h.kind !== 'longhouse' && h.kind !== 'barn') continue;
+    const k = hash2(Math.floor(h.door[0]), Math.floor(h.door[2]), seed + 831), [ox, oz] = GATE_DIRS[h.dir], cx = h.door[0] + ox * 3.2, cz = h.door[2] + oz * 3.2;
+    if (k > 0.55 || water[at(cx, cz)]) continue;
+    const n = 2 + ((k * 97) | 0) % 3;
+    for (let j = 0; j < n; j++) add(ANIMAL.CHICKEN, cx - 1.8, cz - 1.8, cx + 1.8, cz + 1.8, (hash2(j, k * 999, seed + 832) * 8) | 0, [cx - 1.8, cz - 1.8, cx + 1.8, cz + 1.8]);
+  }
+  // ducks on the nearest open water (a pond, a lake, a wide stream; not the sea) within 70 cells of each
+  // village, hamlet and town
+  for (const s of world.structs) {
+    if (s.type !== 'village' && s.type !== 'hamlet' && s.type !== 'town') continue;
+    let best = null;
+    for (let oz = -70; oz <= 70; oz += 2) for (let ox = -70; ox <= 70; ox += 2) {
+      const d = Math.hypot(ox, oz), x = s.cx + ox, z = s.cz + oz;
+      if (best && d >= best.d || !water[at(x, z)] || biome[at(x, z)] === BIOME.SEA) continue;
+      let ok = true;
+      for (let j = -2; j <= 2 && ok; j++) for (let i = -2; i <= 2; i++) if (!water[at(x + i, z + j)]) { ok = false; break; }
+      if (ok) best = { x: Math.floor(x) + 0.5, z: Math.floor(z) + 0.5, d };
+    }
+    if (!best) continue;
+    const n = 3 + ((hash2(s.cx, s.cz, seed + 841) * 3) | 0);
+    for (let j = 0; j < n; j++) add(ANIMAL.DUCK, best.x - 1.9, best.z - 1.9, best.x + 1.9, best.z + 1.9, (hash2(j, s.cx, seed + 842) * 8) | 0, [best.x - 1.9, best.z - 1.9, best.x + 1.9, best.z + 1.9]);
+  }
+  // herds of deer: on a coarse grid over the land, in forest, a clearing (few trunks over 15 cells, and
+  // fairly level) away from roads, water and anything built; two to five, the first a stag
+  const STEP = 32;
+  for (let gz = 0; gz < W; gz += STEP) for (let gx = 0; gx < W; gx += STEP) {
+    const x = Math.floor(gx + hash2(gx, gz, seed + 851) * STEP) + 0.5, z = Math.floor(gz + hash2(gz, gx, seed + 852) * STEP) + 0.5, i = at(x, z);
+    if (biome[i] !== BIOME.FOREST && biome[i] !== BIOME.PINES || hash2(gx, gz, seed + 853) > 0.5 || settled(x, z, 25)) continue;
+    let trunks = 0, bad = 0, lo = Infinity, hi = -Infinity;
+    for (let oz = -7; oz <= 7; oz++) for (let ox = -7; ox <= 7; ox++) { const j = at(x + ox, z + oz); if (treeMask[j]) trunks++; if (water[j] || road[j]) bad++; lo = Math.min(lo, H[j]); hi = Math.max(hi, H[j]); }
+    if (bad || trunks > 24 || hi - lo > 11) continue;
+    const n = 2 + ((hash2(gz, gx, seed + 854) * 4) | 0);
+    share(ANIMAL.DEER, x - 7, z - 7, x + 7, z + 7, n, gx + gz * 3, null);
+    for (let k = list.length - n; k < list.length; k++) list[k].v = k === list.length - n ? 0 : 1 + list[k].v % 7;   // (the first of the herd a stag)
+  }
+  world.animals = list;
+  world.herd = new Float32Array(list.length * HERD_STRIDE); world.herdN = 0;
+}
+// Where an animal is at time t on its timetable, and how it stands: it turns to its next spot, walks
+// there (setting off and stopping gently), and stands the rest of the time with its head down, now and
+// then up to look about. Each move's spot is from the hashes of the animal and the move's number, so
+// none of it depends on what came before.
+const timetable = { x: 0, z: 0, h: 0, graze: 0 };
+function animalAt(a, t) {
+  const K = ANIMAL_KIND[a.kind], L = K.slot[0] + K.slot[1] * hash2(a.k, 1, 777), u = t / L + hash2(a.k, 2, 777), s = Math.floor(u), tau = (u - s) * L;
+  const spot = j => [a.x0 + (a.x1 - a.x0) * (0.1 + 0.8 * hash2(a.k, j, 778)), a.z0 + (a.z1 - a.z0) * (0.1 + 0.8 * hash2(j, a.k, 779))];
+  const [ox, oz] = spot(s - 2), [px, pz] = spot(s - 1), [qx, qz] = spot(s);
+  const d = Math.hypot(qx - px, qz - pz), h0 = Math.atan2(pz - oz, px - ox), h1 = d > 0.05 ? Math.atan2(qz - pz, qx - px) : h0;
+  const turn = 0.8, walkT = d / Math.max(K.walk, d / Math.max(1, L - turn - 1.2)), w = clamp((tau - turn) / Math.max(walkT, 1e-3), 0, 1), e = w * w * (3 - 2 * w);
+  timetable.x = px + (qx - px) * e; timetable.z = pz + (qz - pz) * e;
+  timetable.h = h0 + wrapAngle(h1 - h0) * smoothstep(0, turn, tau);
+  const rest = tau - turn - walkT;
+  timetable.graze = clamp(Math.min(rest - 0.7, L - tau - 0.4) / 0.6, 0, 1) * (hash2(a.k, s, 780) < 0.8 ? 1 : 0.1);
+  return timetable;
+}
+// Every frame, the animals near you: where their timetable puts them, moved off from you while you are
+// near (walking, never past its flee nor out of its pen), back to the timetable once you have gone;
+// the way it faces and how far its legs have gone follow what it does. Then world.herd, for the renderer.
+function updateAnimals(t, dt) {
+  const list = world.animals, out = world.herd, wrap = v => ((v % W) + W) % W, me = player.mode === 'walk';
+  let n = 0;
+  for (const a of list) {
+    const cx = (a.x0 + a.x1) / 2, cz = (a.z0 + a.z1) / 2;
+    if (Math.abs(wrapDelta(cx - viewCam.x)) > HERD_NEAR || Math.abs(wrapDelta(cz - viewCam.z)) > HERD_NEAR) { a.ox = a.oz = a.wait = 0; a.lx = NaN; continue; }
+    const K = ANIMAL_KIND[a.kind], p = animalAt(a, t);
+    let x = p.x + a.ox, z = p.z + a.oz;
+    const dx = wrapDelta(x - cam.x), dz = wrapDelta(z - cam.z), d = Math.hypot(dx, dz);
+    if (me && d < K.shy) {   // (you are near: it moves off, straight away from you)
+      const k = Math.min(K.run * dt, K.shy - d + 0.3) / Math.max(d, 0.05);
+      a.ox += dx * k; a.oz += dz * k;
+      a.wait = a.kind === ANIMAL.DEER ? 6 + 5 * hash2(a.k, 3, 777) : 1.2;
+    } else if (a.wait > 0) a.wait = Math.max(0, a.wait - dt);
+    else if (a.ox || a.oz) {   // (and back, walking)
+      const o = Math.hypot(a.ox, a.oz), k = Math.max(0, 1 - K.walk * dt / Math.max(o, 1e-6));
+      a.ox *= k; a.oz *= k;
+      if (o < 0.02) a.ox = a.oz = 0;
+    }
+    const o = Math.hypot(a.ox, a.oz);
+    if (o > K.flee) { a.ox *= K.flee / o; a.oz *= K.flee / o; }
+    x = p.x + a.ox; z = p.z + a.oz;
+    if (a.pen) {
+      const m = K.pen, P = a.pen;
+      x = clamp(x, P[0] - m, P[2] + m); z = clamp(z, P[1] - m, P[3] + m);
+      a.ox = x - p.x; a.oz = z - p.z;
+    }
+    // the way it faces: the way it goes while it goes, else its timetable's; its legs: how far it has gone
+    const fresh = !(a.lx === a.lx), mx = fresh ? 0 : wrapDelta(x - a.lx), mz = fresh ? 0 : wrapDelta(z - a.lz), moved = Math.hypot(mx, mz);
+    const spd = dt > 0 ? moved / dt : 0;
+    a.spd += (spd - a.spd) * Math.min(1, dt * 8);
+    if (fresh) { a.h = p.h; a.gz = p.graze; }
+    else {
+      const want = spd > 0.15 ? Math.atan2(mz, mx) : p.h;
+      a.h += wrapAngle(want - a.h) * Math.min(1, dt * (spd > 1.5 ? 10 : 5));
+      a.gz += ((d < K.shy * 1.6 && me ? 0 : p.graze) - a.gz) * Math.min(1, dt * 4);   // (heads up while you are near)
+    }
+    a.gait += moved; a.lx = x; a.lz = z;
+    const o9 = n * HERD_STRIDE, wx = wrap(x), wz = wrap(z);
+    out[o9] = a.kind; out[o9 + 1] = wx; out[o9 + 2] = terrainHeight(wx, wz); out[o9 + 3] = wz; out[o9 + 4] = a.h;
+    out[o9 + 5] = a.gait; out[o9 + 6] = a.gz; out[o9 + 7] = a.spd; out[o9 + 8] = a.v; out[o9 + 9] = a.k;
+    n++;
+  }
+  world.herdN = n;
 }
 
 // =====================================================================
@@ -4562,6 +4732,16 @@ function drawSprites(t, poses) {
     pose.head = poses[mi * 3]; pose.look = poses[mi * 3 + 1]; pose.moving = poses[mi * 3 + 2] > 0;
     buildMerchant(m, mi, pose, dxw, m.y - camY, dzw, zc, t);
   }
+  // Animals (phase 5): those near you, where the main thread put them this frame (world.herd); in the
+  // third person see-through between the camera and your hero, as the plants are.
+  const herd = world.herd;
+  for (let i = 0; i < world.herdN; i++) {
+    const o = i * HERD_STRIDE, kind = herd[o], dxw = wrapDelta(herd[o + 1] - camX), dzw = wrapDelta(herd[o + 3] - camZ), zc = dxw * fx + dzw * fz;
+    if (zc > ANIMAL_FAR[kind] || zc > zoneC || !inView(zc, dxw * rx + dzw * rz, 1.6)) continue;
+    const p0 = primCount;
+    buildAnimal(kind, dxw, herd[o + 2] - camY, dzw, herd[o + 4], herd[o + 5], herd[o + 6], herd[o + 7], herd[o + 8], herd[o + 9], zc, t, herd[o + 1], herd[o + 2], herd[o + 3]);
+    if (hero.on) for (let q = p0; q < primCount; q++) prims[q].see = 1;
+  }
   // Your hero, in the third person.
   if (hero.on) {
     const dxw = wrapDelta(hero.x - camX), dzw = wrapDelta(hero.z - camZ), zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
@@ -4894,6 +5074,100 @@ function buildPlant(i, kind, x, y, z, s, zc) {
   if (zc < 90) shadowDiscs.push([x, z, y, 1.15 * s, zc]);
 }
 
+// An animal (phase 5), as the main thread placed it (world.herd, updateAnimals): x, y, z its place
+// relative to the eye (y the ground under it, or the water a duck is on), h the way it faces, gait how
+// far it has walked (its legs swing with it), graze how far its head is down, spd how fast it goes (a
+// running deer bounds), v which of its kind (colours; v 0 a stag), k its number, wx, wy, wz where it is.
+// Solids as the figures' are (K.MERCHANT: they catch little firelight), fewer far off; legs never
+// thinner than about a ray.
+const ANIMAL_FAR = [120, 160, 45, 70, 150];
+const AP = { BODY: 40, HEAD: 41, LEG: 42, WOOL: 43, EAR: 44, TAIL: 45, NECK: 46, PATCH: 47, MUZZLE: 48, HORN: 49, COMB: 50, BEAK: 51, ANTLER: 52 };
+function buildAnimal(kind, x, y, z, h, gait, graze, spd, v, k, zc, t, wx, wy, wz) {
+  const ch = Math.cos(h), sh = Math.sin(h), P = (r, f) => [x - sh * r + ch * f, z + ch * r + sh * f];
+  const base = (K.MERCHANT << 24) | ((256 + k % 3800) << 8), lit = lightsOn ? warmAt(wx, wy + 0.6, wz) * 0.8 : 0;
+  const fp = Math.max(0, zc) * grid.rayW / vF, thin = r => Math.max(r, fp * THIN * 0.5), near = zc < 40, mid = zc < 70;
+  const AK = ANIMAL_KIND[kind], ph = gait * Math.PI * 2 / AK.stride, amp = clamp(spd / AK.walk, 0, 1.3);
+  const add = (p, part, pa) => { p.seg = base | part; p.lit = lit; p.posAdd = pa || 0; return p; };
+  const cap = (r0, y0, f0, r1, y1, f1, rad, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCapsule(ax, y + y0, az, bx, y + y1, bz, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const ell = (r0, y0, f0, ea, ey, ew, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pEllipsoid(ax, y + y0, az, ea, ey, ew, h, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };   // (ea along it, ew across)
+  const sph = (r0, y0, f0, rad, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pSphere(ax, y + y0, az, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const cone = (r0, y0, f0, r1, y1, f1, ra, rb, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCone(ax, y + y0, az, bx, y + y1, bz, ra, rb, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  // four legs from where they meet the body (±r across, ±f along) to the ground; walking, the diagonal
+  // pairs swing together, the foot lifted as it comes forward
+  const legs = (r, f, top, rad, rp, swing) => {
+    for (const [lr, lf] of [[-r, f], [r, f], [-r, -f], [r, -f]]) {
+      const q = ph + (lr * lf > 0 ? 0 : Math.PI), s = Math.sin(q) * swing * amp, up = Math.max(0, Math.cos(q)) * swing * 0.5 * amp;
+      cap(lr, top, lf, lr, 0.03 + up, lf + s, thin(rad), AP.LEG, rp);
+    }
+  };
+  if (kind === ANIMAL.SHEEP) {   // a fleece, wool on its back, a dark face and legs (one in eight a black sheep)
+    const wool = v === 7 ? R.pack : R.plaster, face = R.dark, hy = 0.74 - 0.48 * graze, hf = 0.56 + 0.1 * graze;
+    legs(0.13, 0.27, 0.5, 0.045, face, 0.12);
+    ell(0, 0.63, 0, 0.5, 0.32, 0.33, AP.BODY, wool, 0.05);
+    if (near) for (const [f, r] of [[-0.24, 0.05], [0.02, -0.05], [0.26, 0.04]]) sph(r, 0.82, f, 0.19, AP.WOOL, wool, 0.12);
+    cap(0, 0.7, 0.36, 0, hy + 0.04, hf - 0.12, 0.13, AP.NECK, wool, 0.05);
+    ell(0, hy, hf, 0.17, 0.12, 0.11, AP.HEAD, face);
+    if (near) for (const r of [-1, 1]) ell(r * 0.11, hy + 0.06, hf - 0.07, 0.035, 0.03, 0.08, AP.EAR, face);
+    if (mid) sph(0, 0.66, -0.5, 0.08, AP.TAIL, wool);
+    if (zc < 50) shadowDiscs.push([x, z, y, 0.55, zc]);
+    return;
+  }
+  if (kind === ANIMAL.COW) {   // brown, black, cream; some black with a white belt round the middle
+    const coat = [R.robe3, R.robe3, R.wood, R.dark, R.dark, R.sand, R.sand, R.robe3][v], belt = v === 3 || v === 4, hy = 1.12 - 0.7 * graze, hf = 0.98 + 0.12 * graze;
+    legs(0.19, 0.46, 0.85, 0.075, coat, 0.16);
+    ell(0, 0.98, 0, 0.78, 0.4, 0.37, AP.BODY, coat);
+    if (belt) ell(0, 0.98, -0.04, 0.26, 0.41, 0.38, AP.PATCH, R.plaster, 0.1);
+    cap(0, 1.06, 0.6, 0, hy + 0.04, hf - 0.16, 0.17, AP.NECK, coat);
+    ell(0, hy, hf, 0.24, 0.17, 0.15, AP.HEAD, coat);
+    sph(0, hy - 0.05, hf + 0.2, 0.105, AP.MUZZLE, R.skin);
+    if (near) for (const r of [-1, 1]) {
+      cone(r * 0.09, hy + 0.13, hf - 0.1, r * 0.24, hy + 0.23, hf - 0.05, 0.035, 0.012, AP.HORN, R.birch);
+      ell(r * 0.17, hy + 0.06, hf - 0.14, 0.04, 0.035, 0.09, AP.EAR, coat);
+    }
+    if (mid) { cap(0, 1.14, -0.76, 0, 0.62, -0.84, thin(0.03), AP.TAIL, coat); sph(0, 0.58, -0.84, 0.065, AP.TAIL, R.dark); }
+    if (zc < 50) shadowDiscs.push([x, z, y, 0.85, zc]);
+    return;
+  }
+  if (kind === ANIMAL.CHICKEN) {   // white, brown or black; pecking in quick bobs, a red comb, a yellow beak
+    const feather = v < 4 ? R.plaster : v < 7 ? R.robe3 : R.dark, peck = graze * Math.max(0, Math.sin(t * 9 + k * 1.7));
+    const hy = 0.33 - 0.24 * peck, hf = 0.11 + 0.09 * peck, bob = spd > 0.2 ? 0.02 * Math.abs(Math.sin(ph)) : 0;
+    ell(0, 0.2 + bob, 0, 0.15, 0.12, 0.11, AP.BODY, feather);
+    ell(0, 0.3 + bob, -0.13, 0.05, 0.09, 0.05, AP.TAIL, feather, -0.1);
+    sph(0, hy + bob, hf, 0.066, AP.HEAD, feather);
+    if (zc < 20) { sph(0, hy + 0.065 + bob, hf, 0.032, AP.COMB, R.bloomR); cone(0, hy + bob, hf + 0.05, 0, hy - 0.015 + bob, hf + 0.11, 0.026, 0.005, AP.BEAK, R.bloomY); }
+    if (zc < 15) for (const r of [-1, 1]) cap(r * 0.05, 0.12, 0, r * 0.05, 0.01, Math.sin(ph + (r > 0 ? 0 : Math.PI)) * 0.05 * amp, thin(0.016), AP.LEG, R.bloomY);
+    if (zc < 25) shadowDiscs.push([x, z, y, 0.17, zc]);
+    return;
+  }
+  if (kind === ANIMAL.DUCK) {   // brown ducks, grey drakes with green heads, now and then a white one; dabbling, tail up
+    const drake = v >= 4 && v < 7, body = v < 4 ? R.robe3 : v < 7 ? R.stone : R.plaster;
+    const bob = 0.015 * Math.sin(t * 2.1 + k), dab = graze * (0.5 + 0.5 * Math.sin(t * 0.9 + k * 2.3)), hy = 0.22 - 0.32 * dab, hf = 0.15 + 0.05 * dab;
+    ell(0, 0.06 + bob, 0, 0.2, 0.09, 0.12, AP.BODY, body);
+    cone(0, 0.1 + bob, -0.15, 0, 0.15 + 0.1 * dab + bob, -0.25, 0.05, 0.01, AP.TAIL, body);
+    sph(0, hy + bob, hf, 0.07, AP.HEAD, drake ? R.robe2 : body);
+    if (zc < 25) cone(0, hy - 0.012 + bob, hf + 0.05, 0, hy - 0.02 + bob, hf + 0.13, 0.03, 0.014, AP.BEAK, drake ? R.bloomY : R.fire);
+    return;
+  }
+  // a deer: a red-brown coat, pale belly and tail; walking, or bounding when it runs; a stag's antlers
+  const coat = R.redrock, run = spd > 3, bob = run ? 0.16 * Math.abs(Math.sin(ph)) : 0, hy = 1.42 - 1.0 * graze, hf = 0.62 + 0.14 * graze;
+  if (run) for (const [lr, lf, q] of [[-0.1, 0.32, 0], [0.1, 0.32, 0], [-0.1, -0.3, Math.PI], [0.1, -0.3, Math.PI]]) {   // (the forelegs reach together, the hind legs push together)
+    const s = Math.sin(ph + q) * 0.38, up = Math.max(0, Math.cos(ph + q)) * 0.2;
+    cap(lr, 0.84 + bob, lf, lr, 0.05 + up + bob * 0.5, lf + s, thin(0.04), AP.LEG, R.wood);
+  } else legs(0.1, 0.31, 0.84, 0.04, R.wood, 0.14);
+  ell(0, 0.93 + bob, 0, 0.52, 0.25, 0.21, AP.BODY, coat);
+  ell(0, 0.84 + bob, 0.02, 0.42, 0.14, 0.18, AP.PATCH, R.sand, 0.1);
+  cap(0, 1.03 + bob, 0.36, 0, hy - 0.05 + bob, hf - 0.1, 0.08, AP.NECK, coat);
+  ell(0, hy + bob, hf, 0.18, 0.1, 0.09, AP.HEAD, coat);
+  if (mid) sph(0, hy - 0.03 + bob, hf + 0.17, 0.042, AP.MUZZLE, R.dark);
+  if (near) for (const r of [-1, 1]) ell(r * 0.08, hy + 0.11 + bob, hf - 0.1, 0.03, 0.07, 0.05, AP.EAR, coat);
+  if (v === 0 && mid) for (const r of [-1, 1]) {   // (a beam each side, two tines on it)
+    const b0 = [r * 0.05, hy + 0.08 + bob, hf - 0.06], b1 = [r * 0.2, hy + 0.5 + bob, hf - 0.16];
+    cap(b0[0], b0[1], b0[2], b1[0], b1[1], b1[2], thin(0.025), AP.ANTLER, R.birch);
+    for (const s of [0.4, 0.75]) { const m0 = b0[0] + (b1[0] - b0[0]) * s, m1 = b0[1] + (b1[1] - b0[1]) * s, m2 = b0[2] + (b1[2] - b0[2]) * s; cap(m0, m1, m2, m0 + r * 0.02, m1 + 0.14, m2 + 0.1, thin(0.02), AP.ANTLER, R.birch); }
+  }
+  if (mid) sph(0, 0.98 + bob, -0.5, 0.07, AP.TAIL, R.plaster);
+  if (zc < 50) shadowDiscs.push([x, z, y, 0.5, zc]);
+}
 function buildMerchant(m, mi, st, x, y, z, zc, t) {
   const h = st.head, ch = Math.cos(h), sh = Math.sin(h);
   // local (right, up, forward) → camera-relative world
@@ -6099,6 +6373,7 @@ function applyFrame(d) {
   COL.glow = d.col[o]; COL.bird = d.col[o + 1];
   const M = d.merchants;
   for (let mi = 0; mi < world.merchants.length; mi++) { const m = world.merchants[mi]; m.x = M[mi * 4]; m.y = M[mi * 4 + 1]; m.z = M[mi * 4 + 2]; m.walked = M[mi * 4 + 3]; }
+  world.herd = d.herd; world.herdN = d.herd.length / HERD_STRIDE;
 }
 let viewGen = -1;
 function message(msg, reply) {
@@ -6635,7 +6910,7 @@ function setupGrid() {
 }
 
 function workerSource() {
-  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, PROP, PROP_BUCKET, PROP_BUCKETS, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, GEAR, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, F_FLOWER, RAMP_NAMES, R };
+  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, PROP, PROP_BUCKET, PROP_BUCKETS, ANIMAL, ANIMAL_KIND, HERD_STRIDE, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, GEAR, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, F_FLOWER, RAMP_NAMES, R };
   return [
     "'use strict';",
     ...Object.entries(consts).map(([k, v]) => `const ${k} = ${JSON.stringify(v)};`),
@@ -6643,7 +6918,7 @@ function workerSource() {
     `const KEYFRAMES = { day: { ramps: ${JSON.stringify(KEYFRAMES.day.ramps)} } };`,
     `const clamp = ${clamp};`, `const smoothstep = ${smoothstep};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`, `const pack = ${pack};`,
     `${hash2}`, `${terrainHeight}`, `${skyState}`,
-    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, props: null, propBuckets: null, chimneys: [], flags: [], domes: [], bells: [] };`,
+    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, props: null, propBuckets: null, herd: new Float32Array(0), herdN: 0, chimneys: [], flags: [], domes: [], bells: [] };`,
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
     `const cur = { ambient: 0.38, diffuse: 0.62, lights: 0, stars: 0 }, light = { lx: 0, ly: 1, lz: 0, darkness: 0, faceShade: new Float32Array(6) };`,
     `const wx = { rain: 0, snow: 0, fog: 0, wet: 0, aurora: 0, storm: 0 };`,
@@ -7685,7 +7960,7 @@ function frameDesc(t, dt) {
   for (const L of COL.far) { col.set(L, o); o += L.length; }
   col[o] = COL.glow; col[o + 1] = COL.bird;
   return {
-    type: 'frame', gen: pool.gen, t, poses, look: looks.mode, merchants: merch, col,
+    type: 'frame', gen: pool.gen, t, poses, look: looks.mode, merchants: merch, col, herd: world.herd.slice(0, world.herdN * HERD_STRIDE),
     cam: [viewCam.x, viewCam.y, viewCam.z, viewCam.yaw, viewCam.pitch], hours: clock.hours, viewDist: view.dist,
     hero: [hero.on, hero.x, hero.y, hero.z, hero.face, hero.walked, hero.moving, hero.gear, hero.air, hero.gy, hero.eat, hero.food],
     light: [light.lx, light.ly, light.lz, light.darkness, ...light.faceShade], cur: [cur.ambient, cur.diffuse, cur.lights, cur.stars],
@@ -7796,6 +8071,7 @@ function frame(now) {
 
   updateBag(dt);
   updateHero(dt);
+  updateAnimals(now / 1000, dt);
   syncInv();
   const desc = frameDesc(now / 1000, dt);
   for (const k in frameStats) frameStats[k] = 0;
@@ -7840,6 +8116,7 @@ window.TV = {
   setThird, updateHero, view3, viewCam, hero, terrainHeight, solidAt, setGear, wardrobe, GEAR,
   bag, bagAdd, bagTake, eatItem, toggleItem, openBag, updateBag, sell, sellPrice, fedSprint,
   equipItem, unequipItem, renderInv, layoutBag, inBlocks, worn, slotHolds, primary, buyBack, sold, ITEM, SLOTS,
+  updateAnimals, animalAt, ANIMAL, ANIMAL_KIND,
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
   renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0

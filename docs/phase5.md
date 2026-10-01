@@ -162,3 +162,39 @@ How the games do it, which this follows: RuneScape gives you 28 inventory slots 
 - ⚠️ The candle and the lucky pebble still do nothing.
 - ⚠️ The right-click menu needs the mouse (or the keyboard's menu key); Tab and Enter reach and use every block.
 - You cannot drop things on the ground, and there is no bank.
+
+## Step 4: animals
+
+Shots: `shots/phase5/step4/` (`sheet-animals`: a flock, sheep in a pasture, a cow, hens, ducks, a stag, deer at the forest's edge, the flock in the mosaic look).
+
+### What changed
+
+- **Sheep or cows in every pasture:** five to eight sheep, or two to four cows (brown, black, cream, or black with a white belt), each grazing its own part of the pasture.
+- **A flock on open grass** 30 to 90 cells out from most villages and hamlets: six to ten sheep, now and then a black one.
+- **Hens** before about half the village and hamlet houses: white, brown or black, with red combs, pecking in quick bobs.
+- **Ducks** on the open water nearest each village, hamlet and town (a pond, a lake or a wide stream, not the sea): brown ducks, grey drakes with green heads, now and then a white one, dabbling with their tails up.
+- **Deer** in the forests' clearings and at their edges: herds of two to five, red-brown with pale tails, the first a stag with antlers.
+- **They live their day:** each turns, walks to a new spot and grazes there, head down, looking up now and then; their legs swing as they walk.
+- **They notice you:** walk up to a sheep, a cow, a hen or a duck and it moves off (never out of its pen), heads up while you are near. A deer bolts when you come within 14 cells, bounding away, and keeps away a while before it goes back. Flying, you are not noticed.
+
+### How it is built
+
+- `placeAnimals`, in world generation after the trees, from hashes alone, so nothing else in the world changes: `world.animals`, each with its own patch (`x0`..`x1`, `z0`..`z1`; a flock shares its pasture or its grass out, a patch each, so none stands on another), a pen where it has one (pastures, flocks, hens, ducks), which of its kind it is (`v`) and its number (`k`). `placeFarms` now records the pastures (`world.pastures`).
+- `animalAt`: the timetable, a function of the time alone. Each move's spot comes from the hashes of the animal and the move's number: turn, walk there (setting off and stopping gently), then graze, so any frame shows the same for the same moment, and animals far away cost nothing.
+- `updateAnimals`, every frame, for the animals within 180 cells: the timetable's place, pushed away from you while you are near (`ANIMAL_KIND`: how near, how fast, how far), back to the timetable once you have gone, clamped to the pen; the way it faces follows where it goes; `world.herd` carries kind, place, heading, gait, head and speed to the renderer, and to the workers with each frame.
+- `buildAnimal` (in `renderCore`) draws each kind from solids, as the figures are (`K.MERCHANT`, its parts `AP.*`); `ANIMAL_FAR` leaves each out past its distance (hens 45 cells, ducks 70, sheep 120, deer 150, cows 160). Legs are never thinner than about a ray; in the third person an animal between the camera and your hero is see-through, as the plants are.
+- New fixed scenes: `flock`, `sheep`, `cows`, `hens`, `ducks`, `deer`, `deer-meadow` (third person: walk on and the deer bolt).
+
+### Numbers
+
+- Seed 42: 49 sheep, 11 cows, 44 hens, 9 ducks and 21 deer (in 6 herds). The other seeds: 30 to 90 sheep, 3 to 19 cows, 29 to 37 hens, 12 to 22 ducks, 5 to 46 deer (a dry world has few forests).
+- Tests: all pass, with the world checksums re-recorded for a new part only (the animals as placed; the rest of every world is unchanged). The new section 7 checks every seed: each animal keeps to its patch over 120 moves, ducks always on the water and the rest never in it; and near you, a sheep moves off (to 3 cells) and stays in its pen, and a deer 6 cells off bolts (to 16 cells).
+- Workers and the main thread agree, byte for byte in both looks, with 4, 5, 6 and 7 workers, over the seven animal scenes and the fields.
+- Speed (Chromium, 6 workers, a quiet machine): about 0.1 to 0.2 ms a frame where there are animals (the flock 6.9 ms, the deer meadow 7.1 ms, the fields 7.8 ms), 60 fps; drawn on one thread, the flock costs 0.4 ms.
+
+### Still open
+
+- ⚠️ Animals do not stand in your way: they move off first, but a quick walk can pass through one.
+- ⚠️ Nothing sleeps: the animals stay out at night.
+- Ducks only where there is open water near a settlement; few deer on dry worlds.
+- In their patch, animals walk through haystacks, barrels and tree trunks.

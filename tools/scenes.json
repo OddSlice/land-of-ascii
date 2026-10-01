@@ -1262,6 +1262,113 @@
         "yaw": 20.0,
         "pitch": -402.0
       }
+    },
+    {
+      "name": "flock",
+      "title": "A flock grazing on open grass near a village, a black sheep among them (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 1087.03,
+        "y": 35.31,
+        "z": 871.0,
+        "yaw": -150.0,
+        "pitch": -384.0
+      }
+    },
+    {
+      "name": "sheep",
+      "title": "Sheep in a pasture (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 43.96,
+        "y": 32.37,
+        "z": 862.34,
+        "yaw": -3.5,
+        "pitch": -261.0
+      }
+    },
+    {
+      "name": "cows",
+      "title": "A belted cow grazing by the fence (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 973.31,
+        "y": 31.62,
+        "z": 825.35,
+        "yaw": -156.5,
+        "pitch": -245.0
+      }
+    },
+    {
+      "name": "hens",
+      "title": "Hens before a village house (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 971.57,
+        "y": 32.94,
+        "z": 860.95,
+        "yaw": -64.8,
+        "pitch": -304.0
+      }
+    },
+    {
+      "name": "ducks",
+      "title": "Ducks on a pond: drakes with green heads (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 256.24,
+        "y": 27.02,
+        "z": 152.21,
+        "yaw": -24.1,
+        "pitch": -281.0
+      }
+    },
+    {
+      "name": "deer",
+      "title": "A stag at the edge of the forest (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 530.13,
+        "y": 30.78,
+        "z": 63.23,
+        "yaw": 37.8,
+        "pitch": -195.0
+      }
+    },
+    {
+      "name": "deer-meadow",
+      "title": "Deer grazing where the meadow meets the forest; walk toward them and they bolt (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 420.65,
+        "y": 0.0,
+        "z": 134.9,
+        "yaw": -20.0,
+        "pitch": -200.0,
+        "ground": true
+      }
     }
   ]
 }

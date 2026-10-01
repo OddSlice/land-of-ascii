@@ -26,6 +26,8 @@
 //      V (setThird) and flying give back your own eyes; your bag: what you buy shows on the hero
 //      (hero.gear) unless put away, eating makes you well fed, the inventory's slots and blocks hold
 //      what is worn and the rest, merchants buy at half price and sell back what you sold them.
+//   7. Animals: on every seed, each animal keeps to its patch on its timetable (ducks on the water, the
+//      rest out of it); near you a sheep moves off and stays in its pen, and a deer bolts.
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs [--record]
 import fs from 'node:fs';
@@ -69,6 +71,7 @@ const WORLD_HASH = () => {
   for (const k of ['H', 'mat', 'biome', 'heat', 'damp', 'water', 'road', 'treeMask', 'tex', 'nx', 'ny', 'nz']) { h = 2166136261 >>> 0; bytes(w[k]); parts[k] = h; }
   for (const k of ['seaLevel', 'rockLine', 'snowLine', 'rivers', 'roads', 'trees', 'birds', 'clouds', 'wind', 'lights']) { h = 2166136261 >>> 0; any(w[k]); parts[k] = h; }
   h = 2166136261 >>> 0; for (const s of w.structs) { const { tpl, ...rest } = s; any(rest); any(tpl.vox); any(tpl.topSolid); any(tpl.spans); num(tpl.sx); num(tpl.sy); num(tpl.sz); } parts.structs = h;
+  h = 2166136261 >>> 0; for (const a of w.animals) any({ kind: a.kind, x0: a.x0, z0: a.z0, x1: a.x1, z1: a.z1, v: a.v, pen: a.pen }); any(w.pastures); parts.animals = h;
   h = 2166136261 >>> 0; for (const m of w.merchants) { any({ name: m.name, greeting: m.greeting, goods: m.goods, robe: m.robe, cells: m.cells, cum: m.cum, total: m.total, s: m.s, dir: m.dir, x: m.x, y: m.y, z: m.z }); } parts.merchants = h;
   return parts;
 };
@@ -524,6 +527,53 @@ console.log('6. third person, seed 42');
   });
   if (g.start !== 0 || !g.after || !g.kept || !g.steps.every(v => v === true)) fail(`bag: ${JSON.stringify(g)}`);
   else console.log('  your bag: what you buy shows on your hero (a cloak, a lantern, the tunic bought last); put away, it does not; eating makes you well fed and lifts the food to the mouth; ten slots and 28 blocks, put on and take off; a merchant pays half, and you can buy it back; the bag goes with you to a new world');
+}
+
+// ---- 7. animals ----
+// Every world has its animals (sheep, cows, hens, ducks and deer where there is room for them); each
+// keeps to its own patch on its timetable, ducks always on water and the rest never in it; near you, a
+// sheep moves off (and stays in its pen) and a deer bolts.
+console.log('7. animals, every seed');
+for (const seed of SEEDS) {
+  const r = await p2.evaluate(seed => {
+    const TV = window.TV, w = TV.world, W = w.H.length ** 0.5;
+    TV.regenerate(seed);
+    const counts = [0, 0, 0, 0, 0], at = (x, z) => (Math.floor(((z % W) + W) % W) * W + Math.floor(((x % W) + W) % W));
+    let outside = 0, dry = 0, wet = 0;
+    for (const a of w.animals) {
+      counts[a.kind]++;
+      for (let k = 0; k < 120; k++) {
+        const p = TV.animalAt(a, k * 3.7 + a.k * 0.31);
+        if (p.x < a.x0 - 1e-6 || p.x > a.x1 + 1e-6 || p.z < a.z0 - 1e-6 || p.z > a.z1 + 1e-6) outside++;
+        if (a.kind === TV.ANIMAL.DUCK ? !w.water[at(p.x, p.z)] : a.kind !== TV.ANIMAL.CHICKEN && w.water[at(p.x, p.z)]) a.kind === TV.ANIMAL.DUCK ? dry++ : wet++;
+      }
+    }
+    return { counts, outside, dry, wet };
+  }, seed);
+  const names = ['sheep', 'cows', 'hens', 'ducks', 'deer'];
+  if (r.outside || r.dry || r.wet) fail(`animals, seed ${seed}: ${r.outside} out of their patch, ${r.dry} ducks on land, ${r.wet} in water`);
+  else if (!(r.counts[0] > 0 && r.counts[2] > 0)) fail(`animals, seed ${seed}: too few (${r.counts.join(', ')})`);
+  else console.log(`  seed ${seed}: ${r.counts.map((c, k) => c + ' ' + names[k]).join(', ')}; each keeps to its patch over 120 moves; ducks on the water`);
+}
+{
+  const r = await p2.evaluate(() => {
+    const TV = window.TV, w = TV.world;
+    TV.regenerate(42); TV.setMode('walk');
+    const run = (a, from, seconds) => {   // (you stand at from; the animals live for that long)
+      const t0 = 500;
+      TV.cam.x = from[0]; TV.cam.z = from[1]; TV.viewCam.x = from[0]; TV.viewCam.z = from[1];
+      for (let f = 0; f <= seconds * 60; f++) TV.updateAnimals(t0 + f / 60, 1 / 60);
+      return Math.hypot(a.lx - from[0], a.lz - from[1]);
+    };
+    const sheep = w.animals.find(a => a.kind === TV.ANIMAL.SHEEP), deer = w.animals.find(a => a.kind === TV.ANIMAL.DEER);
+    const ps = TV.animalAt(sheep, 500), s0 = [ps.x + 0.3, ps.z];
+    const ds = run(sheep, s0, 2), inPen = sheep.lx >= sheep.pen[0] - 1e-6 && sheep.lx <= sheep.pen[2] + 1e-6 && sheep.lz >= sheep.pen[1] - 1e-6 && sheep.lz <= sheep.pen[3] + 1e-6;
+    const pd = TV.animalAt(deer, 500), d0 = [pd.x + 6, pd.z];
+    const dd = run(deer, d0, 2.5), ran = deer.spd;
+    return { ds, inPen, dd, ran };
+  });
+  if (!(r.ds > 1.8 && r.inPen && r.dd > 12)) fail(`animals near you: ${JSON.stringify(r)}`);
+  else console.log(`  near you: a sheep moves off to ${r.ds.toFixed(1)} cells and stays in its pen; a deer 6 cells off bolts to ${r.dd.toFixed(1)}`);
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');
