@@ -1431,6 +1431,23 @@
         "yaw": -120.0,
         "pitch": -577.0
       }
+    },
+    {
+      "name": "river",
+      "title": "A river through the grassland: its own blue, ripples running downstream, hardly a mirror (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 505.0,
+        "y": 0.0,
+        "z": 519.0,
+        "yaw": -110.0,
+        "pitch": -200.0,
+        "ground": true
+      }
     }
   ]
 }

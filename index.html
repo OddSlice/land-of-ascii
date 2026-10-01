@@ -640,9 +640,35 @@ function generateWorld(seed) {
 
   // 7. Materials and lighting normals, then what shades the ground (hollows, and whatever stands on it),
   //    and where dawn fog lies.
+  makeWaterFields();   // (phase 5: the water's own look: how far from the shore, and which way the rivers flow)
   paintGround();
   computeOcclusion();
   makeFogField();
+}
+
+// The water's own look (phase 5): how far each water cell is from the shore (wdepth: 1 at the edge, up to
+// 7 well out; its shallows are drawn lighter and greener, its middle deeper blue), and which way a river
+// flows there (flow: the angle downstream, as 1..255; 0 for still water), taken over a few cells of the
+// river's path and given to the cells either side, so ripples run downstream.
+function makeWaterFields() {
+  const { water } = world, wd = world.wdepth || (world.wdepth = new Uint8Array(N)), fl = world.flow || (world.flow = new Uint8Array(N));
+  const N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]], nb = (i, k) => ((((i / W) | 0) + N4[k][1]) & MASK) * W + (((i & MASK) + N4[k][0]) & MASK);
+  wd.fill(0); fl.fill(0);
+  let front = [];
+  for (let i = 0; i < N; i++) if (water[i]) for (let k = 0; k < 4; k++) if (!water[nb(i, k)]) { wd[i] = 1; front.push(i); break; }
+  for (let d = 2; d <= 6 && front.length; d++) {
+    const next = [];
+    for (const i of front) for (let k = 0; k < 4; k++) { const j = nb(i, k); if (water[j] && !wd[j]) { wd[j] = d; next.push(j); } }
+    front = next;
+  }
+  for (let i = 0; i < N; i++) if (water[i] && !wd[i]) wd[i] = 7;
+  for (const path of world.rivers) for (let k = 0; k < path.length; k++) {
+    const a = path[Math.max(0, k - 3)], b = path[Math.min(path.length - 1, k + 3)];
+    const dx = wrapDelta((b & MASK) - (a & MASK)), dz = wrapDelta(((b / W) | 0) - ((a / W) | 0));
+    if (!dx && !dz) continue;
+    const v = 1 + Math.round(((Math.atan2(dz, dx) / (2 * Math.PI) + 1) % 1) * 254), x = path[k] & MASK, z = (path[k] / W) | 0;
+    for (let oz = -1; oz <= 1; oz++) for (let ox = -1; ox <= 1; ox++) { const j = ((z + oz) & MASK) * W + ((x + ox) & MASK); if (water[j] && !fl[j]) fl[j] = v; }
+  }
 }
 
 // Dawn fog lies in the valleys like a lake: its surface is the valley floor (the lowest ground within
@@ -5888,8 +5914,16 @@ function splatGroundMarks(t) {
   }
 }
 
+// How much water mirrors, by how steeply a ray meets it: the Fresnel term as Schlick has it (2% looking
+// straight down, nearly all at a glance along the surface; q the ray's slope down, p across), times
+// WATER_MIRROR, so water near you shows its own colour and only water far off, toward the horizon,
+// mirrors the shore and the sky.
+const WATER_MIRROR = 0.6;
+const FLOW_COS = Float32Array.from({ length: 256 }, (_, v) => Math.cos((v - 1) / 254 * Math.PI * 2)), FLOW_SIN = Float32Array.from({ length: 256 }, (_, v) => Math.sin((v - 1) / 254 * Math.PI * 2));   // (the way a river flows, by world.flow's value)
+const fresnel = (q, p) => { const c = Math.abs(q) / Math.sqrt(1 + p * p + q * q), m = 1 - c, m2 = m * m; return WATER_MIRROR * (0.02 + 0.98 * m2 * m2 * m); };
 // Screen-space water reflections (as v1): below every stretch of water in a column, mirror what is
-// above its far shore into the water, fading with distance from the shore. Ripples reflect less.
+// above its far shore into the water, fading with distance from the shore and with how steeply you look
+// (fresnel). Ripples reflect less.
 function reflectWater() {
   const { RW, RH } = grid;
   const { kind, flags, refl, reflAmt } = rays;
@@ -5904,7 +5938,7 @@ function reflectWater() {
         if (rr < 0 || fade <= 0) continue;
         const j = x * RH + rr;
         if (kind[j] === K.TERRAIN && (flags[j] & F_WATER)) continue;
-        refl[i] = j; reflAmt[i] = fade * (flags[i] & F_RIPPLE ? 0.45 : 1);
+        refl[i] = j; reflAmt[i] = fade * (flags[i] & F_RIPPLE ? 0.45 : 1) * fresnel(rayQ[r], 0) / WATER_MIRROR;
       } else inWater = false;
     }
   }
@@ -6435,9 +6469,9 @@ function paintCells(t) {
   //    met at distance t along a ray of slope q, shows at slope q·(2t/D − 1): at the water's edge for
   //    a cliff standing in it, mirrored about the horizon for distant land and sky. Starting from the
   //    horizon, three rounds of looking up that row and taking its distance settle it. The mirror is
-  //    swayed by a slow wave, averaged over three columns, and water takes more of it toward the
-  //    horizon, where it mirrors most. What stands in front of the water is not mirrored; the sky at
-  //    that height is, instead.
+  //    swayed by a slow wave, averaged over three columns, and water takes as much of it as the angle
+  //    you look at it gives (fresnel): little near you, more toward the horizon. What stands in front
+  //    of the water is not mirrored; the sky at that height is, instead.
   const hr = vHor / rayH - 0.5, nSky = COL.near[R.sky].length, fz = grid.f;
   for (let x = xr0; x < xr1; x++) for (let y = Math.max(0, Math.ceil(hr)), i = x * RH + y; y < RH; y++, i++) {
     if (kind[i] !== K.TERRAIN || !(flags[i] & F_WATER)) continue;
@@ -6479,10 +6513,23 @@ function paintCells(t) {
       listColour(R.sky, skyPosRow[Math.min(RH - 1, y0)] * (nSky - 1), 0);
       const w = n > 0 ? lost : Math.max(lost, 1); rr += tmpC[0] * w; rg += tmpC[1] * w; rb += tmpC[2] * w; n += w;
     }
-    // water is dark in itself and takes its colour from what it mirrors (a blend of the two would
-    // only grey out: blue water and an orange cliff make grey)
-    const a = 0.82 - 0.3 * Math.min(1, below / Math.max(1, RH - hr)), o = i * 3;
-    const wr = rayCol[o] * 0.62, wg = rayCol[o + 1] * 0.62, wb = rayCol[o + 2] * 0.66;
+    // Its own colour: lighter and greener in the shallows, deeper blue further out (wdepth); near you,
+    // light ripples on it, fixed to the water, running downstream on a river (flow) and glinting on still
+    // water. Then what it mirrors, as much as the angle gives (fresnel: a blend of the two greys out
+    // only where it mirrors much, far off)
+    const ci = (Math.floor(wzw) & MASK) * W + (Math.floor(wxw) & MASK), deep = Math.min(1, (world.wdepth[ci] - 1) / 4), fv = world.flow[ci];
+    let glint = 0;
+    if (tw < 90) {
+      const near = 1 - tw / 90;
+      if (fv) {
+        const ca = FLOW_COS[fv], sa = FLOW_SIN[fv], along = wxw * ca + wzw * sa, across = wzw * ca - wxw * sa;
+        glint = smoothstep(0.55, 1, Math.sin(along * 1.4 - t * 3 + Math.sin(across * 2.3) * 1.3)) * 0.15 * near;
+      } else glint = smoothstep(0.7, 1, Math.sin(wxw * 0.9 + t * 0.8) * Math.sin(wzw * 1.1 - t * 0.6)) * 0.1 * near;
+    }
+    const a = fresnel(q, pw), o = i * 3, kb = 0.78 - 0.18 * deep, sh = 1 - deep;
+    let wr = rayCol[o] * kb * (1 - 0.1 * sh), wg = rayCol[o + 1] * kb * (1 + 0.1 * sh), wb = rayCol[o + 2] * (kb + 0.04);
+    glint *= 1 - 0.85 * light.darkness;   // (glints fade with the light: none to speak of at night)
+    if (glint > 0) { wr += (235 - wr) * glint; wg += (245 - wg) * glint; wb += (250 - wb) * glint; }
     rayCol[o] = wr + (rr / n * 0.9 - wr) * a; rayCol[o + 1] = wg + (rg / n * 0.9 - wg) * a; rayCol[o + 2] = wb + (rb / n * 0.93 - wb) * a;
   }
   // 3. two square pixels per cell: the average of 2×2 rays, and a letter for the most of what they show
@@ -7354,7 +7401,7 @@ function syncWorkers() {
   if (pool.sentWorld !== world.structs) {
     pool.sentWorld = world.structs;
     const pkg = {
-      seed: world.seed, H: world.H, mat: world.mat, fogTop: world.fogTop,
+      seed: world.seed, H: world.H, mat: world.mat, fogTop: world.fogTop, wdepth: world.wdepth, flow: world.flow,
       structs: world.structs.map(s => ({ cx: s.cx, cz: s.cz, x0: s.x0, z0: s.z0, baseY: s.baseY, radius: s.radius, half: s.half, type: s.type, tpl: { sx: s.tpl.sx, sy: s.tpl.sy, sz: s.tpl.sz, spans: s.tpl.spans, topSolid: s.tpl.topSolid } })),
       trees: world.trees, treeBuckets: world.treeBuckets, props: world.props, propBuckets: world.propBuckets, lights: world.lights, clouds: world.clouds, wind: world.wind, birds: world.birds, chimneys: world.chimneys, flags: world.flags, domes: world.domes, bells: world.bells,
       merchants: world.merchants.map(m => ({ robe: m.robe, x: m.x, y: m.y, z: m.z, walked: m.walked })),

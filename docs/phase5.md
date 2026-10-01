@@ -237,3 +237,33 @@ Shots: `shots/phase5/step5/` (`sheet-people`: the town street, the market, guard
 - ⚠️ The merchants on the roads are still v1's, and greet in their own way (E opens their wares).
 - First names only, and a handful of lines for each kind of person.
 - This round is done: Martin sends the game out for feedback. Colourful farmland and things along the roads (docks, shrines, travellers' camps) wait.
+
+## After step 5: water that looks like water
+
+Martin, 1 Oct: the water's reflections were too much; rivers upstream looked like a gap rather than a stream. Tone them down, so water looks like water and not a mirror, with only slight reflections; research it first.
+
+Shots: `shots/phase5/water/` (`sheet-water`: a river by day and at dusk, a forest stream, a pond; before and after).
+
+### What the research said
+
+- Water reflects about 2% of the light when you look straight down at it, and becomes a mirror only at a glance along its surface; Schlick's approximation of the Fresnel equations, R = R0 + (1 − R0)(1 − cos θ)^5 with R0 = 0.02, is what games use ([Schlick's approximation](https://en.wikipedia.org/wiki/Schlick%27s_approximation), [the Fresnel equations](https://en.wikipedia.org/wiki/Fresnel_equations)).
+- Water's colour is its own, from what it absorbs and scatters as light goes deeper: shallow water lighter, deep water darker; games blend reflection and that colour by the Fresnel term ([rendering water as a post-process effect](https://gamedev.net/tutorials/article2642.asp)).
+- Before, the painted look gave every water ray 52 to 82% of what it mirrored, whatever the angle: a narrow river in a valley, seen from above, showed a strip of sky.
+
+### What changed
+
+- **Reflections by the angle** (`fresnel`): the Fresnel term times `WATER_MIRROR` (0.6). Water near you, which you look down on, is its own colour with a few per cent of mirror; far off, toward the horizon, a lake still mirrors the hills and the sky, up to about 60%. The mosaic look's mirrored strokes are thinned the same way.
+- **Its own colour:** lighter and a little greener in the shallows, deeper blue further from the shore (`world.wdepth`: how many cells from the shore, made with the world by `makeWaterFields`).
+- **Ripples:** near you, light ripples fixed to the water: on a river they run downstream (`world.flow`: the direction of the river's path, over a few cells of it, for the river and its banks), on still water they glint now and then. They fade with the light, so there are none to speak of at night.
+- A new fixed scene, `river`.
+
+### Numbers
+
+- Tests: all pass, the world checksums unchanged (the two new fields are made from the world, after it).
+- Workers and the main thread agree, byte for byte in both looks, with 4, 5, 6 and 7 workers, over a river, a forest stream, a canyon, the marsh, the duck pond, a lake behind the sheep, a town by a lake and the beach.
+- Speed (Chromium, 6 workers): about 0.3 to 0.4 ms more where the view is mostly water (the river 10.6 ms, the duck pond 10.2 ms).
+
+### Still open
+
+- ⚠️ The ripples are a drawn pattern, not waves: the water's surface is still flat, and the hero still walks on it, as in v1.
+- Waterfalls, where a river steps down, are still steps of flat water.
