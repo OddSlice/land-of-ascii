@@ -30,13 +30,13 @@ In file order:
    - `compose`;
    - the painted look (`paintCells`, `composePainted`): two square pixels per cell in continuous colour, one letter each, water mirrors;
    - the worker message interface.
-6. **Canvas and grid**, then input, movement and trade/HUD/lifecycle (ported; the trade panel's list, buying and selling are v2's own since phase 5: `renderGoods`, `buy`, `sell`).
+6. **Canvas and grid**, then input, movement and trade/HUD/lifecycle (ported; the trade panel's list, buying, selling and buying back are v2's own since phase 5: `renderGoods`, `buy`, `sell`, `buyBack`).
 7. **Presentation:**
    - the worker pool (`workerSource`, `startWorkers`, `syncWorkers`);
    - merchant poses (`merchantPose`, main thread) and `frameDesc`;
    - the third person: `updateHero` places `viewCam`, the camera behind your hero, and fills `hero`, their pose for the renderer (`V3_*` set the camera: distance, angles, tilt limit); `updateGear` turns the goods you own into `hero.gear` (`GEAR` bits, `GEAR_OF`, the tunic bought last);
    - the weather: `weatherAt` is each day's plan, `updateWeather` works out `wx`, what the renderer draws this frame;
-   - your bag (phase 5): `bag` (what you have, what is put away, how long you are well fed, what you are eating), `ITEM` (each good's group; food's time and taste), `openBag`/`renderBag` on the trade panel, `eatItem`, `toggleItem`, `updateBag` every frame; `updateGear` reads the bag, and `fedSprint` speeds v1's sprint (a listed fix);
+   - your bag (phase 5): `bag` (what you have, what is put away, how long you are well fed, what you are eating, which of the 28 blocks each thing lies in: `grid`), `ITEM` (each good's slot, or food's time; a line and a note), the RPG inventory on the right (`#inv`: `openBag`, `renderInv`; the paper doll `drawDoll`, the slots `SLOTS`/`PAPER`, the blocks `layoutBag`, pixel icons `ICON_ART`/`iconURL`; a note, a menu and dragging: `primary`, `actionsFor`, `dropTarget`), `equipItem`, `unequipItem`, `eatItem`, `updateBag` and `syncInv` every frame; `updateGear` reads the bag, and `fedSprint` speeds v1's sprint (a listed fix);
    - the legend (`updateLegend`: the keys, each switch's current choice, a note when a setting changes; it replaces v1's `#help`, which is hidden);
    - the main loop, boot, and `window.TV`.
 
@@ -126,7 +126,9 @@ Test harness notes:
   - **Step 1 (your bag) is built:** I opens it (worn, carried, food and drink, odds and ends); eat or drink (the hero lifts the food to their mouth; well fed, you sprint a quarter faster for up to 5 minutes; FED on the HUD); wear or take off, carry or put away; merchants buy back at half price; the bag goes with you to a new world.
   - **Step 2a (farms) is built:** fields in crop rows (wheat, greens, ploughed soil), fenced pastures with a gate toward the settlement, hay meadows with haystacks, round every village, hamlet and town; a windmill with turning sails in most villages' fields.
   - **Step 2b (village and town life) is built:** market stalls under striped awnings in the corners of every town's market square; barrels by the taverns and smithies; woodpiles by about half the homes; carts by the barns and some farmhouses; signposts where the roads leave every settlement and at the crossroads in the country. None can be walked through; near the camera they are see-through, as the plants are.
-  - Next: step 3, animals (the pastures wait for them); then people. Docks on lakes, in step 2's list, are not built yet.
+  - **The feedback round (Martin, 1 Oct):** before he sends it to people, an RPG inventory, then animals, then people (steps 3 to 5; colourful farmland and things along the roads wait).
+  - **Step 3 (an RPG inventory) is built:** I opens your bag on the right: your hero in pixels wearing what you wear, ten slots round them, 28 blocks below; pixel icons for every good; click, drag, right-click, hover; trading with the wares on the left and buying back.
+  - Next: step 4, animals (the pastures wait for them); then step 5, people. Docks on lakes, in step 2's list, are not built yet.
 - **Later, not started:** a second world, a cyberpunk city (Night City: elevation, megabuildings), chosen at the start alongside this one (Martin, 30 Sep). See the end of `docs/phase4.md`.
 - **Speed on Martin's Mac** (M1 Max, painted look): on the 512 world, Chromium 5.7–7.5 ms a frame, Firefox 7.3–9.9 ms, WebKit 6.5–14.1 ms. The 1024 world has not been measured on an idle machine yet: with Chrome busy in the background it ran Chromium 8.4–12.5 ms, Firefox 12.3–17.1 ms. A world generates in about 2.3 s (0.5 s on the 512 world).
 - **Rough edges:**
@@ -136,7 +138,7 @@ Test harness notes:
   - palm fronds are tubes up close, and canopies look faceted;
   - merchant faces and outfits are simple;
   - third person: the camera rides a rig as you look up and down (`V3_RIG_DOWN`, `V3_RIG_UP`), into your eyes as far as you can look either way; it also goes into your eyes with your back to a wall and in doors and gates (it snaps in; it never shows the hero from closer than 2 cells); a flower at the lens is a big flat blob; the hero's green tunic is close to the fields' green;
-  - gear and the bag: the things at the belt are small; candles and the lucky pebble do nothing; through your own eyes you do not see yourself eat, and from behind the food shows only while held up;
+  - gear and the bag: the things at the belt are small; candles and the lucky pebble do nothing; through your own eyes you do not see yourself eat, and from behind the food shows only while held up; the inventory's right-click menu needs the mouse or the menu key;
   - settlements: on steep land a village gets few houses and steep grass between its plots; houses have one room;
   - farms: the pastures are empty until the animals come; a gate is a gap (fences cannot be jumped); a village on rough land may have no windmill, and a windmill has no inside;
   - village things: no docks on the lakes yet; nobody minds the stalls and the signposts' boards are blank (people come in step 4); the four market stalls cost about 2 ms a frame drawn on one thread (capsules are tested over their whole box on screen);

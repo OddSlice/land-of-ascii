@@ -11,7 +11,7 @@ export const MAC_METRICS = `(() => {
   };
 })();`;
 
-export const HIDE_OVERLAYS = '#hud,#help,#hint,#prompt,#panel,#legend,#toast{display:none!important}';
+export const HIDE_OVERLAYS = '#hud,#help,#hint,#prompt,#panel,#inv,#tip,#menu,#ghost,#legend,#toast{display:none!important}';
 
 // Put the world into a scene's state and draw exactly one frame at page time tMs.
 // scene: { seed, hour, cam: {x,y,z,yaw,pitch}, merchants: [{i, s}] , t, view, weather, third, gear: ['CLOAK', ...], tunic, heroFace }

@@ -11,6 +11,16 @@ The plan, agreed the same day (his choices from three questions: food gives a sm
 
 After it, phase 4's last steps: roads that make sense, ground that reads, mountains you can climb (`docs/phase4.md`).
 
+### The feedback round (1 Oct)
+
+After step 2b Martin found the world "marginally improved" and asked for a bit more before he sends it to people for feedback. Of four choices (animals, people, colourful farmland, things along the roads) he picked animals and people, and asked for the bag to become an inventory as action RPGs have it, even RuneScape: on the right, the equipment slots and blocks of items. The order now:
+
+3. **An RPG inventory.** Your hero in pixels with ten slots round them, 28 blocks below; click, drag, right-click, hover; trading beside it.
+4. **Animals** (was 3): sheep and cows in the pastures and meadows, chickens round the village houses, ducks on ponds and lakes, deer in the forests that run off when you come near.
+5. **People** (was 4): villagers with a day in every village and town, a trader behind each market stall, guards at the town gates, farmers in the fields; a greeting when you talk to them.
+
+Colourful farmland (sunflowers, lavender, roses, orchards, vineyards) and things along the roads (docks, shrines, travellers' camps) wait.
+
 ## Step 1: your bag
 
 Shots: `shots/phase5/step1/` (`sheet-bag`: the bag and a merchant's panel; `sheet-eat`: eating the cheese).
@@ -114,3 +124,41 @@ Shots: `shots/phase5/step2b/` (`sheet-life`: the market square, a stall, barrels
 - ⚠️ The stalls have no one behind them, and the boards on the signposts are blank: the people come in step 4.
 - A world has few barns (one on seed 42), so most carts stand by farmhouses.
 - Capsules (the awnings' stripes, posts, branches) are tested over their whole box on screen; a tighter bound per column would make every solid of that kind cheaper.
+
+## Step 3: an RPG inventory
+
+Shots: `shots/phase5/step3/` (`sheet-inventory`: the bag, a note on hover, the right-click menu, dragging a tunic onto your hero, eating with the bag open, trading).
+
+How the games do it, which this follows: RuneScape gives you 28 inventory slots and 11 worn-equipment slots laid out as a body ([interface](https://oldschool.runescape.wiki/w/Interface)); Diablo's inventory is a "paper doll" of the character dressed in what is equipped, with a grid of items below it ([paper doll](https://di.diablowiki.net/Paperdoll), [inventory](https://di.diablowiki.net/Inventory)).
+
+### What changed
+
+- **I opens your bag on the right** of the screen; the world stays in view (the game waits, as while you trade). In it:
+  - **your hero, drawn in pixels,** wearing exactly what you wear and carry: the tunic's colour, cap, cloak, boots, the sword's hilt over the shoulder, the shield on the back, lantern, rope, kettle, map, the cider's flask;
+  - **ten slots round them:** head, back, body and feet down the left; weapon, shield and light on the right; rope, kettle and map on the belt. An empty slot shows the shape of what goes in it, faint;
+  - **28 blocks below** (4 by 7, as RuneScape's 28) for everything else, with a number on each stack;
+  - your gold, and how long you stay well fed.
+- **Every good has its own pixel icon,** 16 by 16, drawn in code from the game's colours. The cap takes your tunic's colour and the cloak turns brown over a red tunic, as on your hero.
+- **Using things.** Click a block to eat or drink it (your hero eats it beside the open bag) or to put it on or carry it (whatever was in that slot goes back into the blocks). Click a slot to take it off or put it away. Right-click for every action and Examine. Hover over a block, or reach it with the keyboard, for a note: what it is, what it does, what a click does. **Drag** a block onto your hero or its slot to put it on, a slot into the blocks to take it off, a block onto another to move it.
+- **Trading:** the merchant's wares on the left, in blocks with their prices (a coin mark; dimmed when you cannot pay), your bag on the right. Click a ware, or drag it into your bag, to buy; click a block of yours, or drag it onto their wares, to sell for half its price. What you sold them since you came is under BUY BACK, for what they paid.
+- The key legend hides while a panel is open. The panels fit screens from 1280 by 720: smaller blocks below 760 pixels tall, bigger above 860.
+
+### How it is built
+
+- `bag.grid`: the 28 blocks, a good's name or nothing each; `layoutBag` keeps it in step (what is gone empties its block, what is new takes the first empty one). What is worn is kept as before (`bag.off`, `wardrobe.tunic`); `worn`, `inBlocks` (all but the one worn), `slotHolds`, `equipItem` and `unequipItem` build on it, and `toggleItem` stays for the tools.
+- `ITEM` gives each good its slot (`SLOTS` and `PAPER` lay the slots out), or food's time and which it is in the hand, a line about it and a note on what it does.
+- The pictures: `ICON_ART`, `DOLL_BASE`, `DOLL_GEAR` and `dollLayers` are pixel art in strings, with an outline added round every shape (`pixels`); `iconURL` draws each icon once (per tunic for the cap and the cloak); `drawDoll` paints your hero from `hero.gear`.
+- The panel is HTML (`#inv`, built once; `renderInv` fills it), with a note (`#tip`), a menu (`#menu`) and a drag image (`#ghost`). Pointer events on the page handle clicks, right-clicks and drags (`primary`, `actionsFor`, `dropTarget`). `syncInv`, every frame, shows the bag while any panel is open and forgets the buy-back list when it closes.
+- Trading: v1's `openPanel` and `closePanel` are unchanged (`check-verbatim.mjs` still compares them); `renderGoods`, v2's own since step 1, draws the wares and the buy-back list as blocks and the bag beside them (`buyBack`, `sold`).
+
+### Numbers
+
+- Tests: all pass. The bag test also checks the ten slots and 28 blocks, that what is worn sits in its slot and the rest in the blocks, putting on and taking off (a tunic, the cloak), and selling and buying back.
+- A check driven by the mouse (hover, right-click, three drags, a click to eat, Esc, trading, selling, buying back, dragging a ware into the bag) passes in Chromium, Firefox and WebKit, with no errors in the page.
+- The picture of the world is unchanged: the bag is a panel over it, and the renderer did not change.
+
+### Still open
+
+- ⚠️ The candle and the lucky pebble still do nothing.
+- ⚠️ The right-click menu needs the mouse (or the keyboard's menu key); Tab and Enter reach and use every block.
+- You cannot drop things on the ground, and there is no bank.

@@ -52,33 +52,77 @@
   #prompt[hidden] { display: none; }
   #prompt .key { color: #000; background: var(--hud); padding: 0 5px; margin-right: 6px; }
 
-  #panel { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(440px, calc(100vw - 32px)); background: rgba(8,8,8,.94); border: 1px solid var(--hud-dim); color: var(--hud); font-size: 13px; line-height: 1.5; padding: 14px 16px 12px; box-shadow: 0 0 0 4px rgba(0,0,0,.4); }
-  #panel[hidden] { display: none; }
-  #panel h2 { margin: 0 0 2px; font-size: 15px; font-weight: normal; letter-spacing: .15em; }
-  #panel .greet { color: var(--hud-dim); margin: 0 0 10px; }
-  #panel table { width: 100%; border-collapse: collapse; }
-  #panel td { padding: 3px 0; vertical-align: middle; }
-  #panel td.price { text-align: right; color: var(--hud-dim); padding-right: 10px; white-space: nowrap; }
-  #panel td.owned { color: var(--hud-dim); white-space: nowrap; width: 9ch; padding-right: 10px; }
-  #panel td.act { width: 1%; text-align: right; }
-  #panel button { font: inherit; color: var(--hud); background: transparent; border: 1px solid var(--hud-dim); padding: 1px 10px; cursor: pointer; }
-  #panel button:hover:not(:disabled) { border-color: var(--hud); background: rgba(216,200,160,.12); }
-  #panel button:disabled { color: #5a5548; border-color: #3a3630; cursor: default; }
-  #panel .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid #3a3630; }
-  #panel .msg { color: var(--hud-dim); min-height: 1.5em; margin-top: 6px; }
-  /* The panel's lists in groups (BUY and SELL when trading; WORN, CARRIED, FOOD AND DRINK in your bag) */
-  #panel { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow-y: auto; z-index: 5; }
-  #panel button { white-space: nowrap; }
-  #panel td.name { white-space: nowrap; }
-  #panel tr.sec td { padding: 12px 0 3px; font-size: 11px; letter-spacing: .14em; color: var(--hud); }
-  #panel tr.sec:first-child td { padding-top: 2px; }
-  #panel tr.sec td small { font-size: 11px; letter-spacing: normal; color: var(--hud-dim); margin-left: 8px; }
-  #panel td.none { color: var(--hud-dim); padding: 3px 0 3px 2ch; }
-  #panel td.name { padding-left: 2ch; padding-right: 10px; }
-  #panel td.state { color: var(--hud-dim); white-space: nowrap; padding-right: 10px; }
-  #panel td.state.on { color: var(--amber); }
-  #panel button:focus-visible { outline: 1px solid var(--amber); outline-offset: 1px; }
-  #panel .fed { color: var(--amber); }
+  /* The panels (phase 5): your bag on the right (I), as action RPGs and RuneScape have it: your hero in
+     pixels with ten slots round them, and 28 blocks below; while you trade, a merchant's wares on the
+     left, with what you can buy back. Blocks are 44 px (56 on a tall screen), the 16 px icons drawn 2 or
+     3 times over. */
+  :root { --blk: 44px; --ico: 32px; --doll-w: 96px; --doll-h: 160px; }
+  @media (min-height: 860px) and (min-width: 1100px) { :root { --blk: 56px; --ico: 48px; --doll-w: 120px; --doll-h: 200px; } }
+  @media (max-height: 760px) { :root { --blk: 40px; } }
+  #panel, #inv { position: fixed; top: 50%; transform: translateY(-50%); max-height: calc(100vh - 32px); overflow-y: auto; z-index: 5;
+    background: rgba(9,8,7,.94); border: 1px solid rgba(216,200,160,.24); box-shadow: 0 0 0 4px rgba(0,0,0,.35); color: var(--hud); font-size: 12px; line-height: 1.5; padding: 12px 14px; }
+  #panel { left: 16px; width: calc(var(--blk) * 4 + 18px); }
+  body.paneled #legend { visibility: hidden; }   /* (the keys do nothing while a panel is open) */
+  #inv { right: 16px; width: calc(var(--blk) * 2 + var(--doll-w) + 20px); }
+  #panel[hidden], #inv[hidden] { display: none; }
+  #panel h2, #inv h2 { margin: 0; font-size: 13px; font-weight: normal; letter-spacing: .18em; }
+  #panel .greet { color: var(--hud-dim); margin: 2px 0 6px; }
+  #panel .sec { display: flex; justify-content: space-between; align-items: baseline; margin: 10px 0 5px; font-size: 10px; letter-spacing: .18em; }
+  #panel .sec small { letter-spacing: normal; font-size: 11px; color: var(--hud-dim); }
+  #panel .msg, #inv .msg { color: var(--hud-dim); min-height: 1.5em; margin-top: 8px; }
+  #panel .foot { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; padding-top: 8px; border-top: 1px solid #3a3630; }
+  #panel .foot b { font-weight: normal; color: var(--amber); }
+  #panel #panelClose { font: inherit; color: var(--hud); background: transparent; border: 1px solid var(--hud-dim); padding: 1px 10px; cursor: pointer; white-space: nowrap; }
+  #panel #panelClose:hover { border-color: var(--hud); background: rgba(216,200,160,.12); }
+  #panel #panelClose:focus-visible { outline: 1px solid var(--amber); outline-offset: 1px; }
+  #panel.drop { border-color: var(--amber); }
+  .wares { display: grid; grid-template-columns: repeat(4, var(--blk)); gap: 8px 6px; }
+  .ware { display: flex; flex-direction: column; align-items: center; }
+  .ware .price { font-size: 11px; line-height: 1.3; margin-top: 2px; color: var(--hud); white-space: nowrap; }
+  .ware .price::before { content: ''; display: inline-block; width: 6px; height: 6px; margin: 0 4px 1px 0; border-radius: 50%; background: var(--amber); box-shadow: inset -1px -1px 0 rgba(0,0,0,.35); }
+  .ware .price.no { color: #8a5246; }
+  .ware .price.no::before { background: #6a4a3a; }
+  #inv .ihead { display: flex; justify-content: space-between; align-items: baseline; }
+  #inv .ihead span { font-size: 11px; color: var(--hud-dim); }
+  #inv .paper { display: grid; grid-template-columns: var(--blk) 1fr var(--blk); gap: 10px; margin-top: 10px; }
+  #inv .col { display: flex; flex-direction: column; gap: 6px; }
+  #inv .col.r { justify-content: center; }
+  #inv .dollbox { display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 55%, rgba(216,200,160,.09), transparent 68%); }
+  #doll { width: var(--doll-w); height: var(--doll-h); image-rendering: pixelated; }
+  #inv .belt { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 8px; }
+  #inv .belt .lbl { font-size: 10px; letter-spacing: .18em; color: var(--hud-dim); margin-right: 4px; }
+  #inv .stat { display: flex; justify-content: space-between; margin: 10px 0 6px; padding-top: 8px; border-top: 1px solid #3a3630; }
+  #inv .stat b { font-weight: normal; color: var(--amber); }
+  #inv .stat .fed { color: var(--amber); }
+  #inv .grid { display: grid; grid-template-columns: repeat(4, var(--blk)); gap: 4px; justify-content: center; }
+  #inv .grid.drop .blk { border-color: #6f6450; }
+  .blk { position: relative; box-sizing: border-box; width: var(--blk); height: var(--blk); padding: 0; margin: 0; display: flex; align-items: center; justify-content: center;
+    font: inherit; color: inherit; background: #1b1814; border: 1px solid #3b352c; box-shadow: inset 0 0 0 1px rgba(0,0,0,.55); cursor: pointer; transition: border-color .15s ease; }
+  .blk.slot { background: #221e18; }
+  .blk img { width: var(--ico); height: var(--ico); image-rendering: pixelated; pointer-events: none; }
+  .blk img[hidden] { display: none; }
+  .blk img.ghost { opacity: .55; }
+  .blk:hover, .blk.drop { border-color: var(--amber); }
+  .blk:focus-visible { outline: 1px solid var(--amber); outline-offset: 1px; }
+  .blk.empty { cursor: default; }
+  .blk.empty:hover { border-color: #3b352c; }
+  .blk.empty.drop, #inv .grid.drop .blk.drop { border-color: var(--amber); }
+  .blk.lift img { opacity: .3; }
+  .blk.dear img { opacity: .45; }
+  .blk .cnt { position: absolute; right: 3px; bottom: 0; font-size: 11px; color: var(--amber); text-shadow: 0 1px 0 #000, 0 0 3px #000; pointer-events: none; }
+  #tip { position: fixed; z-index: 20; max-width: 240px; pointer-events: none; background: rgba(8,8,8,.96); border: 1px solid rgba(240,200,112,.45); padding: 6px 10px 8px; font-size: 12px; line-height: 1.45; color: var(--hud); }
+  #tip .nm { color: var(--amber); font-size: 13px; }
+  #tip .ty { font-size: 10px; letter-spacing: .18em; color: var(--hud-dim); margin-bottom: 4px; }
+  #tip .ef { color: #b8d08a; }
+  #tip .hint { color: var(--hud-dim); margin-top: 5px; font-size: 11px; }
+  #menu { position: fixed; z-index: 21; min-width: 160px; background: rgba(8,8,8,.97); border: 1px solid var(--hud-dim); padding: 3px 0; }
+  #menu .nm { padding: 3px 12px 4px; color: var(--amber); border-bottom: 1px solid #3a3630; margin-bottom: 2px; }
+  #menu button { display: block; width: 100%; text-align: left; font: inherit; font-size: 12px; color: var(--hud); background: transparent; border: 0; padding: 4px 12px; cursor: pointer; }
+  #menu button:hover:not(:disabled), #menu button:focus-visible { background: rgba(240,200,112,.14); color: var(--amber); outline: none; }
+  #menu button:disabled { color: #5a5548; cursor: default; }
+  #ghost { position: fixed; z-index: 22; width: 48px; height: 48px; image-rendering: pixelated; pointer-events: none; transform: translate(-50%, -50%); opacity: .9; }
+  #tip[hidden], #menu[hidden], #ghost[hidden] { display: none; }
+  @media (prefers-reduced-motion: reduce) { .blk { transition: none; } }
 
   #hint { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(0,0,0,.55); cursor: pointer; user-select: none; }
   #hint h1 { margin: 0; font-size: 22px; letter-spacing: .35em; font-weight: normal; }
@@ -112,10 +156,21 @@
 <div id="panel" hidden>
   <h2 id="panelName"></h2>
   <p class="greet" id="panelGreet"></p>
-  <table id="panelGoods"></table>
+  <div id="panelGoods"></div>
   <div class="msg" id="panelMsg"></div>
-  <div class="foot"><span>Your gold: <span id="panelGold"></span></span><button id="panelClose">Close  (Esc)</button></div>
+  <div class="foot"><span>GOLD <b id="panelGold"></b></span><button id="panelClose">Close  (Esc)</button></div>
 </div>
+<div id="inv" hidden aria-label="Your bag">
+  <div class="ihead"><h2>YOUR BAG</h2><span id="invKeys"></span></div>
+  <div class="paper"><div class="col" id="invL"></div><div class="dollbox"><canvas id="doll" width="24" height="40" aria-hidden="true"></canvas></div><div class="col r" id="invR"></div></div>
+  <div class="belt" id="invBelt"><span class="lbl">BELT</span></div>
+  <div class="stat"><span>GOLD <b id="invGold"></b></span><span class="fed" id="invFed"></span></div>
+  <div class="grid" id="invGrid"></div>
+  <div class="msg" id="invMsg"></div>
+</div>
+<div id="tip" hidden></div>
+<div id="menu" hidden></div>
+<img id="ghost" hidden alt="">
 
 <div id="help">WASD walk · SPACE jump · SHIFT sprint · E talk · mouse look · ESC release
 F fly mode · R new seed · T time ×10 · − / + resolution · [ / ] view distance · L look · V hero or eyes</div>
@@ -6388,48 +6443,64 @@ function closePanel() {
   requestLock();
 }
 
-// The panel's lists, in groups (phase 5, rebuilt from v1's goods list): a row is a name, a price or
-// a note, how many you have or how it is, and a button. Trading, a merchant's goods to buy and what
-// is in your bag to sell them; the bag itself (openBag) draws on the same panel.
-function panelSection(title, note) {
-  const tr = document.createElement('tr'), td = document.createElement('td');
-  tr.className = 'sec'; td.colSpan = 4; td.textContent = title;
-  if (note) { const sm = document.createElement('small'); sm.textContent = note; td.appendChild(sm); }
-  tr.appendChild(td); panelGoods.appendChild(tr);
+// A merchant's wares (phase 5, rebuilt from v1's goods list): blocks with their prices on the left,
+// beside your bag on the right (renderInv). Click a ware (or drag it into your bag) to buy it; click a
+// thing in your bag (or drag it onto their wares) to sell it for half its price; what you have sold
+// them since you came, you can buy back for what they paid (sold).
+const sold = { m: null, list: [] };   // (what you sold the merchant you are talking to: [name, price] each)
+function panelHead(title, note) {
+  const d = document.createElement('div');
+  d.className = 'sec'; d.textContent = title;
+  if (note) { const sm = document.createElement('small'); sm.textContent = note; d.appendChild(sm); }
+  panelGoods.appendChild(d);
 }
-function panelNone(text) {
-  const tr = document.createElement('tr'), td = document.createElement('td');
-  td.className = 'none'; td.colSpan = 4; td.textContent = text;
-  tr.appendChild(td); panelGoods.appendChild(tr);
-}
-function panelRow(name, price, state, label, disabled, onClick, on) {
-  const tr = document.createElement('tr');
-  const a = document.createElement('td'); a.className = 'name'; a.textContent = name;
-  const b = document.createElement('td'); b.className = 'price'; b.textContent = price;
-  const c = document.createElement('td'); c.className = 'state' + (on ? ' on' : ''); c.textContent = state;
-  const d = document.createElement('td'); d.className = 'act';
-  if (label) { const btn = document.createElement('button'); btn.textContent = label; btn.disabled = !!disabled; btn.addEventListener('click', onClick); d.appendChild(btn); }
-  tr.append(a, b, c, d); panelGoods.appendChild(tr);
+function wareEl(n, at, price, dear) {
+  const w = document.createElement('div'), b = blockEl(at), p = document.createElement('span');
+  w.className = 'ware';
+  setBlock(b, n, iconURL(n), 0);
+  b.classList.toggle('dear', dear);
+  p.className = 'price' + (dear ? ' no' : ''); p.textContent = price; p.title = price + ' gold';
+  w.append(b, p);
+  return w;
 }
 function renderGoods() {
   const m = ui.merchant;
+  if (sold.m !== m) { sold.m = m; sold.list = []; }
   panelGoods.innerHTML = '';
   document.getElementById('panelClose').textContent = 'Close  (Esc)';
-  panelSection('BUY');
-  for (const g of m.goods) panelRow(g.name, g.price + ' gold', bag.items[g.name] ? 'you have ' + bag.items[g.name] : '', 'Buy', g.price > ui.gold, () => buy(g));
-  panelSection('SELL', 'for half what it costs');
-  const mine = bagNames();
-  if (!mine.length) panelNone('nothing in your bag yet');
-  for (const n of mine) panelRow(n, sellPrice(m, n) + ' gold', '×' + bag.items[n], 'Sell', false, () => sell(n));
+  panelHead('WARES', 'click to buy');
+  const wares = document.createElement('div');
+  wares.className = 'wares';
+  m.goods.forEach((g, i) => wares.appendChild(wareEl(g.name, 'ware:' + i, g.price, g.price > ui.gold)));
+  panelGoods.appendChild(wares);
+  if (sold.list.length) {
+    panelHead('BUY BACK', 'what you sold them');
+    const back = document.createElement('div');
+    back.className = 'wares';
+    sold.list.forEach(([n, p], i) => back.appendChild(wareEl(n, 'back:' + i, p, p > ui.gold)));
+    panelGoods.appendChild(back);
+  }
   document.getElementById('panelGold').textContent = ui.gold;
   hud.gold.textContent = ui.gold;
+  renderInv();
 }
 
 function buy(g) {
-  if (!ui.open || g.price > ui.gold) return;
+  if (!ui.open || !g || g.price > ui.gold) return;
+  if (!roomFor(g.name)) { panelMsg.textContent = 'Your bag is full.'; return; }
   ui.gold -= g.price;
   bagAdd(g.name);
   panelMsg.textContent = 'Bought ' + g.name.toLowerCase() + ' for ' + g.price + ' gold.';
+  renderGoods();
+}
+function buyBack(k) {
+  const e = sold.list[k];
+  if (!ui.open || !ui.merchant || !e || e[1] > ui.gold) return;
+  if (!roomFor(e[0])) { panelMsg.textContent = 'Your bag is full.'; return; }
+  ui.gold -= e[1];
+  bagAdd(e[0]);
+  sold.list.splice(k, 1);
+  panelMsg.textContent = 'Bought back ' + e[0].toLowerCase() + ' for ' + e[1] + ' gold.';
   renderGoods();
 }
 // What a merchant pays for a good of yours: half their own price for it, or half what it usually costs.
@@ -6442,6 +6513,9 @@ function sell(n) {
   const p = sellPrice(ui.merchant, n);
   ui.gold += p;
   bagTake(n);
+  if (sold.m !== ui.merchant) { sold.m = ui.merchant; sold.list = []; }
+  sold.list.push([n, p]);
+  if (sold.list.length > 8) sold.list.shift();
   panelMsg.textContent = 'Sold ' + n.toLowerCase() + ' for ' + p + ' gold.';
   renderGoods();
 }
@@ -6707,86 +6781,715 @@ function solidAt(x, y, z) {   // inside a voxel of a building?
 //  YOUR BAG  (phase 5)
 // =====================================================================
 // What you have bought (items: name -> how many), what you have taken off or put away (off), how long
-// you stay well fed (fed, in seconds) and what you are eating (eat: which food, how far through).
-// I opens it, drawn on the trade panel; food makes you well fed, and well fed you sprint faster
-// (fedSprint, listed in v2-fixes). The bag goes with you to a new world, as your gold does.
-const bag = { items: {}, off: {}, fed: 0, eat: null };
+// you stay well fed (fed, in seconds), what you are eating (eat: which food, how far through), and in
+// which of the bag's 28 blocks each thing lies (grid). I opens it on the right, as action RPGs and
+// RuneScape have it: your hero drawn in pixels, wearing what you wear, ten slots round them (head,
+// back, body and feet down the left; weapon, shield and light on the right; three on the belt), and
+// the blocks below. Food makes you well fed, and well fed you sprint faster (fedSprint, listed in
+// v2-fixes). The bag goes with you to a new world, as your gold does.
+const BAG_SIZE = 28;
+const bag = { items: {}, off: {}, fed: 0, eat: null, grid: new Array(BAG_SIZE).fill(null) };
 const FED_MAX = 300, FED_SPRINT = 1.25, EAT_TIME = 1.8;   // (well fed for 5 minutes at most, sprinting a quarter faster; eating takes 1.8 s)
-// Where each good goes in the bag; food, how long it keeps you well fed, which it is (the hero's
-// hand shows it: buildHero) and how it tastes.
+// Each good: food and drink (how long it keeps you well fed; which it is in the hero's hand, buildHero),
+// or the slot it is worn or carried in, or odds and ends; and a line about it (and a note: what it does).
 const ITEM = {
-  'Loaf of bread': { group: 'food', verb: 'Eat', fed: 90, food: 0, taste: 'Still warm from the oven.' },
-  'Wheel of cheese': { group: 'food', verb: 'Eat', fed: 180, food: 1, taste: 'Sharp, and very good.' },
-  'Salted fish': { group: 'food', verb: 'Eat', fed: 120, food: 2, taste: 'Salty. You could drink a river.' },
-  'Flask of cider': { group: 'food', verb: 'Drink', fed: 60, food: 3, taste: 'Sweet and cold.' },
-  'Pointed cap': { group: 'worn' }, 'Wool cloak': { group: 'worn' }, 'Leather boots': { group: 'worn' },
-  'Red tunic': { group: 'worn' }, 'Blue tunic': { group: 'worn' }, 'Russet tunic': { group: 'worn' },
-  'Iron lantern': { group: 'carried', note: 'lights the way after dark' }, 'Short sword': { group: 'carried' }, 'Round shield': { group: 'carried' },
-  'Rope, twenty feet': { group: 'carried' }, 'Copper kettle': { group: 'carried' }, 'Map fragment': { group: 'carried' },
-  'Tallow candle': { group: 'odds' }, 'Lucky pebble': { group: 'odds', note: 'for luck' },
+  'Loaf of bread': { verb: 'Eat', fed: 90, food: 0, desc: 'Still warm from the oven.' },
+  'Wheel of cheese': { verb: 'Eat', fed: 180, food: 1, desc: 'Sharp, and very good.' },
+  'Salted fish': { verb: 'Eat', fed: 120, food: 2, desc: 'Salty. You could drink a river.' },
+  'Flask of cider': { verb: 'Drink', fed: 60, food: 3, desc: 'Sweet and cold.', note: 'Its flask hangs at your belt.' },
+  'Pointed cap': { slot: 'head', desc: 'A long cap in your tunic\u2019s colour, drooping back.' },
+  'Wool cloak': { slot: 'back', desc: 'Warm wool. It streams behind you as you walk.' },
+  'Leather boots': { slot: 'feet', desc: 'Made for long roads.' },
+  'Green tunic': { slot: 'body', desc: 'The tunic you set out in.', note: 'Wear another over it.' },
+  'Red tunic': { slot: 'body', desc: 'Good red cloth.' }, 'Blue tunic': { slot: 'body', desc: 'Good blue cloth.' },
+  'Russet tunic': { slot: 'body', desc: 'Good brown cloth, the colour of autumn.' },
+  'Iron lantern': { slot: 'light', desc: 'An iron lantern on a ring.', note: 'Lights the way after dark.' },
+  'Short sword': { slot: 'hand', desc: 'Carried on your back, the hilt over your shoulder.' },
+  'Round shield': { slot: 'off', desc: 'Wood in an iron rim, with a boss.' },
+  'Rope, twenty feet': { slot: 'belt1', desc: 'Good hemp, coiled at your hip.' },
+  'Copper kettle': { slot: 'belt2', desc: 'For tea by the road. It hangs from your pack.' },
+  'Map fragment': { slot: 'belt3', desc: 'Part of a map. Of where, it does not say.' },
+  'Tallow candle': { desc: 'A plain candle.', note: 'It does nothing yet.' },
+  'Lucky pebble': { desc: 'Smooth and grey.', note: 'For luck.' },
 };
-const BAG_GROUPS = [['worn', 'WORN'], ['carried', 'CARRIED'], ['food', 'FOOD AND DRINK'], ['odds', 'ODDS AND ENDS']];
+// The slots: each one's name and the good whose shape shows in it, faint, while it is empty; and where
+// they are (down the left of your hero, the right, and along the belt). Carried things are put away
+// rather than taken off.
+const SLOTS = { head: ['HEAD', 'Pointed cap'], back: ['BACK', 'Wool cloak'], body: ['BODY', 'Green tunic'], feet: ['FEET', 'Leather boots'],
+  hand: ['WEAPON', 'Short sword'], off: ['SHIELD', 'Round shield'], light: ['LIGHT', 'Iron lantern'],
+  belt1: ['BELT', 'Rope, twenty feet'], belt2: ['BELT', 'Copper kettle'], belt3: ['BELT', 'Map fragment'] };
+const PAPER = [['invL', ['head', 'back', 'body', 'feet']], ['invR', ['hand', 'off', 'light']], ['invBelt', ['belt1', 'belt2', 'belt3']]];
+const CARRIED = { hand: 1, off: 1, light: 1, belt1: 1, belt2: 1, belt3: 1 };
 const bagNames = () => GOODS.map(G => G[0]).filter(n => bag.items[n] > 0);   // (in the merchants' order)
 function bagAdd(n) { bag.items[n] = (bag.items[n] || 0) + 1; updateGear(); }
 function bagTake(n) { if (bag.items[n] > 0 && --bag.items[n] === 0) { delete bag.items[n]; delete bag.off[n]; } updateGear(); }
 const fedSprint = () => bag.fed > 0 ? FED_SPRINT : 1;
 const clockOf = sec => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
-const wearing = n => TUNIC_OF[n] ? wardrobe.tunic === TUNIC_OF[n] : !bag.off[n];
+const worn = n => bag.items[n] > 0 && (TUNIC_OF[n] ? wardrobe.tunic === TUNIC_OF[n] : !bag.off[n]);
+const inBlocks = n => (bag.items[n] || 0) - (ITEM[n] && ITEM[n].slot && worn(n) ? 1 : 0);   // (all but the one worn)
+const slotHolds = id => id === 'body' ? Object.keys(TUNIC_OF).find(n => worn(n)) || 'Green tunic' : worn(SLOTS[id][1]) ? SLOTS[id][1] : null;
+// The blocks: what has gone from them leaves its block empty, and what is new goes in the first empty one.
+function layoutBag() {
+  const g = bag.grid;
+  for (let i = 0; i < BAG_SIZE; i++) if (g[i] && !(inBlocks(g[i]) > 0)) g[i] = null;
+  for (const n of bagNames()) if (inBlocks(n) > 0 && !g.includes(n)) { const i = g.indexOf(null); if (i >= 0) g[i] = n; }
+}
+const roomFor = n => { layoutBag(); return bag.grid.includes(null) || inBlocks(n) > 0 || !!(ITEM[n] && ITEM[n].slot && !TUNIC_OF[n] && !(bag.items[n] > 0)); };
 
+// Put on (or carry) and take off (or put away): what shows on your hero, and whether the lantern lights.
+function equipItem(n) {
+  if (!ITEM[n] || !ITEM[n].slot || !(bag.items[n] > 0) || worn(n)) return false;
+  if (TUNIC_OF[n]) wardrobe.tunic = TUNIC_OF[n]; else delete bag.off[n];
+  updateGear();
+  layoutBag();
+  invSay(`You ${CARRIED[ITEM[n].slot] ? 'carry' : 'put on'} the ${n.toLowerCase()}.`);
+  return true;
+}
+function unequipItem(n, at) {   // (at: a block to put it in, if that one is empty)
+  if (!ITEM[n] || !ITEM[n].slot || !worn(n)) return false;
+  layoutBag();
+  if (!(inBlocks(n) > 0) && !bag.grid.includes(null)) { invSay('There is no room for it in your bag.'); return false; }
+  if (TUNIC_OF[n]) wardrobe.tunic = 0; else bag.off[n] = true;
+  updateGear();
+  if (at != null && !bag.grid[at] && !bag.grid.includes(n)) bag.grid[at] = n;
+  layoutBag();
+  invSay(`You ${CARRIED[ITEM[n].slot] ? 'put away' : 'take off'} the ${n.toLowerCase()}.`);
+  return true;
+}
+function toggleItem(n) { if (worn(n)) unequipItem(n); else equipItem(n); if (ui.open) renderInv(); }
+// Eat or drink: one fewer in the bag, well fed for longer, and your hero lifts it to their mouth (the
+// bag stays open beside them).
+function eatItem(n) {
+  const it = ITEM[n];
+  if (!it || !it.fed || !(bag.items[n] > 0) || bag.eat) return;
+  bagTake(n);
+  bag.fed = Math.min(FED_MAX, bag.fed + it.fed);
+  bag.eat = { food: it.food, t: 0 };
+  toast(it.verb === 'Drink' ? 'YOU DRINK' : 'YOU EAT', n.toUpperCase(), `${it.desc} Well fed for ${clockOf(bag.fed)}: you sprint faster.`);
+  if (ui.open) renderInv();
+}
+// A block or slot clicked (or Enter on it): its first action. In the bag: eat or drink, put on or carry,
+// take off or put away; trading: buy their wares, and sell yours. The rest are on the right-click menu.
+const renderAfter = () => ui.merchant ? renderGoods() : renderInv();
+function primary(n, at) {
+  const [where, k] = at.split(':'), it = ITEM[n] || {};
+  if (where === 'ware') return buy(ui.merchant && ui.merchant.goods[+k]);
+  if (where === 'back') return buyBack(+k);
+  if (where === 'slot') { if (n === 'Green tunic') invSay(`${it.desc} ${it.note}`); else unequipItem(n); return renderAfter(); }
+  if (ui.merchant) return sell(n);
+  if (it.fed) eatItem(n); else if (it.slot) equipItem(n); else invSay(`${n}: ${it.desc} ${it.note || ''}`.trim());
+  renderAfter();
+}
+function actionsFor(n, at) {
+  const it = ITEM[n] || {}, [where, k] = at.split(':'), m = ui.merchant, acts = [];
+  if (where === 'ware') { const g = m.goods[+k]; acts.push([`Buy for ${g.price} gold`, () => buy(g), g.price > ui.gold]); }
+  else if (where === 'back') { const e = sold.list[+k]; acts.push([`Buy back for ${e[1]} gold`, () => buyBack(+k), e[1] > ui.gold]); }
+  else if (where === 'slot') { if (n !== 'Green tunic') acts.push([CARRIED[it.slot] ? 'Put away' : 'Take off', () => { unequipItem(n); renderAfter(); }]); }
+  else {
+    if (it.fed) acts.push([it.verb, () => { eatItem(n); renderAfter(); }, !!bag.eat]);
+    if (it.slot) acts.push([CARRIED[it.slot] ? 'Carry' : 'Wear', () => { equipItem(n); renderAfter(); }]);
+    if (m) acts.push([`Sell for ${sellPrice(m, n)} gold`, () => sell(n)]);
+  }
+  acts.push(['Examine', () => invSay(`${n}: ${it.desc || ''} ${it.note || ''}`.trim())]);
+  return acts;
+}
+
+// The goods' icons, pixel art 16 x 16: fills only (an outline is drawn round every shape), '.' empty;
+// 1 2 3 are the tunic's colours (the tunics, and the cap, which takes your tunic's), 4 5 6 the cloak's
+// (red, or brown over a red tunic), as on your hero.
+const ICON_PAL = {
+  W: '#4b3324', v: '#735032', V: '#9c7245',                     // wood
+  b: '#a4653a', B: '#d8964c', C: '#f8c870',                     // crust, amber
+  y: '#c8961e', Y: '#f2c83a', Z: '#fff08a',                     // cheese
+  s: '#57545c', i: '#7f7a78', S: '#aaa192', I: '#d6cbb1',       // iron
+  r: '#5e2226', R: '#943630', Q: '#c1573c',                     // red
+  u: '#1f2c52', U: '#334a84', O: '#5173ad',                     // blue
+  g: '#1d3a26', G: '#33593a', H: '#54804a',                     // green
+  n: '#3e2a1f', N: '#684831', M: '#967049',                     // russet
+  c: '#7c3024', E: '#cc663c', e: '#e48c55',                     // copper
+  a: '#8e7a62', A: '#c4a878', D: '#e8cf96', F: '#fbecc0',       // parchment
+  f: '#f59038', L: '#ffcd5e', X: '#fff4cc',                     // flame
+  h: '#7e6a2c', j: '#b3973a', J: '#e0c35a',                     // rope
+  m: '#5e5a62', o: '#9a958f', T: '#cfcac0', P: '#f0ede4',       // fish
+  x: '#11151e', K: '#2f2931', q: '#c98b66', l: '#edbd94',         // ink, dark, skin
+  t: '#a0927a', z: '#e9ddbf',                                   // tallow
+  d: '#34343f',                                                 // stone dark
+};
+const ICON_ART = {
+  'Loaf of bread': [
+    '................',
+    '................',
+    '................',
+    '................',
+    '......CCCC......',
+    '....CCBCCCBC....',
+    '...CCBCCCBCCBC..',
+    '..BCBCCCBCCBCCB.',
+    '..BBCBBCBBCCBBB.',
+    '..bBBBBBBBBBBBb.',
+    '..bbBBBBBBBBBbb.',
+    '...bbbBBBBBbbb..',
+    '....bbbbbbbbb...',
+    '................',
+    '................',
+    '................'],
+  'Wheel of cheese': [
+    '................',
+    '................',
+    '................',
+    '..........Z.....',
+    '........ZZY.....',
+    '......ZZZZYY....',
+    '....ZZZZZYYYY...',
+    '..ZZZZZZYYYYYY..',
+    '..YYYYYYYYYYYY..',
+    '..YyYYYYYYyYYY..',
+    '..YYYYyYYYYYyY..',
+    '..YYyYYYYyYYYY..',
+    '..yyyyyyyyyyyy..',
+    '................',
+    '................',
+    '................'],
+  'Salted fish': [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '...oooooo....mm.',
+    '..ooxoooooo.mom.',
+    '.ooooooooooomom.',
+    '.TTTTTTTTTooom..',
+    '..PPPPPPPTTomom.',
+    '...PPPPPPT..mom.',
+    '.............mm.',
+    '................',
+    '................',
+    '................',
+    '................'],
+  'Flask of cider': [
+    '................',
+    '......vv........',
+    '......Vv........',
+    '......II........',
+    '......SI........',
+    '.....SCCS.......',
+    '....SCCCCS......',
+    '...SBCCCCCS.....',
+    '...SBCCCCCS.....',
+    '...SbBCCCBS.....',
+    '...SbBBBBbS.....',
+    '....SbbbbS......',
+    '................',
+    '................',
+    '................',
+    '................'],
+  'Pointed cap': [
+    '................',
+    '................',
+    '................',
+    '........23......',
+    '.......2223.....',
+    '......222233....',
+    '.....2222223....',
+    '.....2222.223...',
+    '....22222..23...',
+    '....32222...2...',
+    '...3322222......',
+    '...11111111.....',
+    '..1111111111....',
+    '................',
+    '................',
+    '................'],
+  'Wool cloak': [
+    '................',
+    '................',
+    '.....55SS55.....',
+    '....555..555....',
+    '....55....55....',
+    '...555....555...',
+    '...6555..5555...',
+    '..655555555455..',
+    '..655555555455..',
+    '..655555554555..',
+    '.65555555545555.',
+    '.65555555545555.',
+    '.45554555545545.',
+    '.44444444444444.',
+    '................',
+    '................'],
+  'Leather boots': [
+    '................',
+    '................',
+    '..VVVV..........',
+    '..vVVv..VVVV....',
+    '..vVVv..vVVv....',
+    '..vVVv..vVVv....',
+    '..vVVv..vVVv....',
+    '..vVVvv.vVVv....',
+    '..vVVVVvvVVvv...',
+    '..WvvvVVvVVVVv..',
+    '..WWWWWWWvvvVVv.',
+    '........WWWWWWW.',
+    '................',
+    '................',
+    '................',
+    '................'],
+  tunic: [
+    '................',
+    '................',
+    '....333..333....',
+    '..33333..33333..',
+    '.3332222222233 .',
+    '.33222222222233.',
+    '.33.22222222.33.',
+    '....22222222....',
+    '....22222222....',
+    '....WWWWWWWW....',
+    '...2222222222...',
+    '...2222222222...',
+    '...1222222221...',
+    '...1111111111...',
+    '................',
+    '................'],
+  'Iron lantern': [
+    '................',
+    '......ssss......',
+    '.....s....s.....',
+    '.....s....s.....',
+    '.....SSSSSS.....',
+    '....SIIIIIIS....',
+    '.....sLLLLs.....',
+    '.....iLXXLi.....',
+    '.....iLXXLi.....',
+    '.....iLLLLi.....',
+    '.....sffffs.....',
+    '....SIIIIIIS....',
+    '.....ssssss.....',
+    '................',
+    '................',
+    '................'],
+  'Short sword': [
+    '................',
+    '.............II.',
+    '............IIS.',
+    '...........IIS..',
+    '..........IIS...',
+    '.........IIS....',
+    '........IIS.....',
+    '.......IIS......',
+    '...s..IIS.......',
+    '...sSIIS........',
+    '....sSS.........',
+    '....vSsS........',
+    '...vV..ss.......',
+    '..vV............',
+    '..s.............',
+    '................'],
+  'Round shield': [
+    '................',
+    '................',
+    '.....ssssss.....',
+    '....sVVVVVVs....',
+    '...sVVvVVvVVs...',
+    '..sVVVvVVvVVVs..',
+    '..sVVVvIIvVVVs..',
+    '..sVVVvISvVVVs..',
+    '..sVVVvVVvVVVs..',
+    '..sVVVvVVvVVVs..',
+    '...svVvVVvVvs...',
+    '....svvvvvvs....',
+    '.....ssssss.....',
+    '................',
+    '................',
+    '................'],
+  'Rope, twenty feet': [
+    '................',
+    '................',
+    '.....jJJJJj.....',
+    '....jj....jj....',
+    '...jj.jJJj.jj...',
+    '...j.jj..jj.j...',
+    '..jj.j.JJ.j.jj..',
+    '..jj.j.jj.j.jj..',
+    '..jj.jj..jj.jj..',
+    '...j..jjjj..j...',
+    '...jj......jj...',
+    '....jjhhhhjj..h.',
+    '......hhhh...h..',
+    '...........hh...',
+    '................',
+    '................'],
+  'Copper kettle': [
+    '................',
+    '.....ssssss.....',
+    '....s......s....',
+    '....s..cc..s....',
+    '....sccEEccs....',
+    '...cEEEEEEEEc...',
+    '..cEeeEEEEEEEc..',
+    '..cEeEEEEEEEEc.E',
+    '..cEeEEEEEEEEcE.',
+    '..cEEEEEEEEEEEE.',
+    '..cEEEEEEEEEEc..',
+    '...cEEEEEEEEc...',
+    '....cccccccc....',
+    '................',
+    '................',
+    '................'],
+  'Map fragment': [
+    '................',
+    '................',
+    '...DDDDDDDDDD...',
+    '..DFFFFFFFFFFD..',
+    '..DFFAFFFFFFFD..',
+    '..DFFFAFFFFFFDD.',
+    '..DFFFFAAFFFFD..',
+    '..DFFFFFFAFFFD..',
+    '..DFFFFFFFARFQD.',
+    '..DFFFFFFFFQRFD.',
+    '..DFFFFFFFFRFQD.',
+    '..DFFFFFFFFFFD..',
+    '..aDDDaDDDaDD...',
+    '................',
+    '................',
+    '................'],
+  'Tallow candle': [
+    '................',
+    '.......L........',
+    '......LXL.......',
+    '......LXL.......',
+    '.......f........',
+    '.......K........',
+    '......zzz.......',
+    '......zzt.......',
+    '......zzt.......',
+    '......zzt.......',
+    '......zzt.......',
+    '....SSSSSSS.....',
+    '.....sssss......',
+    '................',
+    '................',
+    '................'],
+  'Lucky pebble': [
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '.....iiiiI......',
+    '....iSSSIIi.....',
+    '...iSSSSSSIi....',
+    '...iSSSSSSSi....',
+    '...siSSSSSis....',
+    '....ssiiiss.....',
+    '......ssss......',
+    '................',
+    '................',
+    '................',
+    '................'],
+};
+
+// The paper doll: your hero from the front, 24 x 40, in layers (1 2 3: the tunic's colours, dark to
+// light; the cloak's: c1 c2 c3). Layers behind the body first, then the body, then what is worn on it.
+const DOLL_BASE = [
+  '........................',
+  '........................',
+  '..........jjjj..........',
+  '.........jJJJJj.........',
+  '........jJJJJJJj........',
+  '........jJlllllj........',
+  '........jlxllxlj........',
+  '........jllllllj........',
+  '.........qllllq.........',
+  '..........qqqq..........',
+  '...........qq...........',
+  '......233333333332......',
+  '....2333333333333221....',
+  '....23.3333333332.21....',
+  '....23.3333333332.21....',
+  '....23.3333333332.21....',
+  '....23.3333333332.21....',
+  '....ql.3333333332.lq....',
+  '....ql.3333333332.lq....',
+  '....ql.3333333332.lq....',
+  '....ql.3333333332.lq....',
+  '....qq.WWWWCCWWWW.qq....',
+  '.......2333333332.......',
+  '.......2333333332.......',
+  '......223333333321......',
+  '......222222222221......',
+  '........MNN..NNn........',
+  '........MNN..NNn........',
+  '........MNN..NNn........',
+  '........MNN..NNn........',
+  '........MNN..NNn........',
+  '........MNN..NNn........',
+  '........MNN..NNn........',
+  '........MNN..NNn........',
+  '.......KKKK..KKKK.......',
+  '.......KKKK..KKKK.......',
+  '........................',
+  '........................',
+  '........................',
+  '........................'];
+// overlays: [x, y, rows]
+const DOLL_GEAR = {
+  BOOTS: [7, 29, ['.Vvv..Vvv.', '.Vvv..Vvv.', '.Vvv..Vvv.', '.Vvv..Vvv.', '.Vvv..Vvv.', 'WvvW..WvvW', 'WvvW..WvvW']],
+  CAP: [7, 1, [
+    '..23333.......',
+    '.2333333......',
+    '.23333333332..',
+    '.11111111.33321',
+    '............221',
+    '.............1.']],
+  SWORD: [4, 4, ['.S.', '.W.', '.W.', '.W.', '.W.', 'ISS', '.s.']],
+  LANTERN: [0, 20, ['.ss.', 'SSSS', 'sLLs', 'iXLi', 'sLLs', 'SSSS']],
+  ROPE: [18, 22, ['.jjj.', 'jJ.Jj', 'j.j.j', 'jJ.Jj', '.jjj.']],
+  MAP: [13, 18, ['FD..', '.FD.', '.DA.']],
+  FLASK: [8, 21, ['.II.', 'SCCS', 'SBCS', '.SS.']],
+  KETTLE: [17, 7, ['.ss.', 'eEEc', 'EEEc', '.cc.']],
+};
+function dollLayers(gear, tunic) {   // (behind, body, in front)
+  const behind = [], front = [];
+  if (gear.CLOAK) { const rows = []; for (let y = 11; y <= 31; y++) { const h = Math.min(10, 7 + Math.floor((y - 11) / 5)), x0 = 12 - h, x1 = 11 + h; let r = ''; for (let x = 0; x < 24; x++) r += x < x0 || x > x1 ? '.' : x === x0 ? '6' : x === x1 ? '4' : '5'; rows.push(r); } behind.push([0, 11, rows]); }
+  if (gear.SHIELD) { const rows = []; for (let y = 0; y < 11; y++) { let r = ''; for (let x = 0; x < 11; x++) { const d = Math.hypot(x - 5, y - 5); r += d > 5.4 ? '.' : d > 4.3 ? 's' : d < 1.2 ? 'I' : (x === 3 || x === 7) ? 'v' : 'V'; } rows.push(r); } behind.push([13, 11, rows]); }
+  if (gear.KETTLE) behind.push(DOLL_GEAR.KETTLE);
+  if (gear.SWORD) behind.push(DOLL_GEAR.SWORD);
+  if (gear.BOOTS) front.push(DOLL_GEAR.BOOTS);
+  if (gear.CAP) front.push(DOLL_GEAR.CAP);
+  for (const k of ['MAP', 'FLASK', 'LANTERN', 'ROPE']) if (gear[k]) front.push(DOLL_GEAR[k]);
+  return { behind, front };
+}
+
+// Pixel art to a canvas (an outline round every shape when asked), and the icons' pictures (made once,
+// per tunic where they take its colours). ghostURL: a slot's empty shape, the good's, faint.
+function pixels(cv, rows, pal, outline) {
+  const w = cv.width, h = cv.height, g = cv.getContext('2d'), at = (x, y) => x >= 0 && y >= 0 && x < w && y < h && rows[y] && rows[y][x] && rows[y][x] !== '.';
+  g.clearRect(0, 0, w, h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (at(x, y)) { g.fillStyle = typeof pal === 'string' ? pal : pal[rows[y][x]] || '#f0f'; g.fillRect(x, y, 1, 1); }
+    else if (outline && (at(x - 1, y) || at(x + 1, y) || at(x, y - 1) || at(x, y + 1))) { g.fillStyle = outline; g.fillRect(x, y, 1, 1); }
+  }
+  return cv;
+}
+const iconCache = {}, OUTLINE = '#1b1820';
+function wearPal(t) {   // (the palette with the tunic's colours and the cloak's)
+  const ramps = KEYFRAMES.day.ramps, tun = ramps[['robe2', 'robe0', 'robe1', 'robe3'][t]], cl = ramps[t === 1 ? 'robe3' : 'robe0'];
+  return { ...ICON_PAL, 1: tun[0], 2: tun[1], 3: tun[2], 4: cl[0], 5: cl[1], 6: cl[2] };
+}
+function iconURL(n) {
+  const own = TUNIC_OF[n] || (n === 'Green tunic' ? 0 : -1), t = own >= 0 ? own : (hero.gear >> 12) & 3, key = n + '|' + t;
+  if (!iconCache[key]) {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 16;
+    iconCache[key] = pixels(cv, own >= 0 ? ICON_ART.tunic : ICON_ART[n] || ICON_ART['Lucky pebble'], wearPal(t), OUTLINE).toDataURL();
+  }
+  return iconCache[key];
+}
+function ghostURL(n) {
+  const key = '~' + n;
+  if (!iconCache[key]) { const cv = document.createElement('canvas'); cv.width = cv.height = 16; iconCache[key] = pixels(cv, ICON_ART[n] || ICON_ART.tunic, '#3a3329', null).toDataURL(); }
+  return iconCache[key];
+}
+// Your hero in the bag: what they wear and carry (hero.gear), in their tunic's colours.
+function drawDoll() {
+  const g = hero.gear, t = (g >> 12) & 3, on = {};
+  for (const k in GEAR) on[k] = (g & GEAR[k]) !== 0;
+  const rows = DOLL_BASE.map(r => r.split('')), put = ([x0, y0, rs]) => rs.forEach((r, y) => { for (let x = 0; x < r.length; x++) if (r[x] !== '.' && rows[y0 + y]) rows[y0 + y][x0 + x] = r[x]; });
+  const L = dollLayers(on, t), base = DOLL_BASE.map(r => r.split(''));
+  for (const r of rows) r.fill('.');
+  for (const l of L.behind) put(l);
+  base.forEach((r, y) => r.forEach((ch, x) => { if (ch !== '.') rows[y][x] = ch; }));
+  for (const l of L.front) put(l);
+  pixels(dollEl, rows.map(r => r.join('')), wearPal(t), OUTLINE);
+}
+
+// The panel: built once (ten slots, 28 blocks), drawn again whenever what you have changes.
+const inv = document.getElementById('inv'), dollEl = document.getElementById('doll'), invGridEl = document.getElementById('invGrid');
+const invMsg = document.getElementById('invMsg'), invGold = document.getElementById('invGold'), invFed = document.getElementById('invFed');
+const tip = document.getElementById('tip'), menu = document.getElementById('menu'), ghost = document.getElementById('ghost');
+const slotEls = {}, blockEls = [];
+const invSay = text => { invMsg.textContent = text; };
+function blockEl(at) {
+  const b = document.createElement('button'), im = document.createElement('img'), c = document.createElement('span');
+  b.type = 'button'; b.className = 'blk'; b.dataset.at = at; b.dataset.n = '';
+  im.alt = ''; im.draggable = false; c.className = 'cnt';
+  b.append(im, c);
+  return b;
+}
+function setBlock(b, n, src, count) {
+  const im = b.firstChild;
+  b.dataset.n = n || '';
+  if (src) { if (im.getAttribute('src') !== src) im.src = src; im.hidden = false; } else im.hidden = true;
+  b.lastChild.textContent = count > 1 ? count : '';
+  b.classList.toggle('empty', !n);
+  b.setAttribute('aria-label', n ? n + (count > 1 ? ', ' + count : '') : b.dataset.at.startsWith('slot') ? SLOTS[b.dataset.at.slice(5)][0].toLowerCase() + ', empty' : 'empty');
+}
+for (const [col, ids] of PAPER) for (const id of ids) { const b = blockEl('slot:' + id); b.classList.add('slot'); slotEls[id] = b; document.getElementById(col).appendChild(b); }
+for (let i = 0; i < BAG_SIZE; i++) { const b = blockEl('grid:' + i); blockEls.push(b); invGridEl.appendChild(b); }
+function renderInv() {
+  layoutBag();
+  for (const id in SLOTS) {
+    const n = slotHolds(id), b = slotEls[id];
+    setBlock(b, n, n ? iconURL(n) : ghostURL(SLOTS[id][1]), 0);
+    b.firstChild.classList.toggle('ghost', !n);
+  }
+  bag.grid.forEach((n, i) => setBlock(blockEls[i], n, n && iconURL(n), n ? inBlocks(n) : 0));
+  drawDoll();
+  invGold.textContent = ui.gold;
+  hud.gold.textContent = ui.gold;
+  invFedText();
+  document.getElementById('invKeys').textContent = ui.merchant ? 'Esc to close' : 'I or Esc to close';
+  inv.hidden = !ui.open;
+  tipKey = '';
+}
+function invFedText() { const t = bag.fed > 0 ? 'WELL FED ' + clockOf(bag.fed) : ''; if (invFed.textContent !== t) invFed.textContent = t; }
 function openBag() {   // (as openPanel: the game waits and the mouse is free while it is open)
   if (ui.open) return;
   ui.open = true; ui.merchant = null;
   for (const k in keys) keys[k] = false;
   player.vy = 0;
   promptEl.hidden = true;
-  document.getElementById('panelName').textContent = 'YOUR BAG';
-  panelMsg.textContent = '';
-  renderBag();
-  panel.hidden = false;
+  invSay('');
+  renderInv();
   if (document.pointerLockElement) document.exitPointerLock();
   hint.hidden = true;
 }
-function renderBag() {
-  panelGoods.innerHTML = '';
-  document.getElementById('panelClose').textContent = 'Close  (I or Esc)';
-  document.getElementById('panelGreet').innerHTML = bag.fed > 0 ? `<span class="fed">Well fed for ${clockOf(bag.fed)}:</span> you sprint faster.` : 'Food and drink make you well fed for a while: you sprint faster.';
-  const names = bagNames();
-  if (!names.length) panelNone('Nothing yet. Merchants walk the roads: E to talk and trade.');
-  for (const [grp, title] of BAG_GROUPS) {
-    const list = names.filter(n => ITEM[n] && ITEM[n].group === grp);
-    if (!list.length) continue;
-    panelSection(title);
-    for (const n of list) {
-      const it = ITEM[n], label = n + (bag.items[n] > 1 ? ' ×' + bag.items[n] : '');
-      if (grp === 'food') panelRow(label, `well fed ${clockOf(it.fed)}`, '', it.verb, !!bag.eat, () => eatItem(n));
-      else if (grp === 'odds') panelRow(label, it.note || '', '', '', true);
-      else {
-        const on = wearing(n), worn = grp === 'worn';
-        panelRow(label, it.note || '', on ? (worn ? 'worn' : 'carried') : 'in the bag', on ? (worn ? 'Take off' : 'Put away') : (worn ? 'Wear' : 'Carry'), false, () => toggleItem(n), on);
-      }
+// Every frame: the bag shows while any panel is open (alone, or beside a merchant's wares), and the
+// well-fed time in it runs down; closed, it forgets what it was showing.
+function syncInv() {
+  if (document.body.classList.contains('paneled') !== ui.open) document.body.classList.toggle('paneled', ui.open);
+  if (inv.hidden === ui.open) {
+    if (ui.open) renderInv();
+    else { inv.hidden = true; hideTip(); hideMenu(); endDrag(); press = null; sold.m = null; sold.list = []; invSay(''); }
+  }
+  if (ui.open) invFedText();
+}
+
+// What a block is, on a note beside the pointer: its name, kind, what it does, and what a click does.
+let tipKey = '';
+function showTip(el, x, y) {
+  const n = el.dataset.n, at = el.dataset.at, [where, k] = at.split(':'), key = [n, at, ui.gold, bag.items[n] || 0, bag.eat ? 1 : 0].join('|');
+  if (key !== tipKey) {
+    tipKey = key;
+    tip.innerHTML = '';
+    const add = (cls, text) => { if (!text) return; const d = document.createElement('div'); d.className = cls; d.textContent = text; tip.appendChild(d); };
+    if (!n) { add('nm', SLOTS[k] ? SLOTS[k][0] : 'Empty'); add('hint', SLOTS[k] ? `Empty. Merchants sell what goes here: ${SLOTS[k][1].toLowerCase()}.` : 'Empty.'); }
+    else {
+      const it = ITEM[n] || {}, m = ui.merchant, count = where === 'grid' ? inBlocks(n) : 0;
+      add('nm', n + (count > 1 ? ` \u00d7${count}` : ''));
+      add('ty', it.slot ? SLOTS[it.slot][0] + (where === 'slot' ? (CARRIED[it.slot] ? ' \u00b7 CARRIED' : ' \u00b7 WORN') : '') : it.fed ? (it.verb === 'Drink' ? 'DRINK' : 'FOOD') : 'ODDS AND ENDS');
+      add('ln', it.desc);
+      add('ef', it.note);
+      if (it.fed) add('ef', `Well fed for ${clockOf(it.fed)}: you sprint faster.`);
+      let hintText = '';
+      if (where === 'ware') { const g = m.goods[+k]; if (bag.items[n]) add('ln', `You have ${bag.items[n]}.`); hintText = g.price > ui.gold ? `It costs ${g.price} gold; you have ${ui.gold}.` : `Click to buy for ${g.price} gold.`; }
+      else if (where === 'back') hintText = `Click to buy back for ${sold.list[+k][1]} gold.`;
+      else if (where === 'slot') hintText = n === 'Green tunic' ? '' : `Click to ${CARRIED[it.slot] ? 'put it away' : 'take it off'}.`;
+      else if (m) hintText = `Click to sell for ${sellPrice(m, n)} gold.`;
+      else hintText = it.fed ? `Click to ${it.verb.toLowerCase()}.` : it.slot ? `Click to ${CARRIED[it.slot] ? 'carry it' : 'wear it'}.` : '';
+      add('hint', (hintText ? hintText + ' ' : '') + 'Right-click for more; drag to move.');
     }
   }
-  document.getElementById('panelGold').textContent = ui.gold;
-  hud.gold.textContent = ui.gold;
+  tip.hidden = false;
+  const r = tip.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight;
+  let tx = x + 16, ty = y + 18;
+  if (tx + r.width > vw - 8) tx = x - r.width - 14;
+  if (ty + r.height > vh - 8) ty = vh - 8 - r.height;
+  tip.style.left = Math.max(8, tx) + 'px'; tip.style.top = Math.max(8, ty) + 'px';
 }
-// Eat or drink: one fewer in the bag, well fed for longer, and the bag closes so you see your hero
-// lift it to their mouth.
-function eatItem(n) {
-  const it = ITEM[n];
-  if (!it || it.group !== 'food' || !(bag.items[n] > 0) || bag.eat) return;
-  bagTake(n);
-  bag.fed = Math.min(FED_MAX, bag.fed + it.fed);
-  bag.eat = { food: it.food, t: 0 };
-  if (ui.open) closePanel();
-  toast(it.verb === 'Drink' ? 'YOU DRINK' : 'YOU EAT', n.toUpperCase(), `${it.taste} Well fed for ${clockOf(bag.fed)}: you sprint faster.`);
+function hideTip() { tip.hidden = true; tipKey = ''; }
+// The right-click menu: every action for a block, and Examine.
+function showMenu(n, at, x, y) {
+  hideTip();
+  menu.innerHTML = '';
+  const h = document.createElement('div');
+  h.className = 'nm'; h.textContent = n;
+  menu.appendChild(h);
+  for (const [label, fn, off] of actionsFor(n, at)) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = label; b.disabled = !!off;
+    b.addEventListener('click', e => { e.stopPropagation(); hideMenu(); fn(); });
+    menu.appendChild(b);
+  }
+  menu.hidden = false;
+  const r = menu.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(x, window.innerWidth - r.width - 8)) + 'px';
+  menu.style.top = Math.max(8, Math.min(y, window.innerHeight - r.height - 8)) + 'px';
+  const first = menu.querySelector('button:not(:disabled)');
+  if (first) first.focus();
 }
-// Wear or take off, carry or put away: what shows on your hero (and whether the lantern lights).
-function toggleItem(n) {
-  if (TUNIC_OF[n]) wardrobe.tunic = wardrobe.tunic === TUNIC_OF[n] ? 0 : TUNIC_OF[n];   // (taking off a tunic puts the green one back on)
-  else if (bag.off[n]) delete bag.off[n]; else bag.off[n] = true;
-  updateGear();
-  if (ui.open && !ui.merchant) renderBag();
+function hideMenu() { menu.hidden = true; }
+// Dragging a block: into a slot or onto your hero to put it on, out of a slot into the blocks to take it
+// off, between blocks to move it; trading, onto their wares to sell and from them into your bag to buy.
+let press = null, drag = null, swallow = false;
+function endDrag() {
+  if (drag) drag.el.classList.remove('lift');
+  drag = null; ghost.hidden = true;
+  for (const d of document.querySelectorAll('.drop')) d.classList.remove('drop');
 }
+function dropTarget(x, y) {   // ([what to light, what to do]) or null
+  const t = document.elementFromPoint(x, y), n = drag.n, at = drag.at, it = ITEM[n] || {}, [from, k] = at.split(':');
+  if (!t) return null;
+  const el = t.closest('[data-at]'), toAt = el ? el.dataset.at : '', inInv = t.closest('#inv'), inPanel = t.closest('#panel');
+  if (from === 'ware' || from === 'back') return inInv ? [invGridEl, () => primary(n, at)] : null;
+  if (from === 'grid') {
+    if (inPanel && ui.merchant) return [panel, () => sell(n)];
+    if (!inInv) return null;
+    if (toAt.startsWith('grid:')) { const a = +k, b = +toAt.slice(5); return a === b ? null : [el, () => { const g = bag.grid; [g[a], g[b]] = [g[b], g[a]]; renderInv(); }]; }
+    if (it.slot && t.closest('.paper, .belt')) return [slotEls[it.slot], () => { equipItem(n); renderAfter(); }];
+    return null;
+  }
+  if (from === 'slot' && inInv && t.closest('#invGrid') && n !== 'Green tunic') {
+    const b = toAt.startsWith('grid:') ? +toAt.slice(5) : null;
+    return [el || invGridEl, () => { unequipItem(n, b); renderAfter(); }];
+  }
+  return null;
+}
+document.addEventListener('pointerdown', e => {
+  swallow = false;
+  if (!menu.hidden && !e.target.closest('#menu')) hideMenu();
+  const el = e.button === 0 && ui.open && e.target.closest && e.target.closest('#inv [data-at], #panel [data-at]');
+  press = el && el.dataset.n ? { el, n: el.dataset.n, at: el.dataset.at, x: e.clientX, y: e.clientY } : null;
+});
+document.addEventListener('pointermove', e => {
+  if (press && !drag && Math.hypot(e.clientX - press.x, e.clientY - press.y) > 5) {
+    drag = press; press = null;
+    hideTip();
+    ghost.src = iconURL(drag.n); ghost.hidden = false;
+    drag.el.classList.add('lift');
+  }
+  if (drag) {
+    ghost.style.left = e.clientX + 'px'; ghost.style.top = e.clientY + 'px';
+    const d = dropTarget(e.clientX, e.clientY);
+    for (const o of document.querySelectorAll('.drop')) if (!d || o !== d[0]) o.classList.remove('drop');
+    if (d) d[0].classList.add('drop');
+    return;
+  }
+  const el = ui.open && menu.hidden && e.target.closest && e.target.closest('#inv [data-at], #panel [data-at]');
+  if (el) showTip(el, e.clientX, e.clientY); else if (!tip.hidden) hideTip();
+});
+document.addEventListener('pointerup', e => {
+  if (drag) { const d = dropTarget(e.clientX, e.clientY); swallow = true; endDrag(); if (d) d[1](); }
+  press = null;
+});
+document.addEventListener('click', e => {   // (in the capture phase: before anything else, and not after a drag)
+  if (swallow) { swallow = false; e.stopPropagation(); return; }
+  const el = ui.open && e.target.closest && e.target.closest('#inv [data-at], #panel [data-at]');
+  if (el && el.dataset.n) { hideTip(); primary(el.dataset.n, el.dataset.at); }
+}, true);
+document.addEventListener('contextmenu', e => {
+  const el = ui.open && e.target.closest && e.target.closest('#inv [data-at], #panel [data-at]');
+  if (!el) return;
+  e.preventDefault();
+  if (!el.dataset.n) return;
+  const r = el.getBoundingClientRect();
+  showMenu(el.dataset.n, el.dataset.at, e.clientX || r.right, e.clientY || r.top);
+});
+document.addEventListener('focusin', e => {   // (a block reached with the keyboard: its note beside it)
+  const el = ui.open && e.target.closest && e.target.closest('#inv [data-at], #panel [data-at]');
+  if (el) { const r = el.getBoundingClientRect(); showTip(el, r.right - 8, r.bottom - 8); }
+});
 window.addEventListener('keydown', e => {
   if (e.target === seedInput || e.repeat || e.code !== 'KeyI') return;
   if (ui.open && !ui.merchant) closePanel(); else if (!ui.open) openBag();
@@ -7093,6 +7796,7 @@ function frame(now) {
 
   updateBag(dt);
   updateHero(dt);
+  syncInv();
   const desc = frameDesc(now / 1000, dt);
   for (const k in frameStats) frameStats[k] = 0;
   pool.t0 = performance.now();
@@ -7135,6 +7839,7 @@ window.TV = {
   setWeather, updateWeather, weather, wx, weatherAt,
   setThird, updateHero, view3, viewCam, hero, terrainHeight, solidAt, setGear, wardrobe, GEAR,
   bag, bagAdd, bagTake, eatItem, toggleItem, openBag, updateBag, sell, sellPrice, fedSprint,
+  equipItem, unequipItem, renderInv, layoutBag, inBlocks, worn, slotHolds, primary, buyBack, sold, ITEM, SLOTS,
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
   renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0

@@ -24,7 +24,8 @@
 //      you can, the camera goes into the eyes),
 //      stepping the camera behind the hero with every step. The camera is never inside the ground or a building; the hero faces the way they walk;
 //      V (setThird) and flying give back your own eyes; your bag: what you buy shows on the hero
-//      (hero.gear) unless put away, eating makes you well fed, merchants buy back at half price.
+//      (hero.gear) unless put away, eating makes you well fed, the inventory's slots and blocks hold
+//      what is worn and the rest, merchants buy at half price and sell back what you sold them.
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs [--record]
 import fs from 'node:fs';
@@ -497,11 +498,22 @@ console.log('6. third person, seed 42');
     TV.eatItem('Wheel of cheese'); TV.updateBag(0.9);
     steps.push(B.items['Wheel of cheese'] === 1 && B.fed > 170 && TV.fedSprint() > sprint0 && TV.hero.eat > 0.4 && TV.hero.food === 1);
     TV.updateBag(1); steps.push(B.eat === null && TV.hero.eat === 0);   // (the bite is over)
+    // the inventory: ten slots and 28 blocks; what is worn is in its slot, the rest in the blocks
+    TV.openBag();
+    steps.push(document.querySelectorAll('#inv .blk.slot').length === 10 && document.querySelectorAll('#invGrid .blk').length === 28 && !document.getElementById('inv').hidden);
+    steps.push(TV.slotHolds('back') === 'Wool cloak' && TV.slotHolds('body') === 'Green tunic' && B.grid.includes('Red tunic') && B.grid.includes('Blue tunic') && !B.grid.includes('Wool cloak') && TV.inBlocks('Red tunic') === 2);
+    steps.push(TV.equipItem('Blue tunic') && TV.slotHolds('body') === 'Blue tunic' && tunic() === 2 && !B.grid.includes('Blue tunic'));
+    steps.push(TV.unequipItem('Wool cloak') && TV.slotHolds('back') === null && (TV.hero.gear & G.CLOAK) === 0 && B.grid.includes('Wool cloak'));
+    TV.equipItem('Wool cloak'); TV.unequipItem('Blue tunic');
+    TV.closePanel();
     const m = TV.world.merchants[0], gold = TV.ui.gold;
     TV.openPanel(m);
     const price = TV.sellPrice(m, 'Lucky pebble');
     TV.sell('Lucky pebble');
-    steps.push(TV.ui.gold === gold + price && !B.items['Lucky pebble'] && price >= 1);
+    steps.push(TV.ui.gold === gold + price && !B.items['Lucky pebble'] && price >= 1 && TV.sold.list.length === 1);
+    TV.buyBack(0);
+    steps.push(TV.ui.gold === gold && B.items['Lucky pebble'] === 1 && TV.sold.list.length === 0);   // (bought back for what they paid)
+    TV.sell('Lucky pebble');
     TV.closePanel();
     TV.regenerate(42); TV.updateHero(0);
     const after = TV.hero.gear === (G.CLOAK | G.LANTERN), kept = B.items['Wool cloak'] === 1 && B.items['Wheel of cheese'] === 1;
@@ -511,7 +523,7 @@ console.log('6. third person, seed 42');
     return { start, steps, after, kept };
   });
   if (g.start !== 0 || !g.after || !g.kept || !g.steps.every(v => v === true)) fail(`bag: ${JSON.stringify(g)}`);
-  else console.log('  your bag: what you buy shows on your hero (a cloak, a lantern, the tunic bought last); put away, it does not; eating makes you well fed and lifts the food to the mouth; a merchant pays half; the bag goes with you to a new world');
+  else console.log('  your bag: what you buy shows on your hero (a cloak, a lantern, the tunic bought last); put away, it does not; eating makes you well fed and lifts the food to the mouth; ten slots and 28 blocks, put on and take off; a merchant pays half, and you can buy it back; the bag goes with you to a new world');
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');
