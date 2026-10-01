@@ -198,3 +198,42 @@ Shots: `shots/phase5/step4/` (`sheet-animals`: a flock, sheep in a pasture, a co
 - ⚠️ Nothing sleeps: the animals stay out at night.
 - Ducks only where there is open water near a settlement; few deer on dry worlds.
 - In their patch, animals walk through haystacks, barrels and tree trunks.
+
+## Step 5: people
+
+Shots: `shots/phase5/step5/` (`sheet-people`: the town street, the market, guards at the gate, farmers, a trader, a village square, a guard answering).
+
+### What changed
+
+- **People in every village, hamlet and town:** one or two to each home (cottages, longhouses, townhouses, the tavern, the smithy). Women in long dresses and headscarves, men in tunics and trousers, some in felt or fur hats, all in the game's colours.
+- **A day of their own:** out of the door after sunrise (between 6:15 and 8:00); to the square, the well, the market or the chapel, standing about a while talking with their hands; on to another; home before dark (between 18:30 and 20:30). At night they are indoors. Every step is on ground one can walk: along the streets, through the gates, round the houses, never through a wall.
+- **Farmers** (a third of the villagers, a sixth of the townsfolk) walk out to the fields in straw hats and hoe a row of their own, up and down, two and a half or five hours at a time.
+- **A trader behind each market stall** by day (about 7:00 to 19:00), in an apron.
+- **Two guards at every town's gate**, day and night: helmets, tabards in red or blue, spears and shields, pacing a little.
+- **Talking to them.** Walk up to someone and the prompt says E greet and their name (E trade with, at a stall). A villager, a farmer or a guard answers with a line of their own on the note at the top, and looks at you with a hand raised; anyone you pass close turns their head to look. A trader shows their wares (bread, cheese, fish, cider and candles) as a merchant does, and buys from you too.
+- On seed 42, 127 people: 86 villagers, 17 farmers, 16 traders and 8 guards; at 11:00 about nine in ten are out.
+
+### How it is built
+
+- `placePeople`, in world generation after the animals, from hashes alone. For each village, hamlet and town, `buildNav` makes a map for walking: a box over it and its fields, and for each cell the ground's height and whether one can stand there (dry, no trunk or prop, nothing built at body height). The places people go (`places`: the square, or a town's market, its well and the square before its castle; a chapel's door; up to three spots in the fields) each get a `navField`: Dijkstra over the map, how far it is and which way to step from every cell, never up more than a stair nor across a corner. Then the people: villagers and farmers (a home: the cell before their door), traders (their stall, hours and wares: `shop`), guards (their gate).
+- `planOf(p, day)` is a villager's day, from the person and the day alone: when they leave, where they go (`spotOf`: a spot of their own round the place's middle, or a farmer's row), how long they stay, and home by bedtime; legs of [from, to, set off, arrive, leave]. `legPath` is the way, cached: from one's spot to the middle of the place ahead and out to one's spot there (or home), every step on the map. `personAt(p, day, hour)` gives where they are and what they do by the clock, so time ×10 makes their day go ten times faster.
+- `updatePeople`, every frame, for the people of the settlements near you: their place; their head turned toward you when you are close, or a wave after you greet them; `world.crowd` for the renderer and the workers; and the one you could greet (`peopleUI.near`). The prompt is v1's, shown when no merchant is near; E (`greet`) answers with a note, or for a trader opens v1's trade panel on their `shop`.
+- `buildPerson`, in `renderCore`, draws them as your hero is drawn, with skirts, scarves, hats, aprons, a hoe, a spear and a shield; fewer parts past 35 cells, none past 130.
+- `buildTown` now also returns where its townsfolk gather (`market`, `well`, `square`).
+- A bug found on the way: the first Dijkstra kept its distances in 32 bits and its queue in 64, so cells were skipped or queued over and over; it keeps them in 64 bits while it searches now, and each search takes 2 to 4 ms.
+- New fixed scenes: `guards`, `farmer`, `trader`, `village-square`.
+
+### Numbers
+
+- Tests: all pass, with the world checksums re-recorded (the towns' gathering places, in the structs, and a new part for the people). The new section 8 checks every seed over a whole day, every 3 game minutes: nobody stands in a wall or in water, and nobody jumps; at 3:00 only the guards are out, and at 11:00 most people are (59 to 91 in a hundred). E near a villager greets them, and near a trader shows their wares.
+- A world takes 0.2 to 0.4 s longer to make (2.6 to 2.8 s in all): the walking maps and about 90 searches.
+- Workers and the main thread agree, byte for byte in both looks, with 4, 5, 6 and 7 workers, over the town street, the market, the guards, the farmers, a trader, a village square and where you start.
+- Speed (Chromium, 6 workers, a quiet machine): within 0.1 to 0.2 ms of before (the town street 6.5 ms, the market 7.4, the village 8.5, where you start 7.6), 60 fps. Drawn on one thread, the market's people cost about 1.2 ms. Firefox: about 1 ms more in the towns (the market 11.6 ms). Moving everyone near you costs 0.02 ms a frame on the main thread.
+
+### Still open
+
+- ⚠️ People do not stand in your way, nor in each other's: they walk through you, and two can pass through each other.
+- ⚠️ Nobody goes inside: people vanish at their door at night and appear there in the morning. At night only the guards are out.
+- ⚠️ The merchants on the roads are still v1's, and greet in their own way (E opens their wares).
+- First names only, and a handful of lines for each kind of person.
+- This round is done: Martin sends the game out for feedback. Colourful farmland and things along the roads (docks, shrines, travellers' camps) wait.

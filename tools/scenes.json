@@ -1369,6 +1369,68 @@
         "pitch": -200.0,
         "ground": true
       }
+    },
+    {
+      "name": "guards",
+      "title": "Guards at the gate of the town where you start, spears and shields (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "third": true,
+      "fixed": true,
+      "cam": {
+        "x": 48.5,
+        "y": 0.0,
+        "z": 293.0,
+        "yaw": -90.0,
+        "pitch": -60.0,
+        "ground": true
+      }
+    },
+    {
+      "name": "farmer",
+      "title": "Farmers hoeing their rows by the town walls, in straw hats (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 54.75,
+        "y": 161.9,
+        "z": 301.66,
+        "yaw": -145.0,
+        "pitch": -234.0
+      }
+    },
+    {
+      "name": "trader",
+      "title": "A trader behind her stall; E to see her wares (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 44.8,
+        "y": 168.3,
+        "z": 264.2,
+        "yaw": -100.8,
+        "pitch": -45.0
+      }
+    },
+    {
+      "name": "village-square",
+      "title": "Villagers in the square before the chapel (10:30)",
+      "seed": 42,
+      "hour": 10.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 983.0,
+        "y": 45.1,
+        "z": 879.76,
+        "yaw": -120.0,
+        "pitch": -577.0
+      }
     }
   ]
 }

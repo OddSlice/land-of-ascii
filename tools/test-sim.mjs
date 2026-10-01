@@ -28,6 +28,9 @@
 //      what is worn and the rest, merchants buy at half price and sell back what you sold them.
 //   7. Animals: on every seed, each animal keeps to its patch on its timetable (ducks on the water, the
 //      rest out of it); near you a sheep moves off and stays in its pen, and a deer bolts.
+//   8. People: on every seed, over a whole day, nobody stands in a wall or in water, nobody jumps; at
+//      3:00 only the guards are out, at 11:00 most people are; E near one greets them (a guard answers,
+//      a trader shows their wares).
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs [--record]
 import fs from 'node:fs';
@@ -72,6 +75,7 @@ const WORLD_HASH = () => {
   for (const k of ['seaLevel', 'rockLine', 'snowLine', 'rivers', 'roads', 'trees', 'birds', 'clouds', 'wind', 'lights']) { h = 2166136261 >>> 0; any(w[k]); parts[k] = h; }
   h = 2166136261 >>> 0; for (const s of w.structs) { const { tpl, ...rest } = s; any(rest); any(tpl.vox); any(tpl.topSolid); any(tpl.spans); num(tpl.sx); num(tpl.sy); num(tpl.sz); } parts.structs = h;
   h = 2166136261 >>> 0; for (const a of w.animals) any({ kind: a.kind, x0: a.x0, z0: a.z0, x1: a.x1, z1: a.z1, v: a.v, pen: a.pen }); any(w.pastures); parts.animals = h;
+  h = 2166136261 >>> 0; for (const p of w.people) any({ role: p.role, home: p.home, at: p.at, door: p.door, outfit: p.outfit, name: p.name, line: p.line, gather: p.gather, fields: p.fields, shop: p.shop }); parts.people = h;
   h = 2166136261 >>> 0; for (const m of w.merchants) { any({ name: m.name, greeting: m.greeting, goods: m.goods, robe: m.robe, cells: m.cells, cum: m.cum, total: m.total, s: m.s, dir: m.dir, x: m.x, y: m.y, z: m.z }); } parts.merchants = h;
   return parts;
 };
@@ -574,6 +578,57 @@ for (const seed of SEEDS) {
   });
   if (!(r.ds > 1.8 && r.inPen && r.dd > 12)) fail(`animals near you: ${JSON.stringify(r)}`);
   else console.log(`  near you: a sheep moves off to ${r.ds.toFixed(1)} cells and stays in its pen; a deer 6 cells off bolts to ${r.dd.toFixed(1)}`);
+}
+
+// ---- 8. people ----
+console.log('8. people, every seed');
+for (const seed of SEEDS) {
+  const r = await p2.evaluate(seed => {
+    const TV = window.TV, w = TV.world;
+    TV.regenerate(seed);
+    const W = w.H.length ** 0.5, wrap = v => ((v % W) + W) % W, at = (x, z) => Math.floor(wrap(z)) * W + Math.floor(wrap(x));
+    const counts = [0, 0, 0, 0];
+    let inside = 0, wet = 0, samples = 0, jump = 0, out11 = 0, out3 = 0, where = null;
+    for (const p of w.people) {
+      counts[p.role]++;
+      let last = null;
+      for (let h = 0; h < 24; h += 0.05) {
+        const q = TV.personAt(p, 3, h);
+        if (!q.vis) { last = null; continue; }
+        samples++;
+        const x = wrap(q.x), z = wrap(q.z), g = TV.groundAt(x, z, TV.terrainHeight(x, z) + 0.6);
+        if (TV.solidAt(x, g + 1.0, z)) { inside++; where = where || [p.name, p.role, +h.toFixed(2), +x.toFixed(1), +z.toFixed(1)]; }
+        if (w.water[at(x, z)]) wet++;
+        if (last && Math.hypot(((x - last[0] + W * 1.5) % W) - W / 2, ((z - last[1] + W * 1.5) % W) - W / 2) > 1.5) jump++;   // (a walker goes 0.65 cells in a twentieth of an hour)
+        last = [x, z];
+      }
+      if (TV.personAt(p, 3, 11).vis) out11++;
+      if (TV.personAt(p, 3, 3).vis) out3++;
+    }
+    return { counts, inside, wet, samples, jump, out11, out3, where };
+  }, seed);
+  const n = r.counts.reduce((a, b) => a + b, 0);
+  if (r.inside || r.wet || r.jump) fail(`people, seed ${seed}: ${r.inside} samples in a wall (${JSON.stringify(r.where)}), ${r.wet} in water, ${r.jump} jumps (of ${r.samples})`);
+  else if (r.out3 !== r.counts[3] || r.out11 < n * 0.4) fail(`people, seed ${seed}: ${r.out3} out at 3:00 (guards ${r.counts[3]}), ${r.out11} of ${n} out at 11:00`);
+  else console.log(`  seed ${seed}: ${r.counts[0]} villagers, ${r.counts[1]} farmers, ${r.counts[2]} traders, ${r.counts[3]} guards; over a day never in a wall or water, no jumps; at 3:00 only the guards out, at 11:00 ${r.out11} of ${n}`);
+}
+{
+  const r = await p2.evaluate(() => {
+    const TV = window.TV, w = TV.world;
+    TV.regenerate(42); TV.setMode('walk'); TV.clock.hours = 11; TV.clock.scale = 0;
+    const standAt = (p) => { const q = TV.personAt(p, TV.weather.day, 11); TV.cam.x = q.x + 1.2; TV.cam.z = q.z; TV.viewCam.x = TV.cam.x; TV.viewCam.z = TV.cam.z; TV.updatePeople(0); return TV.peopleUI.near; };
+    const v = w.people.find(p => p.role === TV.ROLE.VILLAGER && TV.personAt(p, TV.weather.day, 11).vis), t = w.people.find(p => p.role === TV.ROLE.TRADER);
+    const nv = standAt(v);
+    TV.greet(nv);
+    const toast = document.getElementById('toast'), greeted = !!nv && toast.classList.contains('show') && toast.textContent.includes(nv.name.toUpperCase()) && nv.greet > 0;
+    const nt = standAt(t);
+    TV.greet(nt);
+    const traded = !!nt && nt.role === TV.ROLE.TRADER && TV.ui.open && TV.ui.merchant === nt.shop && nt.shop.goods.length > 0;
+    TV.closePanel(); TV.clock.scale = 1;
+    return { greeted, traded, who: nv && nv.name, trader: nt && nt.name };
+  });
+  if (!(r.greeted && r.traded)) fail(`people, greeting: ${JSON.stringify(r)}`);
+  else console.log(`  E near ${r.who} greets them (they answer and look at you); near ${r.trader} at a stall, their wares`);
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

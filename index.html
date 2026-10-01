@@ -543,6 +543,7 @@ const world = {
   farm: new Uint8Array(N),     // (phase 5) what grows on each cell of farmland (FARM), see placeFarms
   props: null, propBuckets: null, propBlocks: new Int32Array(0),   // fences, haystacks, windmill sails; the cells they block
   pastures: [], animals: [], herd: new Float32Array(0), herdN: 0,    // (phase 5: the animals, and those near you as the renderer gets them)
+  people: [], crowd: new Float32Array(0), crowdN: 0,                   // (and the people)
   birds: [],
   clouds: [], wind: [0.6, 0],
   lights: [],                  // torches and campfires: {x, y, z, r, color, i, kind, phase, size}
@@ -628,6 +629,7 @@ function generateWorld(seed) {
   placeTrees(seed);
   for (const i of world.propBlocks) world.treeMask[i] = 1;   // (fences and haystacks stand in the way, as trunks do)
   placeAnimals(seed);       // (phase 5: sheep, cows, chickens, ducks and deer, where they belong)
+  placePeople(seed);        // (and the people of the villages and towns, with their maps for walking)
   spawnBirds(rng);
   spawnClouds(rng);
   spawnMerchants(rng);
@@ -1852,6 +1854,8 @@ function buildTown(kind, rng, castle, castleIndex) {
       const a = toWorld([x, 0, z]), b = toWorld([x, 0, z + f]);
       return [a[0], a[2], wrapDelta(b[0] - a[0]), wrapDelta(b[2] - a[2]), w];
     }),
+    // (and where the townsfolk gather: the middle of the market, round the well, the square before the castle)
+    market: toWorld([mx + 0.5, 0, zc + 0.5]), well: toWorld([wellX + 0.5, 0, zc + 0.5]), square: toWorld([mx + 0.5, 0, SQ * 0.5]),
   };
 }
 
@@ -2842,6 +2846,297 @@ function updateAnimals(t, dt) {
   }
   world.herdN = n;
 }
+
+// =====================================================================
+//  PEOPLE  (phase 5)
+// =====================================================================
+// The people of the villages, hamlets and towns: one or two to each home (a cottage, a longhouse, a
+// townhouse, the tavern, the smithy), some of them farmers; a trader behind each market stall; two
+// guards at every town's gate. Each settlement has a map for walking (buildNav: a box over it and its
+// fields, and for each place people go, the way to step toward it from every cell, by Dijkstra over the
+// cells one can walk: dry, nothing built there at body height, no trunk or prop, no step up of more than
+// a stair). A villager's day is a plan, from the person, the day and nothing else (planOf): out of the
+// door after sunrise, to the square, the well, the market or the chapel (a farmer to the fields), home
+// before dark; indoors, and not drawn, at night. Traders keep their stalls by day; guards stand at the
+// gates day and night. Near you they are drawn (updatePeople, world.crowd); E greets one, who looks at
+// you and answers (a trader shows you their wares).
+const ROLE = { VILLAGER: 0, FARMER: 1, TRADER: 2, GUARD: 3 };
+const WALK_HOURS = 13, PEOPLE_NEAR = 150, CROWD_STRIDE = 12, GREET_RADIUS = 2.6;   // (cells walked in a game hour: 1.3 a second; how near they are drawn; the renderer's floats each; how near to greet)
+const NAMES = [['Ivan', 'Petar', 'Georgi', 'Stoyan', 'Dimitar', 'Todor', 'Nikola', 'Vasil', 'Krum', 'Boyan', 'Asen', 'Mitko'],
+  ['Rada', 'Neda', 'Vela', 'Yana', 'Mila', 'Elena', 'Maria', 'Kalina', 'Gergana', 'Tsveta', 'Dora', 'Stanka']];
+const LINES = [
+  ['Good day to you!', 'Have you come far?', 'Fine weather for walking.', 'The well water is sweet this year.', 'Mind the hens. They bite.', 'You will want the tavern, I expect.', 'The bell rang twice this morning. Odd.'],
+  ['The wheat is coming on well.', 'Rain is due. My knees say so.', 'Good soil here. Good soil.', 'My back is sore, but the row is done.'],
+  ['Fresh from the farms this morning!', 'Best prices in town. Nearly.', 'Looking, or buying?'],
+  ['Keep to the road after dark, traveller.', 'No trouble in the town, mind.', 'The gate shuts at nightfall. Mostly.', 'Seen any wolves out there?'],
+];
+const STALL_WARES = ['Loaf of bread', 'Wheel of cheese', 'Salted fish', 'Flask of cider', 'Tallow candle'];
+const NB8 = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, Math.SQRT2], [-1, -1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2]];   // (each and its opposite side by side)
+const NBX = Int8Array.from(NB8, v => v[0]), NBZ = Int8Array.from(NB8, v => v[1]), NBW = Float64Array.from(NB8, v => v[2]);
+function buildNav(s) {
+  const R0 = Math.ceil(s.half + (FARM_REACH[s.type] || 0) + 8), bw = 2 * R0 + 1, n = bw * bw, x0 = Math.floor(s.cx) - R0, z0 = Math.floor(s.cz) - R0;
+  const g = new Float32Array(n), ok = new Uint8Array(n), wrap = v => ((v % W) + W) % W;
+  for (let j = 0; j < bw; j++) for (let i = 0; i < bw; i++) {
+    const x = wrap(x0 + i) + 0.5, z = wrap(z0 + j) + 0.5, c = (Math.floor(z) & MASK) * W + (Math.floor(x) & MASK), k = j * bw + i;
+    const gy = groundAt(x, z, terrainHeight(x, z) + 0.6);
+    g[k] = gy;
+    ok[k] = !world.water[c] && !world.treeMask[c] && !solidAt(x, gy + 0.9, z) && !solidAt(x, gy + 1.6, z) ? 1 : 0;
+  }
+  return { s, x0, z0, bw, g, ok, places: [] };
+}
+const navCell = (nav, x, z) => {   // (the cell of the map at a world point, or -1 off it)
+  const i = Math.floor(wrapDelta(x - nav.x0 - nav.bw / 2) + nav.bw / 2), j = Math.floor(wrapDelta(z - nav.z0 - nav.bw / 2) + nav.bw / 2);
+  return i >= 0 && j >= 0 && i < nav.bw && j < nav.bw ? j * nav.bw + i : -1;
+};
+const navPoint = (nav, c) => [nav.x0 + (c % nav.bw) + 0.5, nav.z0 + ((c / nav.bw) | 0) + 0.5];
+function navNear(nav, x, z, r) {   // (the nearest cell one can walk to a point, within r)
+  let best = -1, bd = Infinity;
+  for (let oz = -r; oz <= r; oz++) for (let ox = -r; ox <= r; ox++) {
+    const c = navCell(nav, x + ox, z + oz), d = ox * ox + oz * oz;
+    if (c >= 0 && nav.ok[c] && d < bd) { bd = d; best = c; }
+  }
+  return best;
+}
+function navField(nav, src) {   // (from every cell: how far to src walking, and which way to step)
+  const { bw, g, ok } = nav, n = bw * bw, dw = new Float64Array(n).fill(Infinity), step = new Int8Array(n).fill(-1);
+  const hk = new Float64Array(n * 4 + 8), hv = new Int32Array(n * 4 + 8), cap = hk.length, off = new Int32Array(8);
+  for (let q = 0; q < 8; q++) off[q] = NB8[q][1] * bw + NB8[q][0];
+  let hn = 0;
+  const push = (k, v) => { let i = hn++; while (i > 0) { const p = (i - 1) >> 1; if (hk[p] <= k) break; hk[i] = hk[p]; hv[i] = hv[p]; i = p; } hk[i] = k; hv[i] = v; };
+  dw[src] = 0; push(0, src);
+  while (hn > 0) {
+    const d = hk[0], c = hv[0];
+    { const k = hk[--hn], w = hv[hn]; let i = 0; for (;;) { let ch = 2 * i + 1; if (ch >= hn) break; if (ch + 1 < hn && hk[ch + 1] < hk[ch]) ch++; if (hk[ch] >= k) break; hk[i] = hk[ch]; hv[i] = hv[ch]; i = ch; } hk[i] = k; hv[i] = w; }   // (pop)
+    if (d > dw[c]) continue;   // (already reached by a shorter way)
+    const ci = c % bw, cj = (c - ci) / bw, gc = g[c];
+    for (let q = 0; q < 8; q++) {
+      const dx = NBX[q], dz = NBZ[q], i = ci + dx, j = cj + dz;
+      if (i < 0 || j < 0 || i >= bw || j >= bw) continue;
+      const e = c + off[q], ge = g[e];
+      if (!ok[e] || ge - gc > 1.1 || gc - ge > 1.1 || q > 3 && (!ok[c + dx] || !ok[c + dz * bw])) continue;   // (no cutting corners)
+      const nd = d + NBW[q];
+      if (nd < dw[e]) { dw[e] = nd; step[e] = q ^ 1; if (hn < cap) push(nd, e); }
+    }
+  }
+  return { dist: Float32Array.from(dw), step };   // (kept in 32 bits)
+}
+function navPath(nav, field, a) {   // (the cells from a to the place the field leads to, as points)
+  if (a < 0 || !(field.dist[a] < Infinity)) return null;
+  const pts = [];
+  for (let c = a, guard = 0; guard < 6000; guard++) {
+    pts.push(navPoint(nav, c));
+    if (field.dist[c] === 0) break;
+    const [dx, dz] = NB8[field.step[c]];
+    c += dx + dz * nav.bw;
+  }
+  return pts;
+}
+function placePeople(seed) {
+  const list = [], wrap = v => ((v % W) + W) % W, homes = { cottage: 1, longhouse: 1, townhouse: 1, tavern: 1, smithy: 1 };
+  const outfit = j => (hash2(j, 17, seed + 901) * 256) | 0, nameOf = (o, j) => NAMES[o & 1][(hash2(j, 23, seed + 902) * 12) | 0];
+  const add = p => { p.k = list.length; p.plan = null; p.planDay = -1; p.paths = {}; p.greet = 0; p.look = 0; list.push(p); return p; };
+  for (const s of world.structs) {
+    if (s.type !== 'village' && s.type !== 'hamlet' && s.type !== 'town') continue;
+    const nav = buildNav(s), P = nav.places;
+    const place = (kind, x, z, ring, face) => {   // (a place people go: where they stand round it, what they look at)
+      const c = navNear(nav, x, z, 4);
+      if (c < 0) return -1;
+      const [px, pz] = navPoint(nav, c);
+      P.push({ kind, x: px, z: pz, cell: c, ring, face: face || [x, z], field: navField(nav, c) });
+      return P.length - 1;
+    };
+    // where they gather: the square (a village's, or a town's market, well and the square before its castle)
+    const gather = [];
+    if (s.type === 'town') { for (const [q, r] of [[s.market, 2.4], [s.well, 2.2], [s.square, 2.6]]) { const i = place('square', q[0], q[2], r, [q[0], q[2]]); if (i >= 0) gather.push(i); } }
+    else { const i = place('square', s.cx + 0.5, s.cz + 0.5, 2.2); if (i >= 0) gather.push(i); }
+    for (const h of s.houses || []) if (h.kind === 'chapel') { const [ox, oz] = GATE_DIRS[h.dir], i = place('chapel', h.door[0] + ox * 2.5, h.door[2] + oz * 2.5, 1.5, [h.door[0], h.door[2]]); if (i >= 0) gather.push(i); }
+    if (!gather.length) continue;
+    // the fields its farmers work: up to three spots on its farmland one can walk to
+    const fields = [], fc = [];
+    for (let j = 0; j < nav.bw * nav.bw; j += 7) { const [x, z] = navPoint(nav, j), c = (Math.floor(wrap(z)) & MASK) * W + (Math.floor(wrap(x)) & MASK), f = world.farm[c] & 7; if (f >= 1 && f <= 3 && nav.ok[j] && P[gather[0]].field.dist[j] < Infinity) fc.push([x, z, world.farm[c] & 8]); }
+    for (let k = 0; k < 3 && fc.length; k++) {
+      const [x, z, alongZ] = fc[(hash2(s.cx + k, s.cz, seed + 903) * fc.length) | 0], i = place('field', x, z, 0, null);
+      if (i >= 0) { P[i].row = alongZ ? [0, 1] : [1, 0]; fields.push(i); }
+    }
+    // the people at home: one or two to each, a third of them (a sixth in a town) farmers
+    for (const h of s.houses || []) {
+      if (!homes[h.kind]) continue;
+      const [ox, oz] = GATE_DIRS[h.dir], home = navNear(nav, h.door[0] + ox * 1.2, h.door[2] + oz * 1.2, 1), j0 = list.length;
+      if (home < 0 || !(P[gather[0]].field.dist[home] < Infinity)) continue;
+      const n = 1 + (hash2(Math.floor(h.door[0]), Math.floor(h.door[2]), seed + 904) < 0.55 ? 1 : 0);
+      for (let k = 0; k < n; k++) {
+        const j = j0 + k, o = outfit(j), farmer = fields.length && hash2(j, 31, seed + 905) < (s.type === 'town' ? 0.17 : 0.35);
+        add({ role: farmer ? ROLE.FARMER : ROLE.VILLAGER, nav, home, door: [h.door[0], h.door[2]], gather, fields, outfit: o, name: nameOf(o, j), line: (hash2(j, 37, seed + 906) * 100) | 0 });
+      }
+    }
+    // a trader behind each stall, by day, selling food and candles
+    for (const [x, z, fx, fz] of s.stalls || []) {
+      const j = list.length, o = outfit(j), wares = STALL_WARES.filter((n, w) => hash2(j, w, seed + 907) < 0.75);
+      const shop = { name: nameOf(o, j) + ', at the market', greeting: LINES[ROLE.TRADER][(hash2(j, 41, seed + 908) * 3) | 0], goods: wares.map(n => { const G = GOODS.find(g => g[0] === n); return { name: n, price: Math.round(G[1] + (G[2] - G[1]) * hash2(j, n.length, seed + 909)) }; }) };
+      add({ role: ROLE.TRADER, nav, at: [x - fx * 1.0, z - fz * 1.0], face: Math.atan2(fz, fx), outfit: o | 128, name: nameOf(o, j), line: 0, shop, hours: [6.8 + hash2(j, 43, seed + 910), 18.6 + hash2(j, 44, seed + 910)] });
+    }
+    // two guards at a town's gate, just outside it either side, looking out; day and night
+    if (s.type === 'town' && s.gatePos) {
+      const [ox, oz] = GATE_DIRS[s.gate], gx = s.gatePos[0] + 0.5, gz = s.gatePos[1] + 0.5;
+      for (const side of [-1, 1]) { const j = list.length, o = outfit(j) & ~1; add({ role: ROLE.GUARD, nav, at: [gx - oz * side * 3.4 + ox * 0.6, gz + ox * side * 3.4 + oz * 0.6], face: Math.atan2(oz, ox), across: [-oz, ox], outfit: o, name: nameOf(o, j), line: (hash2(j, 47, seed + 911) * 100) | 0 }); }
+    }
+  }
+  world.people = list;
+  world.crowd = new Float32Array(list.length * CROWD_STRIDE); world.crowdN = 0;
+}
+// A villager's day (worked out once a day): when they leave home, where they go and how long they stay,
+// when they are home again; legs of [from, to, set off, arrive, leave] (a place's number, or -1: home).
+function planOf(p, day) {
+  if (p.planDay === day) return p.plan;
+  const P = p.nav.places, rnd = j => hash2(p.k * 37 + j, day * 13 + 5, 9301), legs = [];
+  const dist = (a, b) => a === b ? 0 : a < 0 ? P[b].field.dist[p.home] : b < 0 ? P[a].field.dist[p.home] : P[b].field.dist[P[a].cell];
+  let t = 6.2 + rnd(1) * 1.8, at = -1;
+  const bed = 18.4 + rnd(2) * 2;
+  for (let j = 0; j < 4; j++) {
+    const field = p.role === ROLE.FARMER && (j === 0 || rnd(20 + j) < 0.5) && p.fields.length;
+    const to = field ? p.fields[(rnd(40) * p.fields.length) | 0] : p.gather[(rnd(60 + j) * p.gather.length) | 0];
+    if (to === at) continue;
+    const walk = (dist(at, to) + 6) / WALK_HOURS, stay = field ? 2.5 * (1 + (rnd(30 + j) < 0.5 ? 0 : 1)) : 0.6 + rnd(30 + j) * 1.6, back = (dist(to, -1) + 6) / WALK_HOURS;   // (a farmer works whole rounds of their row, 2.5 hours each)
+    if (!(walk < Infinity && back < Infinity)) continue;   // (somewhere they cannot walk to from here)
+    if (t + walk + stay + back > bed) break;
+    legs.push([at, to, t, t + walk, t + walk + stay]);
+    t += walk + stay; at = to;
+  }
+  if (legs.length) legs.push([at, -1, t, t + (dist(at, -1) + 6) / WALK_HOURS, Infinity]);
+  p.plan = legs; p.planDay = day;
+  return legs;
+}
+// Where someone stands at a place: round its middle, each in their own spot (one they can walk to),
+// facing it; a farmer works a row of their own (both ends and all between on ground they can walk), up
+// and down from its middle (since: how long they have been there).
+function spotOf(p, i, since) {
+  const q = p.nav.places[i], nav = p.nav, walk = (x, z) => { const c = navCell(nav, x, z); return c >= 0 && nav.ok[c] && q.field.dist[c] < Infinity; };
+  let sp = p.spots && p.spots[i];
+  if (!sp) {
+    if (q.kind === 'field') {
+      sp = [q.x, q.z, 0, 0];
+      for (const [off, len] of [[(hash2(p.k, i, 9311) - 0.5) * 6, 2], [0, 2], [0, 1], [0, 0]]) {
+        let ok = true;
+        for (let a = -len; a <= len && ok; a++) ok = walk(q.x + q.row[0] * a + q.row[1] * off, q.z + q.row[1] * a + q.row[0] * off);
+        if (ok) { sp = [q.x + q.row[1] * off, q.z + q.row[0] * off, off, len]; break; }
+      }
+    } else {   // (round the middle, at its ring; else nearer in)
+      sp = [q.x, q.z];
+      outer: for (const r of [q.ring, q.ring * 0.6, 0]) for (let j = 0; j < 9; j++) {
+        const a = (hash2(p.k, i, 9313) + j * 0.11) * Math.PI * 2, x = q.x + Math.cos(a) * r, z = q.z + Math.sin(a) * r;
+        if (walk(x, z)) { sp = [x, z]; break outer; }
+      }
+    }
+    (p.spots || (p.spots = {}))[i] = sp;
+  }
+  if (q.kind === 'field') {   // (a triangle wave from the row's middle: out one way, back past it, back to it)
+    const w = (Math.max(0, since) * 1.6) % 4, along = (w < 1 ? w : w < 3 ? 2 - w : w - 4) * sp[3];
+    return [sp[0] + q.row[0] * along, sp[1] + q.row[1] * along, Math.atan2(q.row[1], q.row[0]) + (w >= 1 && w < 3 ? Math.PI : 0)];
+  }
+  return [sp[0], sp[1], Math.atan2(q.face[1] - sp[1], q.face[0] - sp[0])];
+}
+// The way from one place (or home) to another, on the map: from the spot there to the middle of the
+// place ahead (or home) and out to the spot there, every step on ground one can walk. Cached, with the
+// distance along it.
+function legPath(p, from, to) {
+  const key = from + '>' + to;
+  if (p.paths[key] !== undefined) return p.paths[key];
+  const nav = p.nav, P = nav.places, spot = i => { const sp = spotOf(p, i, 0); return [sp[0], sp[1]]; };
+  const cellAt = ([x, z]) => navCell(nav, x, z);
+  let pts = null;
+  if (to < 0) {   // (back home: to the middle of the place one is at, then the way from home there, backwards)
+    const a = navPath(nav, P[from].field, cellAt(spot(from))), b = navPath(nav, P[from].field, p.home);
+    if (a && b) pts = [spot(from), ...a, ...b.reverse().slice(1)];
+  } else {   // (to a place: the way there from home or one's spot, then out from its middle to one's spot there)
+    const start = from < 0 ? p.home : cellAt(spot(from)), a = navPath(nav, P[to].field, start), b = navPath(nav, P[to].field, cellAt(spot(to)));
+    if (a && b) pts = [...(from < 0 ? [] : [spot(from)]), ...a, ...b.reverse().slice(1), spot(to)];
+  }
+  if (pts) {
+    const cum = [0];
+    for (let k = 1; k < pts.length; k++) cum.push(cum[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
+    pts = { pts, cum };
+  }
+  return p.paths[key] = pts;
+}
+const personPose = { vis: 0, x: 0, z: 0, h: 0, act: 0, walked: 0 };
+function personAt(p, day, h) {
+  const o = personPose;
+  o.vis = 0; o.act = 0; o.walked = 0;
+  if (p.role === ROLE.GUARD) {   // (pacing a little before the gate)
+    const w = Math.sin(h * 5 + p.k * 1.3);
+    o.vis = 1; o.x = p.at[0] + p.across[0] * w * 0.8; o.z = p.at[1] + p.across[1] * w * 0.8; o.h = p.face; o.walked = h * 4 * 0.8; o.act = 0;
+    return o;
+  }
+  if (p.role === ROLE.TRADER) {
+    if (h < p.hours[0] || h > p.hours[1]) return o;
+    o.vis = 1; o.x = p.at[0]; o.z = p.at[1]; o.h = p.face; o.act = Math.sin(h * 9 + p.k) > 0.6 ? 3 : 0;
+    return o;
+  }
+  const legs = planOf(p, day);
+  if (!legs.length || h < legs[0][2] || h >= legs[legs.length - 1][3]) return o;   // (at home, indoors)
+  for (const L of legs) {
+    if (h >= L[4]) continue;
+    if (h < L[3]) {   // walking, by the time along the way
+      const path = legPath(p, L[0], L[1]);
+      if (!path) return o;
+      const { pts, cum } = path, d = (h - L[2]) / (L[3] - L[2]) * cum[cum.length - 1];
+      let k = 1; while (k < cum.length - 1 && cum[k] < d) k++;
+      const a = pts[k - 1], b = pts[Math.min(k, pts.length - 1)], u = cum[k] > cum[k - 1] ? clamp((d - cum[k - 1]) / (cum[k] - cum[k - 1]), 0, 1) : 0;
+      o.vis = 1; o.x = a[0] + (b[0] - a[0]) * u; o.z = a[1] + (b[1] - a[1]) * u; o.h = Math.atan2(b[1] - a[1], b[0] - a[0]); o.act = 1; o.walked = d;
+      return o;
+    }
+    const [x, z, hh] = spotOf(p, L[1], h - L[3]), field = p.nav.places[L[1]].kind === 'field';   // standing (or working) there
+    o.vis = 1; o.x = x; o.z = z; o.h = hh; o.act = field ? 2 : Math.sin(h * 7 + p.k * 2.1) > 0.3 ? 3 : 0; o.walked = field ? (h - L[3]) * 1.6 * 2 : 0;
+    return o;
+  }
+  return o;
+}
+// Every frame, the people near you: where their day puts them (by the clock), turned toward you a while
+// after you greet them; the one you could greet; world.crowd for the renderer.
+const peopleUI = { near: null, prompted: false, greeted: null };
+function updatePeople(dt) {
+  const list = world.people, out = world.crowd, day = weather.day, h = clock.hours, wrap = v => ((v % W) + W) % W, me = player.mode === 'walk';
+  let n = 0, near = null, nd = GREET_RADIUS;
+  for (const p of list) {
+    const s = p.nav.s;
+    if (Math.abs(wrapDelta(s.cx - viewCam.x)) > PEOPLE_NEAR + s.radius || Math.abs(wrapDelta(s.cz - viewCam.z)) > PEOPLE_NEAR + s.radius) { p.lx = NaN; continue; }
+    const q = personAt(p, day, h);
+    if (!q.vis) { p.lx = NaN; continue; }
+    const x = wrap(q.x), z = wrap(q.z), d = Math.hypot(wrapDelta(x - cam.x), wrapDelta(z - cam.z));
+    // (greeted: they look at you, a hand up, for a few seconds; and anyone you pass close looks up)
+    p.greet = Math.max(0, p.greet - dt);
+    const want = p.greet > 0 || d < 3.5 && me ? wrapAngle(Math.atan2(wrapDelta(cam.z - z), wrapDelta(cam.x - x)) - q.h) : 0;
+    p.look += (clamp(want, -1.2, 1.2) - p.look) * Math.min(1, dt * 6);
+    const facing = p.greet > 0 && q.act !== 1 ? q.h + p.look : q.h, look = p.greet > 0 && q.act !== 1 ? 0 : p.look;
+    const fresh = !(p.lx === p.lx), moved = fresh ? 0 : Math.hypot(wrapDelta(x - p.lx), wrapDelta(z - p.lz));
+    p.spd = fresh ? 0 : (p.spd || 0) + ((dt > 0 ? moved / dt : 0) - (p.spd || 0)) * Math.min(1, dt * 8);
+    p.lx = x; p.lz = z;
+    if (me && d < nd) { nd = d; near = p; }
+    const o = n * CROWD_STRIDE;
+    out[o] = p.role; out[o + 1] = x; out[o + 2] = groundAt(x, z, terrainHeight(x, z) + 0.6); out[o + 3] = z; out[o + 4] = facing;
+    out[o + 5] = q.walked; out[o + 6] = q.act === 1 ? p.spd : 0; out[o + 7] = p.outfit; out[o + 8] = p.k;
+    out[o + 9] = p.greet > 0 ? 4 : q.act; out[o + 10] = look; out[o + 11] = 0;
+    n++;
+  }
+  world.crowdN = n;
+  // the one you could greet (when no merchant is near: theirs is v1's prompt)
+  peopleUI.near = near;
+  if (!ui.nearest && !ui.open && near) {
+    promptEl.hidden = false; peopleUI.prompted = true;
+    const t = (near.role === ROLE.TRADER ? 'trade with ' : 'greet ') + near.name;
+    if (promptText.textContent !== t) promptText.textContent = t;
+  } else if (peopleUI.prompted && !ui.nearest) { promptEl.hidden = true; peopleUI.prompted = false; }
+}
+function greet(p) {
+  if (p.role === ROLE.TRADER) { openPanel(p.shop); return; }
+  p.greet = 4;
+  const lines = LINES[p.role], line = lines[p.line % lines.length];
+  toast(p.role === ROLE.GUARD ? 'A GUARD' : p.role === ROLE.FARMER ? 'A FARMER' : 'A VILLAGER', p.name.toUpperCase(), '“' + line + '”');
+}
+window.addEventListener('keydown', e => {
+  if (e.code !== 'KeyE' || e.repeat || ui.open || ui.nearest || !peopleUI.near || e.target === seedInput) return;
+  greet(peopleUI.near);
+});
 
 // =====================================================================
 //  TREES + BIRDS  (sprites, not voxels)
@@ -4742,6 +5037,15 @@ function drawSprites(t, poses) {
     buildAnimal(kind, dxw, herd[o + 2] - camY, dzw, herd[o + 4], herd[o + 5], herd[o + 6], herd[o + 7], herd[o + 8], herd[o + 9], zc, t, herd[o + 1], herd[o + 2], herd[o + 3]);
     if (hero.on) for (let q = p0; q < primCount; q++) prims[q].see = 1;
   }
+  // People (phase 5): those near you, as the main thread placed them this frame (world.crowd).
+  const crowd = world.crowd;
+  for (let i = 0; i < world.crowdN; i++) {
+    const o = i * CROWD_STRIDE, dxw = wrapDelta(crowd[o + 1] - camX), dzw = wrapDelta(crowd[o + 3] - camZ), zc = dxw * fx + dzw * fz;
+    if (zc > 130 || zc > zoneC || !inView(zc, dxw * rx + dzw * rz, 1.6)) continue;
+    const p0 = primCount;
+    buildPerson(crowd[o], dxw, crowd[o + 2] - camY, dzw, crowd[o + 4], crowd[o + 5], crowd[o + 6], crowd[o + 7], crowd[o + 8], crowd[o + 9], crowd[o + 10], zc, t, crowd[o + 1], crowd[o + 2], crowd[o + 3]);
+    if (hero.on) for (let q = p0; q < primCount; q++) prims[q].see = 1;
+  }
   // Your hero, in the third person.
   if (hero.on) {
     const dxw = wrapDelta(hero.x - camX), dzw = wrapDelta(hero.z - camZ), zc = dxw * fx + dzw * fz, lat = dxw * rx + dzw * rz;
@@ -5074,6 +5378,98 @@ function buildPlant(i, kind, x, y, z, s, zc) {
   if (zc < 90) shadowDiscs.push([x, z, y, 1.15 * s, zc]);
 }
 
+// A person (phase 5), as the main thread placed them (world.crowd, updatePeople): role (villager,
+// farmer, trader, guard), x, y, z their place relative to the eye, h the way they face, gait how far they
+// have walked, spd how fast they go, o their outfit (bits: 1 a woman; 2-4 the colour of their clothes;
+// 16-32 their hair; 64 a hat or a scarf; 128 an apron), k their number, act what they do (0 stand,
+// 1 walk, 2 hoe, 3 talk with their hands, 4 wave), look where their head turns (0 ahead). Built as your
+// hero is: a woman in a long skirt and a headscarf, a man in a tunic and trousers, a farmer in a straw
+// hat with a hoe, a trader in an apron, a guard with a helmet, a spear and a shield; fewer parts far off.
+function buildPerson(role, x, y, z, h, gait, spd, o, k, act, look, zc, t, wx, wy, wz) {
+  const ch = Math.cos(h), sh = Math.sin(h), P = (r, f) => [x - sh * r + ch * f, z + ch * r + sh * f];
+  const base = (K.MERCHANT << 24) | ((256 + (k * 7 + 1900) % 3800) << 8), lit = lightsOn ? warmAt(wx, wy + 1, wz) * 0.8 : 0;
+  const add = (p, part, pa) => { p.seg = base | part; p.lit = lit; p.posAdd = pa || 0; return p; };
+  const cap = (r0, y0, f0, r1, y1, f1, rad, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCapsule(ax, y + y0, az, bx, y + y1, bz, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const ell = (r0, y0, f0, ex, ey, ez, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pEllipsoid(ax, y + y0, az, ex, ey, ez, h + Math.PI / 2, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };   // (ex across, ez along)
+  const sph = (r0, y0, f0, rad, part, rp, pa) => { const [ax, az] = P(r0, f0); return add(pSphere(ax, y + y0, az, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const vcone = (y0, y1, ra, rb, part, rp, pa) => { const [cx, cz] = P(0, 0); return add(pVCone(cx, y + y0, cz, y + y1, ra, rb, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const cyl = (r0, y0, f0, r1, y1, f1, rad, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCylinder(ax, y + y0, az, bx, y + y1, bz, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const cone = (r0, y0, f0, r1, y1, f1, ra, rb, part, rp, pa) => { const [ax, az] = P(r0, f0), [bx, bz] = P(r1, f1); return add(pCone(ax, y + y0, az, bx, y + y1, bz, ra, rb, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  const woman = (o & 1) === 1, guard = role === ROLE.GUARD, farmer = role === ROLE.FARMER, far = zc > 35;
+  const cloth = guard ? (k & 1 ? R.robe0 : R.robe1) : [R.robe0, R.robe1, R.robe2, R.robe3, R.plaster, R.robe0, R.sand, R.robe1][(o >> 1) & 7];
+  const hair = [R.dark, R.wood, R.drygrass, R.stone][(o >> 4) & 3], trousers = woman ? cloth : (o & 64 ? R.dark : R.robe3);
+  const phase = gait * (Math.PI * 2 / 1.5), mv = act === 1, sw = mv ? Math.sin(phase) : 0, bob = mv ? 0.03 * Math.abs(Math.cos(phase)) : 0;
+  // legs (under a long skirt only the feet show)
+  for (const side of [-1, 1]) {
+    const s2 = sw * side, fwd = s2 * 0.22, lift = mv ? Math.max(0, Math.sin(phase + (side > 0 ? 0 : Math.PI))) * 0.08 : 0;
+    if (!woman) {
+      if (far) cap(side * 0.1, 0.88 + bob, 0, side * 0.1, 0.1 + lift, fwd, 0.075, PART.LEG, trousers);
+      else {
+        const kneeF = fwd * 0.6 + (mv ? 0.05 : 0.02), kneeY = 0.5 + lift * 0.6;
+        cap(side * 0.1, 0.88 + bob, 0, side * 0.1, kneeY + bob, kneeF, 0.075, PART.LEG, trousers);
+        cap(side * 0.1, kneeY + bob, kneeF, side * 0.1, 0.12 + lift, fwd, 0.068, PART.LEG, trousers, -0.05);
+      }
+    }
+    ell(side * 0.1, 0.07 + lift, fwd + 0.05, 0.075, 0.07, 0.14, PART.BOOT, guard ? R.wood : R.dark, -0.1);
+  }
+  // the body: a long skirt and a bodice, or a tunic; a belt; an apron
+  if (woman) vcone(0.1 + bob, 1.02 + bob, 0.31 + (mv ? 0.02 : 0), 0.2, PART.ROBE, cloth);
+  else vcone(0.62 + bob, 1.02 + bob, 0.27, 0.2, PART.ROBE, cloth);
+  ell(0, 1.2 + bob, 0, 0.2, 0.25, 0.14, PART.ROBE, guard ? R.stone : cloth, guard ? 0.1 : 0);
+  if (guard) { ell(0, 1.18 + bob, 0.02, 0.17, 0.27, 0.14, PART.CLOAK, cloth); vcone(0.55 + bob, 1.02 + bob, 0.26, 0.21, PART.CLOAK, cloth, -0.05); }   // (a tabard over mail)
+  vcone(0.94 + bob, 1.0 + bob, 0.205, 0.205, PART.BELT, R.wood, -0.15);
+  if (!far && (o & 128 || role === ROLE.TRADER)) ell(0, woman ? 0.72 : 0.88, 0.13, 0.17, woman ? 0.32 : 0.18, 0.05, PART.PACK, R.plaster, 0.05);
+  // arms: swinging as they walk; hoeing (both hands on the hoe, chopping), talking (a hand up and down),
+  // waving (the right hand high), a guard's right hand on the spear and a shield on the left arm
+  const chop = act === 2 ? 0.5 + 0.5 * Math.sin(t * 3.2 + k) : 0;
+  for (const side of [-1, 1]) {
+    const a = mv ? -sw * side * 0.22 : 0;
+    let eX = side * 0.26, eY = 1.14 + bob, eF = a * 0.5, hX = side * 0.27, hY = 0.9 + bob, hF = a;
+    if (act === 2) { eX = side * 0.2; eY = 1.12; eF = 0.18; hX = side * 0.06; hY = 1.15 - 0.25 * chop; hF = 0.34 + 0.08 * chop; }
+    else if (act === 3 && side > 0) { eX = 0.27; eY = 1.08; eF = 0.12; hX = 0.24; hY = 1.12 + 0.06 * Math.sin(t * 4.5 + k); hF = 0.3; }
+    else if (act === 4 && side > 0) { eX = 0.34; eY = 1.45; eF = 0.04; hX = 0.36 + 0.07 * Math.sin(t * 9); hY = 1.78; hF = 0.06; }
+    else if (guard && side > 0) { eX = 0.29; eY = 1.1; eF = 0.08; hX = 0.3; hY = 1.02; hF = 0.16; }
+    if (far) cap(side * 0.22, 1.38 + bob, 0, hX, hY, hF, 0.06, PART.SLEEVE, guard ? R.stone : cloth);
+    else {
+      cap(side * 0.22, 1.38 + bob, 0, eX, eY, eF, 0.06, PART.SLEEVE, guard ? R.stone : cloth);
+      cap(eX, eY, eF, hX, hY + 0.03, hF, 0.055, PART.SLEEVE, guard ? R.stone : cloth, 0.05);
+      sph(hX, hY, hF, 0.05, PART.HAND, R.skin);
+    }
+  }
+  if (act === 2) {   // a hoe: the handle from the hands to the ground ahead, an iron blade
+    const by = 0.08 + 0.35 * chop, bf = 0.95 - 0.1 * chop;
+    cap(0, 1.15 - 0.25 * chop, 0.3 + 0.08 * chop, 0, by, bf, 0.025, PART.STAFF, R.wood);
+    if (!far) ell(0, by - 0.02, bf + 0.04, 0.09, 0.05, 0.02, PART.STEEL, R.stone);
+  }
+  if (guard) {   // a spear upright in the right hand, its point; a round shield on the left arm
+    cap(0.3, 0.05, 0.16, 0.3, 2.25, 0.16, 0.025, PART.STAFF, R.wood);
+    cone(0.3, 2.22, 0.16, 0.3, 2.48, 0.16, 0.045, 0.004, PART.STEEL, R.stone, 0.15);
+    if (!far) { cyl(-0.33, 1.0 + bob, 0.04, -0.37, 1.0 + bob, 0.04, 0.24, PART.SHIELD, cloth, 0.05); sph(-0.38, 1.0 + bob, 0.04, 0.05, PART.STEEL, R.stone, 0.15); }
+  }
+  // the head, turned to look (at you); hair, and a hat, a scarf, a straw hat or a helmet
+  const hh = h + look, hc = Math.cos(hh), hs = Math.sin(hh), H = (r, f) => [x - hs * r + hc * f, z + hc * r + hs * f];
+  const hsph = (r, yy, f, rad, part, rp, pa) => { const [ax, az] = H(r, f); return add(pSphere(ax, y + yy, az, rad, K.MERCHANT, 0, rp, LOOK_SOLID), part, pa); };
+  cap(0, 1.4 + bob, 0, 0, 1.5 + bob, 0.01, 0.055, PART.SKIN, R.skin, -0.1);
+  hsph(0, 1.62 + bob, 0.01, 0.135, PART.SKIN, R.skin);
+  if (guard) {
+    hsph(0, 1.67 + bob, -0.01, 0.15, PART.CAP, R.stone, 0.1);
+    const [ax, az] = H(0, -0.01); add(pCone(ax, y + 1.76 + bob, az, ax, y + 1.9 + bob, az, 0.05, 0.005, K.MERCHANT, 0, R.stone, LOOK_SOLID), PART.CAP, 0.15);
+  } else if (farmer) {   // a straw hat: a wide brim, a low crown
+    hsph(0, 1.66 + bob, -0.035, 0.135, PART.CROWN, hair, 0.1);
+    const [ax, az] = H(0, -0.01);
+    add(pVCone(ax, y + 1.69 + bob, az, y + 1.71 + bob, 0.3, 0.3, K.MERCHANT, 0, R.thatch, LOOK_SOLID), PART.BRIM, 0.05);
+    add(pVCone(ax, y + 1.7 + bob, az, y + 1.84 + bob, 0.14, 0.11, K.MERCHANT, 0, R.thatch, LOOK_SOLID), PART.CAP, 0.1);
+  } else if (woman) {   // a headscarf over the hair, knotted at the back
+    const scarf = [R.plaster, R.robe0, R.robe1, R.bloomY][(o >> 6) & 3];
+    hsph(0, 1.66 + bob, -0.03, 0.15, PART.CAP, scarf, 0.05);
+    if (!far) hsph(0, 1.56 + bob, -0.16, 0.06, PART.CAP, scarf);
+  } else {
+    hsph(0, 1.66 + bob, -0.035, 0.135, PART.CROWN, hair, 0.1);
+    if (o & 64) { const [ax, az] = H(0, -0.01); add(pVCone(ax, y + 1.68 + bob, az, y + 1.86 + bob, 0.15, 0.13, K.MERCHANT, 0, (o >> 7) & 1 ? R.wood : R.dark, LOOK_SOLID), PART.CAP, 0.05); }   // (a felt or fur hat)
+  }
+  if (zc < 12) { hsph(-0.045, 1.63 + bob, 0.125, 0.018, PART.EYE, R.ink); hsph(0.045, 1.63 + bob, 0.125, 0.018, PART.EYE, R.ink); }
+  if (zc < 50) shadowDiscs.push([x, z, y, 0.42, zc]);
+}
 // An animal (phase 5), as the main thread placed it (world.herd, updateAnimals): x, y, z its place
 // relative to the eye (y the ground under it, or the water a duck is on), h the way it faces, gait how
 // far it has walked (its legs swing with it), graze how far its head is down, spd how fast it goes (a
@@ -6374,6 +6770,7 @@ function applyFrame(d) {
   const M = d.merchants;
   for (let mi = 0; mi < world.merchants.length; mi++) { const m = world.merchants[mi]; m.x = M[mi * 4]; m.y = M[mi * 4 + 1]; m.z = M[mi * 4 + 2]; m.walked = M[mi * 4 + 3]; }
   world.herd = d.herd; world.herdN = d.herd.length / HERD_STRIDE;
+  world.crowd = d.crowd; world.crowdN = d.crowd.length / CROWD_STRIDE;
 }
 let viewGen = -1;
 function message(msg, reply) {
@@ -6910,7 +7307,7 @@ function setupGrid() {
 }
 
 function workerSource() {
-  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, PROP, PROP_BUCKET, PROP_BUCKETS, ANIMAL, ANIMAL_KIND, HERD_STRIDE, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, GEAR, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, F_FLOWER, RAMP_NAMES, R };
+  const consts = { W, MASK, N, FOV, EYE, TREE_BUCKET, TREE_BUCKETS, PROP, PROP_BUCKET, PROP_BUCKETS, ANIMAL, ANIMAL_KIND, HERD_STRIDE, ROLE, CROWD_STRIDE, SPRITE, VOX_MAT, MAT, CELL_PRESETS, RAYS_X, RAYS_Y, NEAR_SMOOTH, K, PART, GEAR, F_WATER, F_RIPPLE, F_SHADOW, F_INTERIOR, F_FACE, F_FLOWER, RAMP_NAMES, R };
   return [
     "'use strict';",
     ...Object.entries(consts).map(([k, v]) => `const ${k} = ${JSON.stringify(v)};`),
@@ -6918,7 +7315,7 @@ function workerSource() {
     `const KEYFRAMES = { day: { ramps: ${JSON.stringify(KEYFRAMES.day.ramps)} } };`,
     `const clamp = ${clamp};`, `const smoothstep = ${smoothstep};`, `const wrapDelta = ${wrapDelta};`, `const wrapAngle = ${wrapAngle};`, `const pack = ${pack};`,
     `${hash2}`, `${terrainHeight}`, `${skyState}`,
-    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, props: null, propBuckets: null, herd: new Float32Array(0), herdN: 0, chimneys: [], flags: [], domes: [], bells: [] };`,
+    `const world = { seed: -1, merchants: [], structs: [], lights: [], clouds: [], birds: [], wind: [0, 0], trees: null, treeBuckets: null, props: null, propBuckets: null, herd: new Float32Array(0), herdN: 0, crowd: new Float32Array(0), crowdN: 0, chimneys: [], flags: [], domes: [], bells: [] };`,
     `const cam = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, clock = { hours: 12 }, view = { dist: 500 };`,
     `const cur = { ambient: 0.38, diffuse: 0.62, lights: 0, stars: 0 }, light = { lx: 0, ly: 1, lz: 0, darkness: 0, faceShade: new Float32Array(6) };`,
     `const wx = { rain: 0, snow: 0, fog: 0, wet: 0, aurora: 0, storm: 0 };`,
@@ -7960,7 +8357,7 @@ function frameDesc(t, dt) {
   for (const L of COL.far) { col.set(L, o); o += L.length; }
   col[o] = COL.glow; col[o + 1] = COL.bird;
   return {
-    type: 'frame', gen: pool.gen, t, poses, look: looks.mode, merchants: merch, col, herd: world.herd.slice(0, world.herdN * HERD_STRIDE),
+    type: 'frame', gen: pool.gen, t, poses, look: looks.mode, merchants: merch, col, herd: world.herd.slice(0, world.herdN * HERD_STRIDE), crowd: world.crowd.slice(0, world.crowdN * CROWD_STRIDE),
     cam: [viewCam.x, viewCam.y, viewCam.z, viewCam.yaw, viewCam.pitch], hours: clock.hours, viewDist: view.dist,
     hero: [hero.on, hero.x, hero.y, hero.z, hero.face, hero.walked, hero.moving, hero.gear, hero.air, hero.gy, hero.eat, hero.food],
     light: [light.lx, light.ly, light.lz, light.darkness, ...light.faceShade], cur: [cur.ambient, cur.diffuse, cur.lights, cur.stars],
@@ -8072,6 +8469,7 @@ function frame(now) {
   updateBag(dt);
   updateHero(dt);
   updateAnimals(now / 1000, dt);
+  updatePeople(dt);
   syncInv();
   const desc = frameDesc(now / 1000, dt);
   for (const k in frameStats) frameStats[k] = 0;
@@ -8116,7 +8514,7 @@ window.TV = {
   setThird, updateHero, view3, viewCam, hero, terrainHeight, solidAt, setGear, wardrobe, GEAR,
   bag, bagAdd, bagTake, eatItem, toggleItem, openBag, updateBag, sell, sellPrice, fedSprint,
   equipItem, unequipItem, renderInv, layoutBag, inBlocks, worn, slotHolds, primary, buyBack, sold, ITEM, SLOTS,
-  updateAnimals, animalAt, ANIMAL, ANIMAL_KIND,
+  updateAnimals, animalAt, ANIMAL, ANIMAL_KIND, updatePeople, personAt, planOf, greet, peopleUI, ROLE,
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
   renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0
