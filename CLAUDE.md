@@ -6,6 +6,8 @@ Read `docs/phase1.md` first. It explains how a frame is drawn, the workers, the 
 
 **Phase 5 is in progress: read `docs/phase5.md`** (a lived-in world: your bag, then farms and village objects, animals, people). **Phase 4 (`docs/phase4.md`)** built castles with a purpose after Orthodox churches and castles spread out with towns; its roads, ground and climbable mountains come after phase 5. The game is public and playable at https://oddslice.github.io/land-of-ascii/ (GitHub Pages from `main`): every push to `main` is live, so keep `main` playable.
 
+**The city, a second world, is being planned: `docs/city/bible.md` is its art bible** (the design system: districts, colours with jobs, shapes, light, signs, people, screens, a never-do list, a checklist and the checks). Read it before touching anything in the city. Nothing in the game uses it yet.
+
 **Phase 3 is done: `docs/phase3.md`.** It is Martin's direction after phase 2's second step (third person, a bigger and more open world after Ocarina of Time, no flicker, gear that shows on your hero, then settlements), the plan in five steps, and each step as it is built.
 
 **Phase 2's brief is `docs/phase2-world.md`**, and its steps are recorded in `docs/phase2.md` (steps 1 and 2 built; its settlements become phase 3's step 5). It is the brief: varied land (regions, terrain, weather, bridges), villages and towns, people and animals, how the tests change once world generation changes, and the order of work (a design pass, then land, settlements, people and animals, finish), with a commit and screenshots after each step. `docs/phase2.md` records each step as it is built: what, the numbers, the tests, the speed.
@@ -83,6 +85,8 @@ node tools/map.mjs [seed...]     # region maps -> shots/phase2/map-<seed>.png
 node tools/palette.mjs           # the ground's ramps, day/dusk/night -> shots/phase2/palette.png
 node tools/sheet.mjs --out x.png --cols 2 --scale 0.5 a.png "Label" b.png "Label"   # contact sheets
 node tools/flicker.mjs road 60 0.117 0 painted   # blinking pixels per frame while the camera walks (time frozen; 4th arg turns; PAGE=other.html to compare a copy)
+node tools/city-palette.mjs      # the city's draft palette, from its recipe -> docs/city/palette.json
+node tools/city-sheet.mjs        # the city's art-bible sheets and colour checks -> shots/city/step0/ (--direction A|B|C; fails if a check breaks)
 ```
 
 Test harness notes:
@@ -131,7 +135,9 @@ Test harness notes:
   - **Step 4 (animals) is built:** sheep or cows in every pasture, flocks on open grass near the villages, hens before the houses, ducks on the nearest water, deer in the forests' clearings; they turn, walk and graze on a timetable, move off as you come close, and a deer bolts.
   - **Step 5 (people) is built:** villagers with a day of their own in every village and town (out after sunrise to the square, the well, the market or the chapel, home before dark), farmers hoeing the fields, a trader at each stall (E shows their wares), guards at the town gates; E greets anyone near, and they answer.
   - The feedback round is done: Martin sends the game out. Waiting: colourful farmland, things along the roads, docks on lakes.
-- **Later, not started:** a second world, a cyberpunk city (Night City: elevation, megabuildings), chosen at the start alongside this one (Martin, 30 Sep). See the end of `docs/phase4.md`.
+- **The city (a second world) is in planning**, following `docs/city/bible.md`: a cyberpunk city in the spirit of Night City (elevation, megabuildings), chosen at the start alongside the Land (Martin, 30 Sep). On 4 Oct Martin asked for it to be planned from the ground up, design system first.
+  - **Step 0 (the art bible) is written:** a harbour city on a hill where wealth rises with height (the Docks, the Stacks, Neon Row, the Spires), one neon colour per district over a quiet base, one warm white kept for "you can use this", signs in real words; the research (`docs/city/research.md`), a draft palette (`docs/city/palette.json`, from `tools/city-palette.mjs`) and sheets (`tools/city-sheet.mjs`). Claude Design was considered and not used for the world (see the research).
+  - Next, when Martin says go: step 1, a test block in the real engine behind a hidden switch (`?world=city`), in three moods; then step 2 locks the palette into the game and a style contract into this file.
 - **Speed on Martin's Mac** (M1 Max, painted look): on the 512 world, Chromium 5.7–7.5 ms a frame, Firefox 7.3–9.9 ms, WebKit 6.5–14.1 ms. The 1024 world has not been measured on an idle machine yet: with Chrome busy in the background it ran Chromium 8.4–12.5 ms, Firefox 12.3–17.1 ms. A world generates in about 2.3 s (0.5 s on the 512 world).
 - **Rough edges:**
   - turning still crawls a little (detail sliding across the pixels);

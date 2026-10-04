@@ -269,6 +269,8 @@ Shots: `shots/phase4/fixes/` (`sheet-look`: looking down, level and up, before a
 
 For later, in Martin's words: another world of Ascii, a cyberpunk city in the spirit of Night City, with elevation and megabuildings; you choose at the start which world to explore. Nothing is built for it yet. When it comes, it will want its own world generator and palette behind the same renderer and simulation, and a choice of world on the start screen.
 
+Started on 4 Oct 2026, design system first: see [city/bible.md](city/bible.md).
+
 ## After step 2, part 3: a camera rig, into the eyes at either end
 
 Martin, trying it (30 Sep): looking straight down, the camera stood over the hero and "smashed" them flat. How games handle it, he thought, is that the camera moves in to the character: looking fully down or fully up is first person.
