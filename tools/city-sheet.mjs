@@ -16,10 +16,10 @@ const pick = opt('direction', 'A'), dpr = +opt('dpr', 1);
 const P = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs/city/palette.json'), 'utf8'));
 const HOURS = ['day', 'dusk', 'night'];
 const DISTRICTS = [   // left to right up the hill (the order of the diagram)
-  { id: 'docks', name: 'THE DOCKS', where: 'bottom · industry and the harbour', neon: 'orange', mats: ['rust', 'stained', 'asphalt'], sign: 'GATE 3', style: 'stencil', landmark: 'a giant crane over the water', words: 'heavy · rusty · wide' },
-  { id: 'stacks', name: 'THE STACKS', where: 'lower slopes · homes', neon: 'green', mats: ['stained', 'brick', 'concrete'], sign: 'BLOCK 9', style: 'painted', landmark: 'the biggest block, its number lit', words: 'dense · repeated · lived-in' },
-  { id: 'row', name: 'NEON ROW', where: 'middle · shops, food, nights out', neon: 'magenta', mats: ['plastic', 'concrete', 'glass'], sign: 'NOODLES', style: 'blade', landmark: 'a giant hologram jellyfish', words: 'loud · shiny · crowded' },
-  { id: 'spires', name: 'THE SPIRES', where: 'the summit · corporations', neon: 'cyan', mats: ['glass', 'steel', 'tile'], sign: 'TOWER ONE', style: 'thin', landmark: 'the tallest tower, ringed with light', words: 'cold · quiet · expensive' },
+  { id: 'docks', name: 'THE DOCKS', where: 'bottom · industry and the harbour', neon: 'orange', mats: ['rust', 'stained', 'asphalt'], sign: 'GATE 3', sign2: 'СКЛАД 3', style: 'stencil', landmark: 'a giant crane over the water', words: 'heavy · rusty · wide' },
+  { id: 'stacks', name: 'THE STACKS', where: 'lower slopes · homes', neon: 'green', mats: ['stained', 'brick', 'concrete'], sign: 'БЛОК 9', sign2: 'REPAIR', style: 'painted', landmark: 'the biggest block, its number lit', words: 'dense · repeated · lived-in' },
+  { id: 'row', name: 'NEON ROW', where: 'middle · shops, food, nights out', neon: 'magenta', mats: ['plastic', 'concrete', 'glass'], sign: 'NOODLES', sign2: 'ДЮНЕР', style: 'blade', landmark: 'a giant hologram jellyfish', words: 'loud · shiny · crowded' },
+  { id: 'spires', name: 'THE SPIRES', where: 'the summit · corporations', neon: 'cyan', mats: ['glass', 'steel', 'tile'], sign: 'TOWER ONE', sign2: 'КУЛА', style: 'thin', landmark: 'the tallest tower, ringed with light', words: 'cold · quiet · expensive' },
 ];
 
 // ---- colour maths for the checks: OKLab, and Machado, Oliveira & Fernandes (2009) at severity 1,
@@ -237,16 +237,17 @@ const CSS = `body { margin: 0; background: #0b0c10; color: #c9d1d9; font-family:
   .card { background: #11141a; border: 1px solid #222832; padding: 14px 14px 12px; }
   .card h3 { margin: 0; font-size: 16px; letter-spacing: 2px; } .card .where { color: #8b949e; font-size: 12px; margin: 3px 0 10px; }
   .card .lab { color: #6e7681; font-size: 11px; margin: 8px 0 3px; } .card .txt { font-size: 12.5px; color: #c9d1d9; }
-  .signbox { background: #07080b; height: 92px; display: flex; align-items: center; justify-content: center; margin-top: 4px; }
+  .signbox { background: #07080b; height: 118px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; margin-top: 4px; }
   table { border-collapse: collapse; } td { padding: 3px 10px 3px 0; font-size: 12.5px; vertical-align: middle; }
   .pass { color: #7ee787; } .fail { color: #ff7b72; } .info { color: #8b949e; }`;
 const chips = (ramp, w = 26, h = 22) => `<span class="row">${ramp.map(c => `<span class="chip" style="background:${c};width:${w}px;height:${h}px"></span>`).join('')}</span>`;
-function sign(d, ramp) {
+// a district's sign style, for one word (the signs come in English and Cyrillic, both in every district)
+function sign(d, ramp, word) {
   const glow = `text-shadow: 0 0 6px ${ramp[2]}, 0 0 16px ${ramp[2]}, 0 0 28px ${ramp[1]}; color: ${ramp[3]};`;
-  if (d.style === 'blade') return `<div style="${glow} font-weight:700; font-size:13px; line-height:12px; writing-mode:vertical-rl; text-orientation:upright; letter-spacing:-1px; border:2px solid ${ramp[2]}; padding:4px 2px; box-shadow: 0 0 10px ${ramp[2]}">${d.sign}</div>`;
-  if (d.style === 'thin') return `<div style="${glow} font-weight:300; font-size:17px; letter-spacing:7px">${d.sign}</div>`;
-  if (d.style === 'stencil') return `<div style="${glow} font-weight:700; font-size:26px; letter-spacing:5px; border-top:3px solid ${ramp[2]}; border-bottom:3px solid ${ramp[2]}; padding:2px 8px">${d.sign}</div>`;
-  return `<div style="${glow} font-weight:800; font-size:30px; letter-spacing:2px">${d.sign}</div>`;
+  if (d.style === 'blade') return `<div style="${glow} font-weight:700; font-size:13px; line-height:12px; writing-mode:vertical-rl; text-orientation:upright; letter-spacing:-1px; border:2px solid ${ramp[2]}; padding:4px 2px; box-shadow: 0 0 10px ${ramp[2]}">${word}</div>`;
+  if (d.style === 'thin') return `<div style="${glow} font-weight:300; font-size:17px; letter-spacing:7px">${word}</div>`;
+  if (d.style === 'stencil') return `<div style="${glow} font-weight:700; font-size:26px; letter-spacing:5px; border-top:3px solid ${ramp[2]}; border-bottom:3px solid ${ramp[2]}; padding:2px 8px; font-size:20px">${word}</div>`;
+  return `<div style="${glow} font-weight:800; font-size:24px; letter-spacing:2px">${word}</div>`;
 }
 
 function citySheet(R) {
@@ -256,11 +257,11 @@ function citySheet(R) {
     return `<div class="card"><h3 style="color:${n[2]}">${d.name}</h3><div class="where">${d.where}</div>
       <div class="lab">its light</div>${chips(n, 30, 20)}
       <div class="lab">its materials, by day: ${d.mats.join(', ')}</div>${d.mats.map(m => `<div style="margin-bottom:3px">${chips(day[m], 30, 12)}</div>`).join('')}
-      <div class="lab">its signs</div><div class="signbox">${sign(d, n)}</div>
+      <div class="lab">its signs, in English and Cyrillic</div><div class="signbox" style="${d.style === 'blade' ? 'flex-direction:row; gap:18px' : ''}">${sign(d, n, d.sign)}${sign(d, n, d.sign2)}</div>
       <div class="lab">landmark</div><div class="txt">${d.landmark}</div>
       <div class="lab">in three words</div><div class="txt">${d.words}</div></div>`;
   }).join('');
-  return `<div class="page"><div class="pad"><h1>THE CITY ON ITS HILL</h1>
+  return `<div class="page"><div class="pad"><h1>PORT ASCII · THE CITY ON ITS HILL</h1>
     <div class="sub">Wealth rises with height: the Docks by the water, the Stacks on the lower slopes, Neon Row in the middle, the Spires on the summit.
     The colder and cleaner the light, the higher you are. One neon colour per district; everything else stays dark and quiet.
     The warm white doorways are the one thing kept for "you can use this".</div>
