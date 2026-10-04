@@ -23,6 +23,8 @@ The second world of Ascii, **Port Ascii**: a cyberpunk city in the spirit of Nig
 | 2 | Lock it in: the palette into the game, a style contract in `CLAUDE.md`, the lookbook scenes | the lookbook's contact sheets |
 | 3+ | Build the city in layers: the plan (districts, streets, levels), buildings, signs and lights, rain and wet streets, people and vendors, the screens, the choice of world on the start screen | a sheet after every step |
 
+Step 1 in detail: [step1.md](step1.md).
+
 The city stays behind a hidden switch (a special address, `?world=city`) until Martin says it is ready, so the live game is untouched for the people testing it.
 
 ## 1. The city in a paragraph
