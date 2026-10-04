@@ -17,10 +17,16 @@ const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/scenes.json'), 'ut
 const scenes = cfg.scenes.filter(s => !args.length || args.includes(s.name));
 const { server, port } = await startServer();
 const { browser, page } = await launch({ browser: browserName, timeControl: false, width, height });
-await page.goto(`http://127.0.0.1:${port}/${pageFile}?seed=${cfg.seed}${threads != null ? '&threads=' + threads : ''}${look ? '&look=' + look : ''}`);
-await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
+// (the page is loaded for each world the scenes need: Port Ascii's scenes say world: 'city', and their mood)
+let loaded = null;
 const rows = [];
 for (const sc of scenes) {
+  const q = sc.world === 'city' ? `world=city&mood=${sc.mood || 'A'}&` : '';
+  if (loaded !== q) {
+    loaded = q;
+    await page.goto(`http://127.0.0.1:${port}/${pageFile}?${q}seed=${sc.seed ?? cfg.seed}${threads != null ? '&threads=' + threads : ''}${look ? '&look=' + look : ''}`);
+    await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
+  }
   const c = sc.cam;
   const cam = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: pitchF != null ? +pitchF * height : c.pitch };
   const r = await page.evaluate(async ({ seed, view, cam, hour, ground, merchants, frames, runs, weather, third, gear, tunic }) => {

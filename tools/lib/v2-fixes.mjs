@@ -83,3 +83,9 @@ FIXES.push({
   from: '    const speed = WALK_SPEED * (shift ? SPRINT_MULT : 1) * dt;',
   to: '    const speed = WALK_SPEED * (shift ? SPRINT_MULT * fedSprint() : 1) * dt;',
 });
+// Port Ascii, the second world (docs/city/step1.md): behind ?world=city, which a new world (R) keeps.
+FIXES.push({
+  why: 'Port Ascii: a new world keeps the address\'s world and mood (WORLD_QUERY: "?" for the Land, "?world=city&" for Port Ascii; the tests give v1 "?")',
+  from: "  history.replaceState(null, '', '?seed=' + seed);",
+  to: "  history.replaceState(null, '', WORLD_QUERY + 'seed=' + seed);   // (Port Ascii keeps its ?world=city)",
+});

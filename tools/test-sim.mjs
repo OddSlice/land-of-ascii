@@ -31,6 +31,10 @@
 //   8. People: on every seed, over a whole day, nobody stands in a wall or in water, nobody jumps; at
 //      3:00 only the guards are out, at 11:00 most people are; E near one greets them (a guard answers,
 //      a trader shows their wares).
+//   9. Port Ascii (?world=city, the second world): the city is the same every time (checksums in
+//      tools/world-hashes.json under city), has all its blocks, and its crown is the tallest; the address keeps
+//      ?world=city; you can walk up the spine from the start to the summit's plaza, and along every cross
+//      street, in the third person, the camera never in the ground or a building.
 // Page time is frozen in both, so the render loop never runs between the steps we take.
 //   node tools/test-sim.mjs [--record]
 import fs from 'node:fs';
@@ -45,7 +49,7 @@ const { server, port } = await startServer();
 const { browser, page: p1 } = await launch();
 const v1Fixed = applyFixes(fs.readFileSync(path.join(ROOT, 'reference/v1-index.html'), 'utf8'));
 await p1.route('**/reference/v1-index.html*', route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: v1Fixed }));
-await p1.addInitScript(() => { window.fedSprint = () => 1; window.deckAt = () => -Infinity; window.spawnAt = s => [s.cx + 0.5, ((s.cz + s.half + 14) & 1023) + 0.5, -Math.PI / 2]; });   // (v1's own world has no bridges and starts as v1 did; v2's, taken below, brings its decks, and the session starts where v2 does)
+await p1.addInitScript(() => { window.fedSprint = () => 1; window.deckAt = () => -Infinity; window.WORLD_QUERY = '?'; window.spawnAt = s => [s.cx + 0.5, ((s.cz + s.half + 14) & 1023) + 0.5, -Math.PI / 2]; });   // (v1's own world has no bridges and starts as v1 did; v2's, taken below, brings its decks, and the session starts where v2 does)
 const p2 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 await p2.addInitScript(TIME_CONTROL);
 p2.on('pageerror', e => console.error('[v2 pageerror]', e.message));
@@ -629,6 +633,77 @@ for (const seed of SEEDS) {
   });
   if (!(r.greeted && r.traded)) fail(`people, greeting: ${JSON.stringify(r)}`);
   else console.log(`  E near ${r.who} greets them (they answer and look at you); near ${r.trader} at a stall, their wares`);
+}
+
+// ---- 9. Port Ascii ----
+console.log('9. Port Ascii (?world=city)');
+{
+  const p3 = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await p3.addInitScript(TIME_CONTROL);
+  p3.on('pageerror', e => { failures++; console.error('[city pageerror]', e.message); });
+  await p3.goto(`http://127.0.0.1:${port}/index.html?world=city&seed=42`);
+  await p3.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
+  recorded.city = recorded.city || {};
+  for (const seed of [42, 7]) {
+    await p3.evaluate(s => window.TV.regenerate(s), seed);
+    const h1 = await p3.evaluate(WORLD_HASH);
+    await p3.evaluate(s => window.TV.regenerate(s + 1), seed);
+    await p3.evaluate(s => window.TV.regenerate(s), seed);
+    const h2 = await p3.evaluate(WORLD_HASH);
+    const unstable = Object.keys(h1).filter(k => h1[k] !== h2[k]), rec = recorded.city[seed], changed = rec ? Object.keys(h1).filter(k => h1[k] !== rec[k]) : [];
+    const c = await p3.evaluate(() => {
+      const TV = window.TV, w = TV.world, D = TV.defs, N = w.H.length, kinds = {};
+      let nan = 0, drowned = 0, top = -Infinity;
+      for (let i = 0; i < N; i++) { const h = w.H[i]; if (!Number.isFinite(h)) nan++; else if (h < w.seaLevel) drowned++; }
+      for (const b of w.city.blocks) { kinds[b.kind] = (kinds[b.kind] || 0) + 1; top = Math.max(top, b.baseY + b.tpl.sy); }
+      const crown = w.city.blocks.find(b => b.kind === 'crown');
+      return { nan, drowned, kinds, top, crownTop: crown ? crown.baseY + crown.tpl.sy : -1, url: location.search, kind: D.WORLD_KIND };
+    });
+    if (unstable.length) fail(`city seed ${seed}: generating twice differs in ${unstable.join(', ')}`);
+    else if (!rec && !record) fail(`city seed ${seed}: no recorded hashes (run with --record)`);
+    else if (changed.length && !record) fail(`city seed ${seed}: differs from the recorded city in ${changed.join(', ')} (if deliberate, run with --record)`);
+    else if (c.nan || c.drowned) fail(`city seed ${seed}: ${c.nan} NaN heights, ${c.drowned} below the sea`);
+    else if (c.kind !== 'city' || !c.url.startsWith('?world=city&')) fail(`city seed ${seed}: the address lost the city (${c.url})`);
+    else if (!(c.kinds.docks && c.kinds.stacks && c.kinds.row && c.kinds.spires && c.kinds.summit && c.kinds.crown && c.kinds.crane) || c.crownTop !== c.top) fail(`city seed ${seed}: blocks ${JSON.stringify(c.kinds)}, the crown ${c.crownTop} of ${c.top}`);
+    else console.log(`  seed ${seed}: deterministic${rec && !changed.length ? ', as recorded' : ''}; blocks ${Object.entries(c.kinds).map(([k, n]) => `${k} ${n}`).join(', ')}; the crown is the tallest (${c.top.toFixed(0)})`);
+    if (record) recorded.city[seed] = h1;
+  }
+  if (record) fs.writeFileSync(HASH_FILE, JSON.stringify(recorded, null, 1) + '\n');
+  // Walks, in the third person: from where you start, straight up the spine to the summit's plaza; and
+  // along every cross street from end to end. You never stop short, never climb through a wall, and the
+  // camera is never in the ground or a building.
+  const r = await p3.evaluate(() => {
+    const TV = window.TV, c = TV.cam, v = TV.viewCam, C = TV.defs.CITY, out = [];
+    TV.regenerate(42); TV.clock.scale = 0;
+    const walk = (what, x, z, yaw, secs, done) => {
+      if (x !== null) { TV.setMode('fly'); c.x = x; c.z = z; c.y = TV.groundAt(x, z, 1e9) + 1.55; }
+      c.yaw = yaw; c.pitch = 0; TV.setMode('walk'); TV.setThird(true);
+      for (const k of Object.keys(TV.keys)) TV.keys[k] = false;
+      TV.keys.KeyW = true;
+      let inGround = 0, inWall = 0, stuck = 0, steps = 0, lastX = c.x, lastZ = c.z;
+      for (; steps < secs * 60 && !done(); steps++) {
+        TV.update(1 / 60); TV.updateHero(1 / 60);
+        if (!(v.y - TV.terrainHeight(v.x, v.z) > 0.05)) inGround++;
+        if (TV.solidAt(v.x, v.y, v.z)) inWall++;
+        if (steps % 60 === 59) { if (Math.hypot(c.x - lastX, c.z - lastZ) < 2) stuck++; lastX = c.x; lastZ = c.z; }
+      }
+      TV.keys.KeyW = false;
+      out.push({ what, ok: done(), steps, inGround, inWall, stuck, at: [+c.x.toFixed(1), +c.z.toFixed(1), +(TV.player.feetY).toFixed(1)] });
+    };
+    const T = C.TERRACES, summit = T[T.length - 1];
+    walk('up the spine from the quay to the plaza', null, null, Math.PI / 2, 120, () => c.z >= summit[0] + C.CROSS + 2 && TV.player.feetY >= C.SEA + summit[2] - 0.01);
+    for (let k = 0; k < T.length; k++) {
+      const z = T[k][0] + (k === 0 ? C.QUAY : C.CROSS) / 2 + 0.5;
+      walk(`along the ${['quay', 'Stacks\' first', 'Stacks\' second', 'Neon Row\'s first', 'Neon Row\'s second', 'Spires\' first', 'summit\'s'][k]} street`, C.X0 + 2.5, z, 0, 120, () => c.x >= C.X1 - 3);
+    }
+    TV.clock.scale = 1;
+    return out;
+  });
+  for (const w of r) {
+    if (!w.ok || w.inGround || w.inWall || w.stuck) fail(`city walk ${w.what}: ${JSON.stringify(w)}`);
+    else console.log(`  ${w.what}: ${w.steps} steps, ending at ${w.at.join(', ')}; the camera never in the ground or a building`);
+  }
+  await p3.close();
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall passed');

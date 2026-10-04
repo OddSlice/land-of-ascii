@@ -1,8 +1,8 @@
-// The city's draft palette (the second world, step 0): every ramp is built from a recipe in OKLab,
-// so the whole palette moves together when one number changes. Writes docs/city/palette.json (hex,
-// dark to light, the shape KEYFRAMES has in index.html), which tools/city-sheet.mjs draws and, from
-// step 1, the city's test block reads. Once the palette is locked (step 2) it moves into the game and
-// is tuned there by hand, as the Land's is.
+// Port Ascii's palette (the second world): every ramp is built from a recipe in OKLab, so the whole
+// palette moves together when one number changes. Writes docs/city/palette.json (hex, dark to light,
+// the shape KEYFRAMES has in index.html), which tools/city-sheet.mjs draws, and the game's copy into
+// index.html (CITY_PALETTE, between its markers), which the city is drawn in. Once the palette is
+// locked (step 2), the recipe retires and the game's copy is tuned by hand, as the Land's is.
 //   node tools/city-palette.mjs [--out docs/city/palette.json]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -159,6 +159,17 @@ for (const [id, d] of Object.entries(DIRECTIONS)) {
   }
   palette.directions[id] = dir;
 }
+// The game's copy (index.html, between its markers): for each mood and hour, the ramps the city
+// replaces in the Land's keyframes (the air, the water, glass, brick) and its own materials.
+const ENGINE = ['sky', 'haze', 'cloud', 'rain', 'water', 'glass', 'brick', 'concrete', 'stained', 'steel', 'asphalt', 'tile', 'rust', 'plastic'];
+const game = path.join(ROOT, 'index.html'), html = fs.readFileSync(game, 'utf8');
+const BEGIN = "// ---- Port Ascii's palette: written by tools/city-palette.mjs from its recipe; change the recipe, not this ----\n", END = "// ---- end of Port Ascii's palette ----";
+const i0 = html.indexOf(BEGIN), i1 = html.indexOf(END);
+if (i0 < 0 || i1 < i0) throw new Error("index.html has no Port Ascii palette markers");
+const block = 'const CITY_PALETTE = {\n' + Object.entries(palette.directions).map(([id, d]) => `  ${id}: {   // ${d.name}\n` + ['day', 'dusk', 'night'].map(h =>
+  `    ${h}: { ${ENGINE.map(n => `${n}: [${d.keyframes[h].ramps[n].map(c => `'${c}'`).join(', ')}]`).join(', ')} },`).join('\n') + '\n  },').join('\n') + '\n};\n';
+fs.writeFileSync(game, html.slice(0, i0 + BEGIN.length) + block + html.slice(i1));
+console.log('wrote the palette into index.html');
 fs.mkdirSync(path.dirname(out), { recursive: true });
 fs.writeFileSync(out, JSON.stringify(palette, null, 1).replace(/\[\n\s+("#[0-9a-f]{6}",?\n\s+)+\]/g, m => '[' + m.match(/"#[0-9a-f]{6}"/g).join(', ') + ']') + '\n');
 console.log('wrote', path.relative(ROOT, out));

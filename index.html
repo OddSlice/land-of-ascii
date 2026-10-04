@@ -193,6 +193,12 @@ F fly mode · R new seed · T time ×10 · − / + resolution · [ / ] view dist
 //  WORLD CONSTANTS
 // =====================================================================
 const W = 1024, MASK = W - 1, N = W * W;   // square world, wraps at the edges (W must be a power of two)
+// Which world: the Land, or Port Ascii, the second world, in the making behind ?world=city (with &mood=A, B or C:
+// docs/city/bible.md). The address keeps them when R makes a new one (WORLD_QUERY).
+const WORLD_KIND = new URLSearchParams(location.search).get('world') === 'city' ? 'city' : 'land';
+const CITY_MOOD = ['B', 'C'].includes(new URLSearchParams(location.search).get('mood')) ? new URLSearchParams(location.search).get('mood') : 'A';
+const WORLD_QUERY = WORLD_KIND === 'city' ? `?world=city${CITY_MOOD !== 'A' ? '&mood=' + CITY_MOOD : ''}&` : '?';
+if (WORLD_KIND === 'city') { document.title = 'Port Ascii'; document.querySelector('#hint h1').textContent = 'PORT ASCII'; }
 const HEIGHT_SCALE = 140;                 // tallest possible peak, in world units (1 unit = 1 cell sideways)
 const RIVER_COUNT = 4;
 const RIVER_DROP = 0.12;                  // forced descent per step so a channel never runs uphill
@@ -217,8 +223,10 @@ const START_HOUR = 9;
 
 const MAT = { WATER: 0, GRASS: 1, ROCK: 2, SNOW: 3, HAZE: 4, STONE: 5, WOOD: 6, LEAF: 7, ROAD: 8, GRASS2: 9, SAND: 10, REDROCK: 11, DRYGRASS: 12, MUD: 13, REEDS: 14, PLASTER: 15, TILES: 16, THATCH: 17, GLASS: 18,
   BRICK: 19, MARBLE: 20, FRESCO: 21, ICON: 22, GILD: 23, STARS: 24, BANNER: 25,
-  WHEAT: 26, WHEAT2: 27, GREENS: 28, GREENS2: 29, SOIL: 30, SOIL2: 31 };
-const MAT_COUNT = 32;   // (15 to 25 are only ever buildings: phase 3's settlements, phase 4's churches; 26 and up are phase 5's fields, their rows along x, or along z for the 2s)
+  WHEAT: 26, WHEAT2: 27, GREENS: 28, GREENS2: 29, SOIL: 30, SOIL2: 31,
+  CONCRETE: 32, STAINED: 33, STEEL: 34, ASPHALT: 35, TILE: 36, RUST: 37, PLASTIC: 38, FAC_DOCKS: 39, FAC_STACKS: 40, FAC_ROW: 41, FAC_SPIRES: 42 };
+const MAT_COUNT = 43;   // (15 to 25 are only ever buildings: phase 3's settlements, phase 4's churches; 26 to 31 are phase 5's fields, their rows along x, or along z for the 2s;
+                        // 32 and up are Port Ascii's: its ground, its walls, and its facades, walls with windows drawn on them)
 const ROBE_COUNT = 4;
 
 // Regions. Every cell of land belongs to one, picked from its climate and height; where two meet
@@ -252,7 +260,8 @@ const F_WATER = 1, F_RIPPLE = 2, F_SHADOW = 4, F_INTERIOR = 8, F_FACE = 16, F_FL
 // with and the hand-built colour ramps everything is drawn in. Every ramp runs dark to light and
 // is hue-shifted: shadows lean cool and lights lean warm. A ramp has the same length in all three.
 const RAMP_NAMES = ['sky', 'haze', 'grass', 'grass2', 'rock', 'snow', 'water', 'stone', 'wood', 'road', 'leaf', 'conifer', 'cloud', 'skin', 'dark', 'robe0', 'robe1', 'robe2', 'robe3', 'fire', 'lit', 'sun', 'moon', 'ink', 'star', 'pack', 'sand', 'redrock', 'drygrass', 'mud', 'reeds', 'birch', 'palm', 'cactus', 'dead', 'bloomR', 'bloomY', 'bloomV', 'aurora', 'firefly', 'rain', 'plaster', 'tiles', 'thatch', 'glass',
-  'brick', 'marble', 'fresco', 'gild'];
+  'brick', 'marble', 'fresco', 'gild',
+  'concrete', 'stained', 'steel', 'asphalt', 'tile', 'rust', 'plastic'];   // (Port Ascii's; the Land never draws them)
 const R = {};
 RAMP_NAMES.forEach((n, i) => { R[n] = i; });
 const KEYFRAMES = {
@@ -398,7 +407,43 @@ const KEYFRAMES = {
     },
   },
 };
-for (const k of Object.values(KEYFRAMES)) {
+// Port Ascii's palettes (the second world: docs/city/bible.md). Each mood is three keyframes like the
+// Land's: a keyframe takes the Land's ramps and replaces the air, the water and the city's materials,
+// and lights the city as its smog and its signs do. The Land never draws the city's materials, but every
+// palette carries every ramp (the colour tables are shared), so the Land's take the city's mood A.
+// ---- Port Ascii's palette: written by tools/city-palette.mjs from its recipe; change the recipe, not this ----
+const CITY_PALETTE = {
+  A: {   // Rain noir
+    day: { sky: ['#66635c', '#78746b', '#8b867b', '#9e988b', '#b1aa9c', '#c5bdad'], haze: ['#615d57', '#77726b', '#8d897f', '#a59f94', '#bdb7a9'], cloud: ['#7d7a74', '#a8a49c', '#d5d0c7'], rain: ['#747b81', '#9fa6ab', '#cbd2d7'], water: ['#050a0c', '#141e21', '#253337', '#384a4f', '#4b6269'], glass: ['#11171b', '#2c363d', '#4a5961', '#6a7e89'], brick: ['#321e19', '#51372f', '#725246', '#956f5f', '#b98d79'], concrete: ['#202223', '#414241', '#666561', '#8d8a83', '#b5b1a6'], stained: ['#171c1c', '#343634', '#54534d', '#757168', '#999184'], steel: ['#151b21', '#363e45', '#5a656c', '#828e96', '#abbac3'], asphalt: ['#0f0f10', '#212324', '#35373a', '#4a4d51'], tile: ['#46484a', '#686969', '#8c8c89', '#b3b1ac', '#dad7cf'], rust: ['#30180e', '#523120', '#764d34', '#9c6a4a', '#c48960'], plastic: ['#2a2124', '#4f4247', '#77676d', '#a18d95', '#ceb6bf'] },
+    dusk: { sky: ['#0e0821', '#2f202f', '#55383b', '#7f5146', '#ab6c4f', '#da8757'], haze: ['#29182c', '#4b303a', '#724947', '#9a6353', '#c57e5e'], cloud: ['#3c243a', '#754a4d', '#b5735c'], rain: ['#605363', '#907e82', '#c3aba3'], water: ['#08030e', '#100d1a', '#191a26', '#212732', '#29353f'], glass: ['#100817', '#1e1b2a', '#2c2f3d', '#3a4452'], brick: ['#240914', '#36181e', '#482729', '#5b3834', '#6e483f'], concrete: ['#190e1c', '#2b202b', '#3e343b', '#52494b', '#675e5c'], stained: ['#130b18', '#231a24', '#342a30', '#463b3c', '#584d49'], steel: ['#120a1b', '#241f2f', '#363444', '#4a4c5a', '#5e6470'], asphalt: ['#0e0510', '#180f1b', '#221c25', '#2b2930'], tile: ['#2e2332', '#403542', '#534952', '#675e62', '#7b7373'], rust: ['#23050d', '#371415', '#4b241c', '#603424', '#76452b'], plastic: ['#1f0c1c', '#341f2f', '#493342', '#604957', '#77606c'] },
+    night: { sky: ['#01030b', '#0a0815', '#171120', '#26192b', '#352237', '#452b43'], haze: ['#080d19', '#171625', '#282032', '#392a3e', '#4b344c'], cloud: ['#161324', '#3b293d', '#634057'], rain: ['#555f69', '#848e97', '#b5bfc7'], water: ['#00030f', '#010815', '#04101c', '#0b1822', '#132029'], glass: ['#010615', '#06111f', '#111d2a', '#1d2a34'], brick: ['#0c0914', '#17121a', '#241b1f', '#312425', '#3e2d2a'], concrete: ['#030a18', '#0e1521', '#1c212a', '#2a2d33', '#393a3c'], stained: ['#020816', '#0a111c', '#161b23', '#232529', '#303030'], steel: ['#010718', '#091423', '#16212f', '#242f3b', '#333e47'], asphalt: ['#010410', '#050a16', '#0c121b', '#151920'], tile: ['#0e1727', '#1b232f', '#282e38', '#363b41', '#45474a'], rust: ['#0c0710', '#181014', '#261918', '#34221c', '#432c20'], plastic: ['#080919', '#151523', '#23212e', '#332e3a', '#433b45'] },
+  },
+  B: {   // Neon soak
+    day: { sky: ['#68606a', '#7b707c', '#8f818d', '#a3939f', '#b7a4b1', '#ccb7c4'], haze: ['#625a64', '#796f79', '#91858f', '#aa9ba6', '#c4b1bd'], cloud: ['#7f7781', '#aca1aa', '#dbccd5'], rain: ['#7c7883', '#a6a3ad', '#d2cfd9'], water: ['#05070f', '#121922', '#212d37', '#31434d', '#435a64'], glass: ['#10131e', '#28303d', '#43505f', '#5f7382'], brick: ['#30181b', '#4d2f2e', '#6d4842', '#8d6357', '#af7f6d'], concrete: ['#1e1d26', '#3d3a41', '#5f5b5d', '#837d7b', '#a8a29a'], stained: ['#16171f', '#303034', '#4e4a4a', '#6d6761', '#8e8479'], steel: ['#141724', '#323745', '#535b69', '#76828f', '#9cabb8'], asphalt: ['#0e0c13', '#1f1e25', '#313138', '#44464c'], tile: ['#41404a', '#615f66', '#827f83', '#a6a2a1', '#cac5c0'], rust: ['#2f1210', '#4f291f', '#71432f', '#955e40', '#bb7a51'], plastic: ['#291b27', '#4b3a46', '#705c69', '#98808d', '#c1a6b3'] },
+    dusk: { sky: ['#130326', '#34153a', '#5a274f', '#843a63', '#af4e79', '#dd628e'], haze: ['#291438', '#4c264a', '#713a5d', '#994d70', '#c46183'], cloud: ['#392348', '#754166', '#b75f84'], rain: ['#654f6a', '#947a8e', '#c6a7b5'], water: ['#090214', '#110b1f', '#18182b', '#1f2636', '#263442'], glass: ['#11061e', '#1d192f', '#2a2d42', '#374254'], brick: ['#260619', '#381422', '#4a232b', '#5c3333', '#70433c'], concrete: ['#1a0b22', '#2b1e30', '#3e313e', '#51464d', '#655b5b'], stained: ['#14081e', '#231829', '#342833', '#45393d', '#574a48'], steel: ['#130822', '#241c35', '#353248', '#47495d', '#5a6172'], asphalt: ['#100316', '#190e20', '#221b29', '#2b2833'], tile: ['#2f2038', '#403246', '#524655', '#655a63', '#786f71'], rust: ['#260212', '#390f18', '#4d1f1c', '#632f20', '#793f23'], plastic: ['#210822', '#351c34', '#4a3046', '#5f4559', '#765b6c'] },
+    night: { sky: ['#070112', '#16061e', '#280e2a', '#3b1737', '#4f2045', '#642a53'], haze: ['#130922', '#26132f', '#391d3d', '#4e284c', '#65335b'], cloud: ['#21132f', '#4d2949', '#7e3f65'], rain: ['#6e5c72', '#9d8b9e', '#d0bdcd'], water: ['#050113', '#0a071a', '#0f0f21', '#141928', '#19232f'], glass: ['#0a031a', '#120f25', '#1b1e30', '#252c3c'], brick: ['#180418', '#240e1d', '#301823', '#3d2328', '#4a2e2c'], concrete: ['#10061d', '#1b1327', '#28212f', '#362f38', '#443d41'], stained: ['#0c051a', '#160f21', '#221b28', '#2e262e', '#3a3234'], steel: ['#0b041d', '#171229', '#222136', '#2f3143', '#3c4150'], asphalt: ['#090215', '#0f081a', '#151120', '#1c1b25'], tile: ['#1e142d', '#292136', '#362f3f', '#433d47', '#504b50'], rust: ['#180312', '#250b17', '#33161a', '#41201c', '#502c1e'], plastic: ['#15051e', '#221229', '#302035', '#3f2e40', '#4f3d4c'] },
+  },
+  C: {   // Smog amber
+    day: { sky: ['#816243', '#957550', '#aa885d', '#bf9c6b', '#d4b078', '#eac586'], haze: ['#795d41', '#927452', '#ac8c64', '#c6a576', '#e1be89'], cloud: ['#947b60', '#bfa785', '#edd4ab'], rain: ['#8c7d6d', '#b3a595', '#dbcfbf'], water: ['#090804', '#171b17', '#262f2e', '#364647', '#465d61'], glass: ['#161411', '#2e3232', '#485358', '#647781'], brick: ['#371706', '#552f1c', '#754933', '#96644b', '#b98165'], concrete: ['#251e17', '#443c33', '#665d52', '#8a8173', '#b0a696'], stained: ['#1c1811', '#373127', '#554c3f', '#746a59', '#968874'], steel: ['#1a1816', '#383a39', '#5a5f60', '#7d868a', '#a2b0b6'], asphalt: ['#140c06', '#241f1a', '#363330', '#484849'], tile: ['#4a423a', '#696258', '#8b8378', '#aea69a', '#d3cbbd'], rust: ['#331200', '#572803', '#7a4318', '#9f5e2e', '#c67c43'], plastic: ['#2f1c17', '#523c39', '#785e5f', '#a08387', '#caaab1'] },
+    dusk: { sky: ['#2c0805', '#4e200d', '#733a18', '#9b5622', '#c4732d', '#ee9138'], haze: ['#421d13', '#65351f', '#8a4f2b', '#b16b37', '#da8844'], cloud: ['#4d271d', '#875134', '#c67f4d'], rain: ['#72564d', '#9e8275', '#ccb1a0'], water: ['#100400', '#190f06', '#211d17', '#282b28', '#2f3a3a'], glass: ['#1a0902', '#271d18', '#353332', '#41494d'], brick: ['#2a0b00', '#421600', '#55270d', '#683820', '#7c4a31'], concrete: ['#240e03', '#362214', '#4a3728', '#5e4d3e', '#726354'], stained: ['#1e0b01', '#2e1b0c', '#3f2d1c', '#513f2d', '#63523f'], steel: ['#1c0c05', '#2f211b', '#413834', '#54514f', '#686a6c'], asphalt: ['#160500', '#211107', '#2a1e18', '#332c2a'], tile: ['#3c2517', '#4e382a', '#604d3f', '#736355', '#87796c'], rust: ['#250a00', '#3c1700', '#542500', '#6d3400', '#85450d'], plastic: ['#2b0b02', '#402018', '#563631', '#6c4c4b', '#836467'] },
+    night: { sky: ['#0a0301', '#180803', '#271207', '#371c0c', '#482612', '#5a3118'], haze: ['#190b07', '#2a170e', '#3c2316', '#502f1e', '#643d26'], cloud: ['#271610', '#4d3021', '#774c33'], rain: ['#675b54', '#968981', '#c8bbb1'], water: ['#070201', '#0c0705', '#100f0e', '#151718', '#192022'], glass: ['#0c0504', '#140f0f', '#1c1c1e', '#24292d'], brick: ['#1a0400', '#250c04', '#30150b', '#3b1f14', '#462a1d'], concrete: ['#120705', '#1d120e', '#291e19', '#342b25', '#413931'], stained: ['#0e0603', '#180e09', '#221812', '#2d231b', '#382e25'], steel: ['#0e0605', '#181211', '#231f20', '#2f2e2f', '#3a3d3f'], asphalt: ['#0b0301', '#110806', '#16100e', '#1b1818'], tile: ['#201410', '#2b1f1b', '#362c26', '#413832', '#4d453f'], rust: ['#170300', '#250900', '#321201', '#3f1c05', '#4c270c'], plastic: ['#160604', '#231110', '#301e1e', '#3d2b2d', '#4b393c'] },
+  },
+};
+// ---- end of Port Ascii's palette ----
+const CITY_RAMPS = ['concrete', 'stained', 'steel', 'asphalt', 'tile', 'rust', 'plastic'];
+const CITY_LIGHT = {   // smog: a softer sun by day; at night the sky glows with the city and hides the stars
+  day: { ambient: 0.40, diffuse: 0.42, lights: 0, stars: 0 },
+  dusk: { ambient: 0.30, diffuse: 0.32, lights: 0.75, stars: 0 },
+  night: { ambient: 0.15, diffuse: 0.12, lights: 1, stars: 0 },
+};
+for (const k of ['day', 'dusk', 'night']) for (const n of CITY_RAMPS) KEYFRAMES[k].ramps[n] = CITY_PALETTE.A[k][n];
+const CITY_KEYFRAMES = {};
+for (const [mood, P] of Object.entries(CITY_PALETTE)) {
+  CITY_KEYFRAMES[mood] = {};
+  for (const k of ['day', 'dusk', 'night']) CITY_KEYFRAMES[mood][k] = { ...KEYFRAMES[k], ...CITY_LIGHT[k], ramps: { ...KEYFRAMES[k].ramps, ...P[k] } };
+}
+const PALETTE = WORLD_KIND === 'city' ? CITY_KEYFRAMES[CITY_MOOD] : KEYFRAMES;   // (the palette drawn: the Land's, or Port Ascii's in its mood)
+for (const k of [...Object.values(KEYFRAMES), ...Object.values(CITY_KEYFRAMES).flatMap(m => Object.values(m))]) {
   k.rgb = RAMP_NAMES.map(n => k.ramps[n].map(hexToRgb));
   k.glowRGB = hexToRgb(k.glow); k.birdRGB = hexToRgb(k.bird);
 }
@@ -421,7 +466,7 @@ const pack = (r, g, b) => (0xff000000 | ((b > 255 ? 255 : b < 0 ? 0 : b | 0) << 
 function blendPalette(h) {
   let k = 0;
   while (k < PAL_KEYS.length - 2 && h >= PAL_KEYS[k + 1][0]) k++;
-  const [h0, an] = PAL_KEYS[k], [h1, bn] = PAL_KEYS[k + 1], a = KEYFRAMES[an], b = KEYFRAMES[bn];
+  const [h0, an] = PAL_KEYS[k], [h1, bn] = PAL_KEYS[k + 1], a = PALETTE[an], b = PALETTE[bn];
   const t = clamp((h - h0) / (h1 - h0), 0, 1), u = t * t * (3 - 2 * t);
   for (const key of ['ambient', 'diffuse', 'lights', 'stars']) cur[key] = a[key] + (b[key] - a[key]) * u;
   const mixp = (x, y) => pack(x[0] + (y[0] - x[0]) * u, x[1] + (y[1] - x[1]) * u, x[2] + (y[2] - x[2]) * u);
@@ -561,6 +606,7 @@ function fbmLand(x, z, seed, octaves) {
 }
 
 function generateWorld(seed) {
+  if (WORLD_KIND === 'city') return generateCity(seed);   // (Port Ascii, the second world)
   world.seed = seed;
   const rng = mulberry32(seed);
   const H = world.H;
@@ -1305,6 +1351,9 @@ function flatten(cx, cz, r, y, spare) {
 //   Chimneys smoke (world.chimneys, drawn by the renderer).
 Object.assign(VOX, { PLASTER: 3, TILES: 4, THATCH: 5, GLASS: 6, BRICK: 7, MARBLE: 8, FRESCO: 9, ICON: 10, GILD: 11, STARS: 12, BANNER: 13 });
 VOX_MAT.push(MAT.PLASTER, MAT.TILES, MAT.THATCH, MAT.GLASS, MAT.BRICK, MAT.MARBLE, MAT.FRESCO, MAT.ICON, MAT.GILD, MAT.STARS, MAT.BANNER);
+// (Port Ascii's: plain walls, and facades, walls with their windows drawn on them by the renderer)
+Object.assign(VOX, { CONCRETE: 14, STAINED: 15, STEEL: 16, TILE: 17, RUST: 18, PLASTIC: 19, FAC_DOCKS: 20, FAC_STACKS: 21, FAC_ROW: 22, FAC_SPIRES: 23, ASPHALT: 24 });
+VOX_MAT.push(MAT.CONCRETE, MAT.STAINED, MAT.STEEL, MAT.TILE, MAT.RUST, MAT.PLASTIC, MAT.FAC_DOCKS, MAT.FAC_STACKS, MAT.FAC_ROW, MAT.FAC_SPIRES, MAT.ASPHALT);
 const SETTLE_APART = 80;       // open country between any two settlements (castles and towns, villages, hamlets): room for what will roam it
 const SETTLE = {
   village: { count: 3, size: 46, square: 5, houses: [8, 15], flat: 8 },    // (flat: the most the land under the square may rise)
@@ -2421,6 +2470,7 @@ function routeOver(b, A, B) {
 // it stands ahead of you and you can reach it; with open ground behind you (no rise, no trees), where
 // the camera stands to show you the town. A castle without a town: the same before its own gate.
 function spawnAt(s) {
+  if (WORLD_KIND === 'city') return world.city.spawn.slice();   // (Port Ascii: on the quay at the foot of the spine)
   const { H, water, treeMask } = world, t = s.town >= 0 ? world.structs[s.town] : null;
   const dir = t ? t.gate : s.gate || 0, [ox, oz] = GATE_DIRS[dir];
   const [gx, gz] = t ? t.gatePos : [s.cx + ox * (s.half + 1), s.cz + oz * (s.half + 1)];
@@ -3165,6 +3215,238 @@ window.addEventListener('keydown', e => {
 });
 
 // =====================================================================
+//  PORT ASCII  (the second world: a harbour city on a hill; docs/city/bible.md)
+// =====================================================================
+// Step 1a, the bones (docs/city/step1.md). An island hill rises from the harbour on its north side to a
+// summit, and the city climbs it in terraces, a district to a band of them, as wealth rises with height:
+// the Docks on the quay, the Stacks on the lower slopes, Neon Row in the middle, the Spires on the
+// summit. Each terrace has a street along its foot (a cross street; the quay's runs along the water) and
+// is cut by streets climbing the hill, which rise evenly from one cross street to the next. Each block between the
+// streets is one structure (a voxel template) holding its buildings, in its district's shapes; their
+// windows are drawn on the walls (facades: FACADE and facadeAt in the renderer), so a wall is one span.
+const CITY = {
+  SEA: 12,                            // the sea's surface
+  SHORE: 330,                         // the quay's edge: the harbour lies north of it
+  X0: 372, X1: 652,                   // the built part, west to east
+  STREETS: [[431, 8], [507, 10], [585, 8]],   // the streets climbing the hill: [west edge, width]; the middle one, the spine, climbs straight to the
+                                               // summit's plaza, the other two jog by up to JOG cells at each terrace (streetsOf)
+  JOG: 14,
+  // the terraces, from the quay up: [first row, last row + 1, height over the sea, district]
+  TERRACES: [[330, 386, 3, 'docks'], [386, 430, 21, 'stacks'], [430, 474, 39, 'stacks'], [474, 516, 58, 'row'], [516, 558, 77, 'row'], [558, 602, 98, 'spires'], [602, 700, 120, 'spires']],
+  QUAY: 10, CROSS: 8, PAVE: 2,        // the quay's road and a cross street, how wide; a pavement either side of a climbing street
+  PLAZA: [460, 564, 642],             // the summit's plaza: its west and east edges, and how far back it reaches
+};
+const DISTRICT = { docks: 'the Docks', stacks: 'the Stacks', row: 'Neon Row', spires: 'the Spires' };
+// The climbing streets on terrace k: the spine where it always is, the others moved along by the seed.
+const streetsOf = k => CITY.STREETS.map(([a, w], j) => [j === 1 ? a : a + Math.round((hash2(k, j, world.seed + 977) - 0.5) * 2 * CITY.JOG), w]);
+// The hill's own lie, under the city's terraces: rising evenly from one terrace's middle to the next
+// (the flanks either side of the built part fall away from it), and falling to the sea behind the summit.
+function cityHill(z) {
+  const T = CITY.TERRACES, last = T.length - 1;
+  if (z >= T[last][1]) return T[last][2] - (z - T[last][1] + 1) * 0.9;
+  let a = [T[0][0], T[0][2]];
+  for (const [z0, z1, h] of T) { const b = [(z0 + z1) / 2, h]; if (z < b[0]) return a[1] + (b[1] - a[1]) * (z - a[0]) / Math.max(1, b[0] - a[0]); a = b; }
+  return T[last][2];
+}
+const CZ = { WATER: 0, ROUGH: 1, STREET: 2, PAVE: 3, PLAZA: 4, KERB: 5 };   // what lies on each cell (world.zone)
+const CITY_GROUND = [MAT.WATER, MAT.STAINED, MAT.ASPHALT, MAT.CONCRETE, MAT.TILE, MAT.CONCRETE];   // its material, by what lies there
+
+function generateCity(seed) {
+  world.seed = seed;
+  const rng = mulberry32(seed + 0x5a17);
+  // (the world's arrays are the Land's as well: clear what the city does not set)
+  world.water.fill(0); world.road.fill(0); world.treeMask.fill(0); world.farm.fill(0);
+  world.biome.fill(BIOME.GRASSLAND); world.heat.fill(0.5); world.damp.fill(0.5);   // (never cold: no snow, no aurora)
+  world.seaLevel = CITY.SEA; world.rockLine = world.snowLine = Infinity;
+  world.rivers = []; world.roads = []; world.bridges = []; world.bridgeSkips = [];
+  world.structs = []; world.chimneys = []; world.domes = []; world.bells = []; world.flags = [];
+  world.pastures = []; world.animals = []; world.people = []; world.herdN = 0; world.crowdN = 0;
+  world.birds = []; world.merchants = []; world.lights = [];
+  const [sx0, sw] = CITY.STREETS[1];
+  world.city = { blocks: [], spawn: [sx0 + sw / 2, CITY.SHORE + 6.5, Math.PI / 2] };   // (you start on the quay at the foot of the spine, looking up the hill)
+  cityGround(seed);
+  cityBlocks(rng);
+  cityCrane();
+  indexProps(newProps());
+  world.trees = { n: 0, x: new Float32Array(0), z: new Float32Array(0), y: new Float32Array(0), size: new Float32Array(0), kind: new Uint8Array(0) };
+  world.treeBuckets = Array.from({ length: TREE_BUCKETS * TREE_BUCKETS }, () => []);
+  world.clouds = []; world.wind = [0.5, 0];   // (no clouds yet: the Land's, up here, look like small lenses; the low cloud over the city comes later)
+  makeWaterFields();
+  paintCity();
+  computeOcclusion();
+  makeFogField();
+}
+
+// The hill: the terraces, each flat, stepping up from the quay to the summit, and the streets on them;
+// either side of the built part the hill's flanks fall away to the sea, and south of the summit its
+// back does, rough and unbuilt. A climbing street, with its pavements, rises evenly from its terrace's
+// cross street to the next one up (under 0.6 a cell; walkable goes to 1.5), past the blocks beside it;
+// elsewhere a terrace's edge is a retaining wall (its top row a concrete kerb, so the wall is concrete).
+function cityGround(seed) {
+  const { H, water, biome } = world, T = CITY.TERRACES, last = T.length - 1;
+  const zone = world.zone || (world.zone = new Uint8Array(N));
+  for (let z = 0; z < W; z++) {
+    let k = -1;
+    for (let j = 0; j <= last; j++) if (z >= T[j][0] && z < T[j][1]) k = j;
+    const S = k >= 0 ? streetsOf(k) : CITY.STREETS, hill = cityHill(z);
+    for (let x = 0; x < W; x++) {
+      const i = z * W + x, out = x < CITY.X0 ? CITY.X0 - x : x >= CITY.X1 ? x - CITY.X1 + 1 : 0;
+      let h, zn = CZ.PAVE;
+      if (z < CITY.SHORE) { h = -8; zn = CZ.WATER; }                                          // the harbour
+      else if (k < 0) { h = hill; zn = CZ.ROUGH; }                                              // the back of the hill
+      else h = T[k][2];
+      if (out && zn !== CZ.WATER) { h = hill - out * 0.7; zn = CZ.ROUGH; }                      // the flanks
+      if (zn === CZ.ROUGH) h += (fbm(x, z, seed + 61, 3) - 0.5) * 6;
+      if (zn === CZ.PAVE) {
+        const [z0, z1, h0] = T[k], cw = k === 0 ? CITY.QUAY : CITY.CROSS;
+        if (z < z0 + cw) zn = z === z0 ? CZ.KERB : CZ.STREET;                                    // the cross street (the quay's road)
+        else for (const [a, w] of S) {
+          if (x < a - CITY.PAVE || x >= a + w + CITY.PAVE) continue;
+          if (k === last && !(a === CITY.STREETS[1][0] && z < CITY.PLAZA[2])) continue;           // (on the summit, only the spine goes on)
+          if (x >= a && x < a + w) zn = CZ.STREET;
+          if (k < last) h = h0 + (T[k + 1][2] - h0) * (z - (z0 + cw) + 1) / (z1 - (z0 + cw) + 1);
+        }
+        if (k === last && x >= CITY.PLAZA[0] && x < CITY.PLAZA[1] && z >= z0 + cw && z < CITY.PLAZA[2]) zn = CZ.PLAZA;
+      }
+      if (h < 0) { H[i] = CITY.SEA; water[i] = 1; biome[i] = BIOME.SEA; zone[i] = CZ.WATER; }
+      else { H[i] = CITY.SEA + h; zone[i] = zn; }
+    }
+  }
+}
+
+// The blocks: on every terrace, the ground between the streets (less their pavements, and a cell before
+// the retaining wall behind), each built up by its district. On the summit, round its plaza: a block
+// either side, and behind it the tallest tower in the city, at the head of the spine.
+function cityBlocks(rng) {
+  const T = CITY.TERRACES, last = T.length - 1, P = CITY.PAVE;
+  for (let k = 0; k < last; k++) {
+    const edges = [CITY.X0, ...streetsOf(k).flatMap(([a, w]) => [a - P, a + w + P]), CITY.X1];
+    const [z0, z1, h, d] = T[k], zs = z0 + (k === 0 ? CITY.QUAY : CITY.CROSS) + P;
+    for (let e = 0; e < edges.length; e += 2) cityBlock(d, edges[e], zs, edges[e + 1] - edges[e], z1 - 1 - zs, h, rng);
+  }
+  const [z0, , h] = T[last], zs = z0 + CITY.CROSS + P, zb = CITY.PLAZA[2] + P, z1 = T[last][1] - 2;
+  cityBlock('summit', CITY.X0 + 2, zs, CITY.PLAZA[0] - P - CITY.X0 - 2, z1 - zs, h, rng);
+  cityBlock('summit', CITY.PLAZA[1] + P, zs, CITY.X1 - 2 - CITY.PLAZA[1] - P, z1 - zs, h, rng);
+  cityBlock('crown', CITY.PLAZA[0], zb, CITY.PLAZA[1] - CITY.PLAZA[0], z1 - zb, h, rng);
+}
+
+// One block: its buildings as boxes [x0, y0, z0, x1, y1, z1, voxel] (inclusive, in the block's own cells),
+// laid by its district (CITY_BUILD); the template is made to fit them, its foot on the terrace.
+function cityBlock(kind, x0, z0, sx, sz, h, rng) {
+  const B = [], box = (a, y0, c, b, y1, d, v) => B.push([a, y0, c, b, y1, d, v]);
+  CITY_BUILD[kind](box, sx, sz, rng);
+  const T = makeTemplate(sx, Math.max(...B.map(b => b[4])) + 2, sz);
+  for (const b of B) T.box(...b);
+  T.finalize();
+  const cx = x0 + (sx >> 1), cz = z0 + (sz >> 1), district = kind === 'summit' || kind === 'crown' ? 'spires' : kind;
+  const st = { type: 'cityblock', district, kind, cx, cz, x0, z0, half: Math.max(sx, sz) >> 1, baseY: CITY.SEA + h, tpl: T, radius: Math.hypot(sx, sz) / 2 + 1 };
+  world.structs.push(st); world.city.blocks.push(st);
+  return st;
+}
+
+// A tower of the Spires: a slab of curtain wall, set back once or twice as it rises, a mast on top.
+function cityTower(box, x0, z0, w, d, h, r) {
+  const c1 = Math.round(h * (0.55 + r() * 0.15)), c2 = Math.round(h * (0.82 + r() * 0.08)), mx = x0 + (w >> 1), mz = z0 + (d >> 1);
+  box(x0, 0, z0, x0 + w - 1, c1 - 1, z0 + d - 1, VOX.FAC_SPIRES);
+  box(x0 + 3, c1, z0 + 3, x0 + w - 4, c2 - 1, z0 + d - 4, VOX.FAC_SPIRES);
+  box(x0 + 6, c2, z0 + 6, x0 + w - 7, h - 1, z0 + d - 7, VOX.FAC_SPIRES);
+  box(mx - 1, h, mz - 1, mx, h + 8 + (r() * 10 | 0), mz, VOX.STEEL);
+}
+
+// How each district builds a block (box: as cityBlock gives it; sx, sz: the block's size; r: the dice).
+const CITY_BUILD = {
+  // the Docks: a long shed at the back, its saw-tooth roof facing the harbour; in the yard before it,
+  // containers stacked one to three high
+  docks(box, sx, sz, r) {
+    const d = 14 + (r() * 5 | 0), h = 9 + (r() * 4 | 0), zb = sz - d;
+    box(0, 0, zb, sx - 1, h - 1, sz - 1, VOX.FAC_DOCKS);
+    for (let x = 0; x < sx; x += 6) for (let s = 0; s < 3; s++) if (x + s * 2 < sx) box(x + s * 2, h + s, zb, Math.min(sx - 1, x + 5), h + s, sz - 1, VOX.RUST);
+    const KINDS = [VOX.RUST, VOX.STAINED, VOX.STEEL, VOX.BRICK];
+    for (let z = 2; z + 3 < zb - 2; z += 5) for (let x = 2; x + 6 < sx - 1; x += 8) {
+      const n = r() < 0.2 ? 0 : 1 + (r() * 3 | 0);
+      for (let q = 0; q < n; q++) box(x, q * 3, z, x + 5, q * 3 + 2, z + 2, KINDS[(r() * 4) | 0]);
+    }
+  },
+  // the Stacks: one or two huge blocks of homes, 9 to 15 storeys, an alley between; a water tank and
+  // aerials on the roof
+  stacks(box, sx, sz, r) {
+    const n = sx > 44 ? 2 : 1, gap = 8, w = Math.floor((sx - gap * (n - 1)) / n);
+    for (let b = 0; b < n; b++) {
+      const x0 = b * (w + gap), x1 = b === n - 1 ? sx - 1 : x0 + w - 1, h = 4 * (9 + (r() * 7 | 0)), z1 = sz - 1 - (r() * 6 | 0);
+      box(x0, 0, 0, x1, h - 1, z1, VOX.FAC_STACKS);
+      box(x0 + 2, h, 2, x0 + 6, h + 3, 6, VOX.STAINED);
+      for (let a = 0; a < 2; a++) { const ax = x1 - 2 - a * 6, az = 3 + a * 5; box(ax, h, az, ax, h + 5 + (r() * 7 | 0), az, VOX.STEEL); }
+    }
+  },
+  // Neon Row: narrower buildings shoulder to shoulder, 5 to 10 storeys, shops below; some with a smaller
+  // storey set back on top
+  row(box, sx, sz, r) {
+    for (let x = 0; x < sx;) {
+      let w = 10 + (r() * 9 | 0);
+      if (sx - (x + w) < 9) w = sx - x;
+      const h = Math.round(4.5 * (5 + (r() * 6 | 0))), z1 = sz - 1 - (r() * 6 | 0);
+      box(x, 0, 0, x + w - 1, h - 1, z1, r() < 0.7 ? VOX.FAC_ROW : VOX.FAC_STACKS);
+      if (r() < 0.4 && w > 8) box(x + 2, h, 2, x + w - 3, h + 3, z1 - 3, VOX.PLASTIC);
+      x += w;
+    }
+  },
+  // the Spires below the summit: one or two towers, 18 to 27 storeys
+  spires(box, sx, sz, r) {
+    const n = sx > 50 ? 2 : 1, w = Math.min(22, Math.floor(sx / n) - 6), d = Math.min(22, sz - 4);
+    for (let b = 0; b < n; b++) cityTower(box, Math.round((b + 0.5) * sx / n - w / 2), Math.round((sz - d) / 2), w, d, 4 * (18 + (r() * 10 | 0)), r);
+  },
+  // the summit, either side of the plaza: two towers and a lower third, the tallest but one
+  summit(box, sx, sz, r) {
+    const w = 22, d = 22;
+    cityTower(box, 4, 4, w, d, 4 * (30 + (r() * 8 | 0)), r);
+    cityTower(box, sx - w - 4, Math.round(sz * 0.4), w, d, 4 * (26 + (r() * 8 | 0)), r);
+    cityTower(box, 6, sz - d - 3, w - 4, d - 4, 4 * (20 + (r() * 6 | 0)), r);
+  },
+  // the crown, behind the plaza: the tallest tower in the city at the head of the spine, rising into the
+  // cloud, with a lower one either side
+  crown(box, sx, sz, r) {
+    const w = 26, x0 = (sx >> 1) - (w >> 1), z0 = 4;
+    cityTower(box, x0, z0, w, w, 268, r);
+    cityTower(box, 4, 6, 18, 18, 4 * (24 + (r() * 6 | 0)), r);
+    cityTower(box, sx - 22, 6, 18, 18, 4 * (24 + (r() * 6 | 0)), r);
+  },
+};
+
+// The Docks' landmark: a gantry crane on the quay, two portal frames either side of the road, its boom
+// out over the harbour with a hook hanging from it.
+function cityCrane() {
+  const x0 = 462, z0 = CITY.SHORE - 30, sx = 16, sz = 42, q = CITY.SHORE - z0, T = makeTemplate(sx, 50, sz);
+  for (const f of [q + 1, q + 8]) {
+    T.box(1, 0, f, 2, 37, f + 1, VOX.RUST); T.box(13, 0, f, 14, 37, f + 1, VOX.RUST);
+    T.box(1, 38, f, 14, 40, f + 1, VOX.RUST);
+  }
+  T.box(1, 38, q + 1, 2, 40, q + 9, VOX.RUST); T.box(13, 38, q + 1, 14, 40, q + 9, VOX.RUST);
+  T.box(6, 41, 0, 9, 43, sz - 1, VOX.RUST);          // the boom
+  T.box(5, 44, q + 2, 10, 48, q + 7, VOX.STEEL);     // the machinery house
+  T.box(7, 22, 4, 7, 40, 4, VOX.STEEL);              // the cable, and the hook
+  T.box(6, 20, 3, 8, 21, 5, VOX.RUST);
+  T.finalize();
+  const st = { type: 'cityblock', district: 'docks', kind: 'crane', cx: x0 + (sx >> 1), cz: z0 + (sz >> 1), x0, z0, half: Math.max(sx, sz) >> 1, baseY: CITY.SEA + CITY.TERRACES[0][2], tpl: T, radius: Math.hypot(sx, sz) / 2 + 1 };
+  world.structs.push(st); world.city.blocks.push(st);
+}
+
+// The ground's lighting normals (as paintGround's) and its materials, by what lies on each cell.
+function paintCity() {
+  const { H, mat, nx, ny, nz, water, zone } = world, seed = world.seed;
+  for (let z = 0; z < W; z++) {
+    const zm = ((z - 1) & MASK) * W, zp = ((z + 1) & MASK) * W, zr = z * W;
+    for (let x = 0; x < W; x++) {
+      const i = zr + x, dhdx = (H[zr + ((x + 1) & MASK)] - H[zr + ((x - 1) & MASK)]) * 0.5, dhdz = (H[zp + x] - H[zm + x]) * 0.5;
+      const vx = water[i] ? 0 : -dhdx / LIGHT_SLOPE, vz = water[i] ? 0 : -dhdz / LIGHT_SLOPE, len = Math.sqrt(vx * vx + 1 + vz * vz);
+      nx[i] = vx / len; ny[i] = 1 / len; nz[i] = vz / len;
+      mat[i] = water[i] ? MAT.WATER : CITY_GROUND[zone[i]];
+      const tr = hash2(x, z, seed + 31);
+      world.tex[i] = tr < 0.12 ? 1 : tr < 0.24 ? 2 : tr < 0.40 ? 3 : 0;
+    }
+  }
+}
+
+// =====================================================================
 //  TREES + BIRDS  (sprites, not voxels)
 // =====================================================================
 const TREE_BUCKET = 32, TREE_BUCKETS = W / TREE_BUCKET;
@@ -3839,7 +4121,32 @@ function compose() {
 //      marks, or a narrow ░▒▓ band on a seam between two tones, fog layers or lit ground.
 //   3. Compose. The glyph masks are painted into one ImageData.
 const MAT_RAMP = new Uint8Array([R.water, R.grass, R.rock, R.snow, R.haze, R.stone, R.wood, R.leaf, R.road, R.grass2, R.sand, R.redrock, R.drygrass, R.mud, R.reeds, R.plaster, R.tiles, R.thatch, R.glass,
-  R.brick, R.marble, R.fresco, R.gild, R.gild, R.fresco, R.robe0, R.thatch, R.thatch, R.leaf, R.leaf, R.mud, R.mud]);
+  R.brick, R.marble, R.fresco, R.gild, R.gild, R.fresco, R.robe0, R.thatch, R.thatch, R.leaf, R.leaf, R.mud, R.mud,
+  R.concrete, R.stained, R.steel, R.asphalt, R.tile, R.rust, R.plastic, R.rust, R.stained, R.plastic, R.steel]);   // (Port Ascii's: a facade takes its wall's ramp)
+// Port Ascii's facades: walls with their windows drawn where a ray meets them (facadeAt), so a wall of a
+// hundred windows is still one voxel span. Per facade: across, a window every `every` cells, `wide` wide;
+// up, a storey every `storey`, its window `tall` from `sill` up; the share lit at night; and a band of
+// shop windows at street level, `shop` tall (0: none). By district: the Docks' sheds have a row of small
+// high windows; the Stacks' blocks, small windows close together; Neon Row, shops below and windows
+// over them; the Spires, glass from floor to ceiling between steel mullions.
+const FACADE = [];   // [every, wide, storey, tall, sill, lit, shop]
+FACADE[MAT.FAC_DOCKS] = [6, 1.6, 12, 1.3, 7, 0.3, 0];
+FACADE[MAT.FAC_STACKS] = [3, 1.6, 4, 1.8, 1.1, 0.36, 0];
+FACADE[MAT.FAC_ROW] = [4, 2.4, 4.5, 2.1, 1.2, 0.45, 3.2];
+FACADE[MAT.FAC_SPIRES] = [2.5, 2.15, 4, 3.3, 0.35, 0.28, 0];
+// What the ray meets on a facade at u along the wall and v above the building's foot: 0 the wall, 1 a
+// dark window, 2 a lit one (lit at night). Windows sit on whole storeys counted from the foot, and
+// which are lit is fixed per window (by its place and the block, si).
+function facadeAt(f, u, v, si) {
+  if (v < f[6]) {   // shop windows: wide panes between narrow piers, a step above the street
+    const a = u / (f[0] * 2), fa = a - Math.floor(a);
+    if (v < 0.6 || v > f[6] - 0.5 || Math.abs(fa - 0.5) > 0.42) return 0;
+    return hash2(Math.floor(a), 3, 4421 + si) < 0.5 ? 2 : 1;
+  }
+  const a = u / f[0], ca = Math.floor(a), sv = Math.floor(v / f[2]), fv = v - sv * f[2];
+  if (Math.abs(a - ca - 0.5) * f[0] > f[1] * 0.5 || fv < f[4] || fv > f[4] + f[3]) return 0;
+  return hash2(ca, sv * 7 + 1, 4421 + si) < f[5] ? 2 : 1;
+}
 // Rock strata: where a face of rock stands across several rows, its rows fall into bands by height,
 // each a step of tone from the next, with crisp edges between them (the band is part of the
 // segment). Red rock is banded strongly, grey rock gently.
@@ -4441,11 +4748,16 @@ function marchRays(t) {
             const lTop = perRow ? warmAt(ix + 0.5, wTop, iz + 0.5) : aLit, lBot = perRow ? warmAt(ix + 0.5, wBot, iz + 0.5) : aLit, kL = (lBot - lTop) / (wBot - wTop);
             const glow = m === MAT.GLASS && winGlow > 0;   // (a window after dark: lamplight inside)
             const painted = m === MAT.FRESCO || m === MAT.ICON || m === MAT.STARS || m === MAT.BANNER, pLight = 0.4 + 0.9 * aPos;
+            const fac = FACADE[m];   // (Port Ascii: a wall with its windows drawn on it)
             for (let r = r0, i = col * RH + r0; r < r1; r++, i++) {
               if (kind[i] !== NONE) continue;
               const hy = camY + rayQ[r] * tt;
               kind[i] = K.WALL; seg[i] = aSeg; ramp[i] = aRamp; pos[i] = aPos; depth[i] = tt; flags[i] = aFlags; u[i] = wallU; v[i] = hy - baseY;
               lit[i] = glow ? winGlow : lTop + (hy - wTop) * kL; left--;
+              if (fac) {   // a window: glass, a little darker than the wall; after dark, lit ones glow with the lamps inside
+                const wn = facadeAt(fac, wallU, hy - baseY, A.si);
+                if (wn) { ramp[i] = R.glass; seg[i] = aSeg | (R.glass << 12); pos[i] = aPos * 0.8; if (wn === 2 && winGlow > 0) lit[i] = winGlow; }
+              }
               if (painted) {   // a fresco, an icon or a vault: its own colours, lit by the room's light and the candles (without turning them orange)
                 paintedWall(m, wallU, hy - wBot);
                 const L = lit[i], pp = patB * pLight + L * 0.45;
@@ -5832,6 +6144,9 @@ MARK_SET[MAT.REEDS] = [0.6, ['tufts', 'three', 'pair', 'tufts']];
 MARK_SET[MAT.WHEAT] = MARK_SET[MAT.WHEAT2] = [0.5, ['tick', 'pair', 'three', 'tick']];   // (phase 5: the fields)
 MARK_SET[MAT.GREENS] = MARK_SET[MAT.GREENS2] = [0.4, ['tufts', 'pair', 'tufts']];
 MARK_SET[MAT.SOIL] = MARK_SET[MAT.SOIL2] = [0.35, ['grit', 'pebbles', 'grit']];
+MARK_SET[MAT.ASPHALT] = [0.2, ['grit', 'dot', 'grit']];   // (Port Ascii's ground: worn asphalt, concrete, rough ground; the plazas' tiles are clean)
+MARK_SET[MAT.CONCRETE] = [0.15, ['grit', 'pebble', 'dot']];
+MARK_SET[MAT.STAINED] = [0.35, ['grit', 'pebbles', 'pebble', 'grit']];
 const MARK_IDS = MARK_SET.map(s => s && s[1].map(n => MK[n]));
 function splatGroundMarks(t) {
   const { cols, rows, cellW, cellH, RW, RH, rayW, rayH } = grid;
@@ -7317,7 +7632,7 @@ function regenerate(seed) {
   spawn();
   updateLighting();
   seedInput.value = seed;
-  history.replaceState(null, '', '?seed=' + seed);
+  history.replaceState(null, '', WORLD_QUERY + 'seed=' + seed);   // (Port Ascii keeps its ?world=city)
 }
 
 // =====================================================================
@@ -8565,7 +8880,7 @@ window.TV = {
   setCells: preset => { grid.preset = clamp(preset, 0, CELL_PRESETS.length - 1); setupGrid(); },
   whenIdle: () => pool.busy ? new Promise(res => pool.idle.push(res)) : Promise.resolve(),
   renderer: local,   // its rays, atlas and cell marks are live only with ?threads=0
-  defs: { KEYFRAMES, RAMP_NAMES, MAT, BIOME, BIOME_NAMES, W, TOWN, FORT, GATE_DIRS },   // for the tools that draw maps and palette sheets, and aim scenes at landmarks
+  defs: { KEYFRAMES, RAMP_NAMES, MAT, BIOME, BIOME_NAMES, W, TOWN, FORT, GATE_DIRS, WORLD_KIND, CITY_MOOD, CITY, CZ, PALETTE },   // for the tools that draw maps and palette sheets, and aim scenes at landmarks
 };
 })();
 </script>

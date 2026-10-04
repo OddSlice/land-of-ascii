@@ -1448,6 +1448,338 @@
         "pitch": -200.0,
         "ground": true
       }
+    },
+    {
+      "name": "city-arrival",
+      "title": "Port Ascii: where you start, on the quay at the foot of the spine, looking up the hill (21:30)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 512.5,
+        "y": 0,
+        "z": 336.5,
+        "yaw": 90,
+        "pitch": 120,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-arrival-dusk",
+      "title": "Port Ascii: where you start, at dusk (18:48)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 18.8,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 512.5,
+        "y": 0,
+        "z": 336.5,
+        "yaw": 90,
+        "pitch": 120,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-arrival-day",
+      "title": "Port Ascii: where you start, by day (11:00)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 512.5,
+        "y": 0,
+        "z": 336.5,
+        "yaw": 90,
+        "pitch": 120,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-skyline",
+      "title": "Port Ascii from the harbour: the Docks, the Stacks, Neon Row and the Spires stepping up the hill (21:30)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 512.5,
+        "y": 55,
+        "z": 245,
+        "yaw": 90,
+        "pitch": 170
+      }
+    },
+    {
+      "name": "city-skyline-dusk",
+      "title": "Port Ascii from the harbour at dusk (18:48)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 18.8,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 512.5,
+        "y": 55,
+        "z": 245,
+        "yaw": 90,
+        "pitch": 170
+      }
+    },
+    {
+      "name": "city-skyline-day",
+      "title": "Port Ascii from the harbour by day (11:00)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 512.5,
+        "y": 55,
+        "z": 245,
+        "yaw": 90,
+        "pitch": 170
+      }
+    },
+    {
+      "name": "city-docks",
+      "title": "The Docks: the quay road and the crane over the water (21:30)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 420.5,
+        "y": 0,
+        "z": 335.5,
+        "yaw": 0,
+        "pitch": 60,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-stacks",
+      "title": "The Stacks: up the spine between the blocks of homes (21:30)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 512.5,
+        "y": 0,
+        "z": 444.5,
+        "yaw": 90,
+        "pitch": 160,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-row",
+      "title": "Neon Row: along its street, shops below, windows above (21:30)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 470.5,
+        "y": 0,
+        "z": 478.5,
+        "yaw": 0,
+        "pitch": 120,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-spires",
+      "title": "The Spires: the summit's plaza and the tallest tower (21:30)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 512.5,
+        "y": 0,
+        "z": 614.5,
+        "yaw": 90,
+        "pitch": 330,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-down",
+      "title": "From the summit down the spine to the harbour (21:30)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 512.5,
+        "y": 0,
+        "z": 607.5,
+        "yaw": -90,
+        "pitch": -260,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-above",
+      "title": "Port Ascii from above (21:30)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 21.5,
+      "t": 1000,
+      "fixed": true,
+      "view": 700,
+      "cam": {
+        "x": 372.5,
+        "y": 260,
+        "z": 252.5,
+        "yaw": 55,
+        "pitch": -260
+      }
+    },
+    {
+      "name": "city-docks-day",
+      "title": "The Docks: the quay road and the crane over the water (11:00)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 420.5,
+        "y": 0,
+        "z": 335.5,
+        "yaw": 0,
+        "pitch": 60,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-stacks-day",
+      "title": "The Stacks: up the spine between the blocks of homes (11:00)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 512.5,
+        "y": 0,
+        "z": 444.5,
+        "yaw": 90,
+        "pitch": 160,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-row-day",
+      "title": "Neon Row: along its street, shops below, windows above (11:00)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 470.5,
+        "y": 0,
+        "z": 478.5,
+        "yaw": 0,
+        "pitch": 120,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-spires-day",
+      "title": "The Spires: the summit's plaza and the tallest tower (11:00)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "fixed": true,
+      "cam": {
+        "x": 512.5,
+        "y": 0,
+        "z": 614.5,
+        "yaw": 90,
+        "pitch": 330,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-down-day",
+      "title": "From the summit down the spine to the harbour (11:00)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "fixed": true,
+      "third": true,
+      "cam": {
+        "x": 512.5,
+        "y": 0,
+        "z": 607.5,
+        "yaw": -90,
+        "pitch": -260,
+        "ground": true
+      }
+    },
+    {
+      "name": "city-above-day",
+      "title": "Port Ascii from above (11:00)",
+      "world": "city",
+      "mood": "A",
+      "seed": 42,
+      "hour": 11,
+      "t": 1000,
+      "fixed": true,
+      "view": 700,
+      "cam": {
+        "x": 372.5,
+        "y": 260,
+        "z": 252.5,
+        "yaw": 55,
+        "pitch": -260
+      }
     }
   ]
 }

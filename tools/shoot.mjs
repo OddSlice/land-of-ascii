@@ -7,6 +7,7 @@
 //   --page other.html (another copy of the game, for before and after), --js 'code' (run in the page just before
 //   each shot, a frame then drawn; TV is window.TV: e.g. "TV.bagAdd('Wheel of cheese'); TV.openBag()"; add --hud to see panels),
 //   --walk KeyW+Space --frames 20: hold those keys for that many frames (at 60 a second) before the shot -> <name>-<keys>-<frames>.png
+//   --world city --mood A|B|C: Port Ascii, the second world (a scene says it with world: 'city' and mood; --mood overrides the scenes')
 import fs from 'node:fs';
 import path from 'node:path';
 import { startServer, launch, ROOT } from './lib/harness.mjs';
@@ -17,23 +18,31 @@ const opt = (k, d) => { const i = args.indexOf('--' + k); if (i < 0) return d; c
 const flag = k => { const i = args.indexOf('--' + k); if (i < 0) return false; args.splice(i, 1); return true; };
 const browserName = opt('browser', 'chromium'), dpr = +opt('dpr', 1), cells = opt('cells', null), dir = opt('dir', 'shots');
 const threads = opt('threads', null), camArg = opt('cam', null), hour = +opt('hour', 12), seed = +opt('seed', 42), outArg = opt('out', null), tArg = +opt('t', 1000);
-const walkArg = opt('walk', null), walkFrames = +opt('frames', 30);
+const walkArg = opt('walk', null), walkFrames = +opt('frames', 30), worldArg = opt('world', null), moodArg = opt('mood', null);
 const ground = flag('ground'), third = flag('third'), keepHud = flag('hud'), lookArg = opt('look', null), pageFile = opt('page', 'index.html'), jsArg = opt('js', null);
 const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, 'tools/scenes.json'), 'utf8'));
 let scenes;
 if (camArg) {
   const [x, y, z, yaw, pitch] = camArg.split(',').map(Number);
-  scenes = [{ name: path.basename(outArg || 'custom.png', '.png'), seed, hour, t: tArg, cam: { x, y, z, yaw, pitch, ground }, third, out: outArg }];
+  scenes = [{ name: path.basename(outArg || 'custom.png', '.png'), seed, hour, t: tArg, cam: { x, y, z, yaw, pitch, ground }, third, out: outArg, world: worldArg, mood: moodArg }];
 } else scenes = cfg.scenes.filter(s => !args.length || args.includes(s.name));
 
 const { server, port } = await startServer();
 const { browser, page } = await launch({ browser: browserName, dpr });
-await page.goto(`http://127.0.0.1:${port}/${pageFile}?seed=${scenes[0]?.seed ?? cfg.seed}${threads != null ? '&threads=' + threads : ''}${lookArg ? '&look=' + lookArg : ''}`);
-await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
-if (!keepHud) await page.addStyleTag({ content: HIDE_OVERLAYS });
-if (cells != null) await page.evaluate(p => window.TV.setCells(p), +cells);
+// The page is loaded for each world (and mood) the scenes need, in turn: which one is read from the address.
+const worldQuery = sc => (sc.world === 'city' ? `world=city&mood=${moodArg || sc.mood || 'A'}&` : '');
+let loaded = null;
+async function load(sc) {
+  if (loaded === worldQuery(sc)) return;
+  loaded = worldQuery(sc);
+  await page.goto(`http://127.0.0.1:${port}/${pageFile}?${loaded}seed=${sc.seed ?? cfg.seed}${threads != null ? '&threads=' + threads : ''}${lookArg ? '&look=' + lookArg : ''}`);
+  await page.waitForFunction(() => window.TV && window.TV.world.structs.length > 0);
+  if (!keepHud) await page.addStyleTag({ content: HIDE_OVERLAYS });
+  if (cells != null) await page.evaluate(p => window.TV.setCells(p), +cells);
+}
 fs.mkdirSync(path.resolve(ROOT, dir), { recursive: true });
 for (const sc of scenes) {
+  await load(sc);
   const c = sc.cam, scSeed = sc.seed ?? cfg.seed;
   if (await page.evaluate(s => window.TV.world.seed !== s, scSeed)) await page.evaluate(s => window.TV.regenerate(s), scSeed);
   const camv = { x: c.x, y: c.y, z: c.z, yaw: c.yaw * Math.PI / 180, pitch: c.pitch };
@@ -48,7 +57,7 @@ for (const sc of scenes) {
     await page.evaluate(code => { const TV = window.TV; new Function('TV', code)(TV); }, jsArg);
     await page.evaluate(() => window.__step(0)); await page.evaluate(() => window.TV.whenIdle());
   }
-  const tag = (third && !camArg && !sc.third ? '-3rd' : '') + (walkArg ? `-${walkArg.replace(/Key/g, '').toLowerCase()}-${walkFrames}` : '');
+  const tag = (third && !camArg && !sc.third ? '-3rd' : '') + (walkArg ? `-${walkArg.replace(/Key/g, '').toLowerCase()}-${walkFrames}` : '') + (moodArg && sc.world === 'city' && !camArg ? '-' + moodArg.toLowerCase() : '');
   const out = path.resolve(ROOT, sc.out || path.join(dir, `${sc.name}${tag}${browserName === 'chromium' ? '' : '-' + browserName}.png`));
   await page.screenshot({ path: out });
   const st = await page.evaluate(() => { const s = window.TV.stats; return { edges: s.edgeCells, threads: s.threads, cols: window.TV.grid.cols, rows: window.TV.grid.rows }; });

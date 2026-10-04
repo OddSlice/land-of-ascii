@@ -79,3 +79,72 @@ Each part is committed and pushed once the Land is checked unchanged and the tes
   - a shorter view distance in the city (the smog hides it).
 - **Letters:** a letter needs about two text cells of height to read. Far-off signs become blocks of glow, as the bible intends; close ones should read. If they don't, signs get bigger.
 - **Engine changes** (coloured light, letters on walls, wet streets) touch the renderer. The usual rules hold: the workers and the single thread must agree, and the Land's pictures must not change.
+
+## Part 1a, the bones (built)
+
+Martin said go on 4 Oct ("okay move to the next step").
+
+**How to see it:** add `?world=city` to the game's address (https://oddslice.github.io/land-of-ascii/?world=city), and `&mood=B` or `&mood=C` for the other moods. R makes a new Port Ascii, and the address keeps the city. Without it, nothing has changed.
+
+**The hill.** An island hill rises from the harbour on its north side to a summit 120 above the sea, in seven terraces:
+- the quay (the Docks), 3 above the water;
+- two terraces of the Stacks, at 21 and 39;
+- two of Neon Row, at 58 and 77;
+- the Spires' terrace at 98, and the summit at 120.
+
+Each terrace has a street along its foot. Three streets climb the hill: the spine, straight up the middle to the summit's plaza and the tallest tower, and two that jog from terrace to terrace (the seed moves them). A climbing street rises evenly from one cross street to the next, 0.39 to 0.56 a cell (walking manages up to 1.5). Between the terraces stand concrete retaining walls. Beyond the built part, the hill's flanks and its back fall to the sea, rough and unbuilt.
+
+**The blocks.** Every block between the streets is one structure holding its buildings: 27 blocks and the crane.
+- **The Docks:** long sheds with saw-tooth roofs; containers stacked one to three high in the yards; a gantry crane on the quay, its boom out over the water.
+- **The Stacks:** one or two huge blocks of homes to a block, 9 to 15 storeys, an alley between, water tanks and aerials on the roofs.
+- **Neon Row:** narrower buildings shoulder to shoulder, 5 to 10 storeys, shop windows at street level, some with a smaller storey set back on top.
+- **The Spires:** towers of glass between steel mullions, set back twice as they rise, a mast on top. Round the summit's plaza stand the tallest of them, and behind it the crown, 268 high.
+
+**Windows are drawn, not built.** Each district's walls have their own pattern of windows: small and close in the Stacks; shops below and windows above on Neon Row; glass from floor to ceiling in the Spires; a row of small high windows in the Docks' sheds. The renderer draws them where a ray meets the wall (`FACADE`, `facadeAt`), so a whole wall of windows stays one block of voxels, which keeps the city fast. At night about a third of the homes' windows and half the shops are lit, each always the same one.
+
+**The colours** are Port Ascii's own palette (`CITY_PALETTE`, written into the game by `tools/city-palette.mjs`), blended through the day as the Land's is, in mood A, B or C. **You start** on the quay at the foot of the spine, looking up the hill.
+
+### What it shows
+
+Sheets in `shots/city/step1a/`:
+- [sheet-hours](../../shots/city/step1a/sheet-hours.png): from the harbour, and where you start, at 11:00, 18:48 and 21:30;
+- [sheet-moods](../../shots/city/step1a/sheet-moods.png): the three moods, at night and at dusk;
+- [sheet-streets](../../shots/city/step1a/sheet-streets.png): a street in each district by day, the view down from the summit, and the city from above.
+
+What we learned:
+- **The skyline steps up the hill,** as the bible asks: the low Docks, the Stacks' big blocks, Neon Row's pink, the Spires' glass, the crown tallest of all. From above, by day, the districts read by their materials and shapes alone.
+- The first version had the Stacks so tall that they hid Neon Row. The hill is now steeper and the Stacks lower.
+- The streets first ramped steeply over each terrace's edge, and the street ahead filled the view. Now they rise evenly.
+- **At night the streets are dark:** only the windows are lit so far. Street lights and neon come in 1b.
+- The moods differ in sky and tone. B (neon soak) can only really be judged once the neon is in.
+- The Land's clouds looked like small lenses up at the city's height, so the city has none for now; a low cloud over it comes later.
+
+### Speed
+
+On Martin's Mac (M1 Max), 6 workers, painted look, the machine idle:
+
+| Views | Chromium | Firefox |
+|---|---|---|
+| Street level: where you start, the Docks, the Stacks, Neon Row, the plaza | 4.7–7.3 ms a frame (60 fps) | 6.6–7.4 ms |
+| The whole city: from the harbour, from above, down from the summit | 8.6–11.1 ms (56–60 fps) | 10.3–11.3 ms (57–59 fps) |
+| The Land, for comparison: where you start, a town street, a road | 6.3–7.6 ms | 11.3 ms (where you start) |
+
+⚠️ The views over the whole city are the heaviest, because the march walks through every block a ray crosses. They stay near 60 fps now; 1b's lights will add to them. If they need saving, the march over far blocks is where to save.
+
+### Checks
+
+- **The Land is untouched:** all 87 of its scenes, in both looks, came out identical to the byte before and after; its world checksums are as recorded, and all its tests pass.
+- **Workers:** Port Ascii draws the same with 1, 4, 5, 6 or 7 workers, in both looks.
+- **New tests** (`tools/test-sim.mjs` section 9):
+  - the city is the same every time (checksums recorded for seeds 42 and 7);
+  - every kind of block is there, and the crown is the tallest;
+  - the address keeps `?world=city`;
+  - in the third person you can walk from the start up the spine to the summit's plaza, and along every cross street from end to end, with the camera never in the ground or a building.
+- **v1's code:** one listed change (`tools/lib/v2-fixes.mjs`): a new world keeps the address's world.
+
+### Rough edges
+
+- Nights are dark at street level until 1b's lights.
+- The layout is regular: a grid of blocks, the same few buildings repeated.
+- The Docks' containers are plain boxes, and nothing can be entered.
+- The hill's flanks and back are bare.
