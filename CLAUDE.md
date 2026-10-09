@@ -2,7 +2,9 @@
 
 An explorer drawn as a mosaic of text glyphs, walked as a hero seen from behind (the third person, since phase 3) or through their eyes. The whole game is `index.html`: one file, no build, no dependencies. Serve the folder (or open the file) and add `?seed=42` for the world in `shots/`. It began as v2 of Text Voxel (https://github.com/OddSlice/text-voxel), which is the ancestor: v2 took over its simulation and rebuilt the renderer. The docs and tools still call this build "v2" and the ancestor "v1"; v1 matters only as the reference the regression tests compare against.
 
-Read `docs/phase1.md` first. It explains how a frame is drawn, the workers, the tests, measured speed and the open issues.
+**9 Oct 2026: Martin is not happy with the Land and wants to rebuild it from the ground up. Read `docs/retrospective.md` first:** what was built and how, every problem we hit, and what to do differently.
+
+Read `docs/phase1.md` next. It explains how a frame is drawn, the workers, the tests, measured speed and the open issues.
 
 **Phase 5 is in progress: read `docs/phase5.md`** (a lived-in world: your bag, then farms and village objects, animals, people). **Phase 4 (`docs/phase4.md`)** built castles with a purpose after Orthodox churches and castles spread out with towns; its roads, ground and climbable mountains come after phase 5. The game is public and playable at https://oddslice.github.io/land-of-ascii/ (GitHub Pages from `main`): every push to `main` is live, so keep `main` playable.
 
